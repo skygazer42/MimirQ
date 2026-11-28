@@ -1,9 +1,37 @@
+import pytest
 from langchain_core.documents import Document
 
-from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
-from app.rag.retrieval.contextual_followup import build_contextual_followup_query
-from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context
-from app.rag.retriever import HybridRetriever
+from app.infrastructure.config import settings
+from app.rag.retrieval.expansion.context import expand_ranked_chunk_results
+from app.rag.retrieval.expansion.hierarchy import expand_hierarchy_context
+from app.rag.retrieval.planning.followup import build_contextual_followup_query
+from app.rag.runtime.context import denoise_context_docs
+from tests.candidate_fixtures import ranking_algorithms
+
+
+@pytest.mark.parametrize("other_document", [False, True])
+def test_context_diversity_cap_only_applies_when_there_are_multiple_sources(monkeypatch, other_document):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 3)
+    monkeypatch.setattr(settings, "RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED", False)
+    sources = [
+        Document(page_content=text, metadata={"document_id": "paper"})
+        for text in (
+            "Trace compilation optimizes frequent execution paths.",
+            "The implementation allocates typed registers.",
+            "A modified interpreter collects loop information.",
+            "The research prototype targets JavaScript.",
+        )
+    ]
+    if other_document:
+        sources.append(
+            Document(page_content="Peer review compared benchmark results.", metadata={"document_id": "review"})
+        )
+
+    context = denoise_context_docs(sources)
+
+    assert [doc.page_content for doc in context] == [
+        doc.page_content for doc in (sources[:3] + sources[4:] if other_document else sources)
+    ]
 
 
 class _Chunk:
@@ -316,7 +344,7 @@ def test_expand_hierarchy_context_traverses_parents_uses_fallback_keys_and_scope
 
 
 def test_weighted_fusion_respects_channel_weights_ties_and_metadata_fill() -> None:
-    retriever = HybridRetriever().model_copy(update={"fusion_weights": {"vector": 2, "bm25": 2}})
+    retriever = ranking_algorithms(fusion_weights={"vector": 2, "bm25": 2})
 
     vector = [
         _result(doc_id="d1", chunk_index=0, score=10.0, content="vector winner"),
@@ -336,17 +364,16 @@ def test_weighted_fusion_respects_channel_weights_ties_and_metadata_fill() -> No
     assert [retriever._result_key(item) for item in out[:3]] == ["d1:0", "d2:0", "d3:0"]
     assert out[2]["metadata"]["source"] == "bm25-source"
     assert out[2]["metadata"]["table_id"] == "table-9"
-    assert retriever._last_channel_metrics["fusion_weighted"]["weights"] == {"bm25": 0.5, "vector": 0.5}
+    assert retriever.metrics["fusion_weighted"]["weights"] == {"bm25": 0.5, "vector": 0.5}
 
 
 def test_budgeted_rrf_prefix_limits_visible_selection_and_marks_prefix_rank() -> None:
-    retriever = HybridRetriever()
+    retriever = ranking_algorithms()
 
     out = retriever._merge_results(
         [_result(doc_id="d1", chunk_index=0, score=9.0)],
         [_result(doc_id="d2", chunk_index=0, score=8.0)],
         [_result(doc_id="d3", chunk_index=0, score=7.0)],
-        [],
         fusion_strategy="budgeted_rrf",
         top_k=2,
         rrf_k=60,
@@ -355,10 +382,9 @@ def test_budgeted_rrf_prefix_limits_visible_selection_and_marks_prefix_rank() ->
     prefix_ranks = [item.get("fusion_budgeted_prefix_rank") for item in out]
     assert prefix_ranks[:2] == [1, 2]
     assert prefix_ranks[2:] == [None]
-    assert retriever._last_channel_metrics["fusion_budgeted_rrf"]["selected_prefix"] == 2
-    assert retriever._last_channel_metrics["fusion_budgeted_rrf"]["budgets"] == {
+    assert retriever.metrics["fusion_budgeted_rrf"]["selected_prefix"] == 2
+    assert retriever.metrics["fusion_budgeted_rrf"]["budgets"] == {
         "bm25": 1,
         "lexical": 0,
-        "sparse": 0,
         "vector": 1,
     }

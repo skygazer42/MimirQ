@@ -1,183 +1,94 @@
-
-import re
 from io import BytesIO
-from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from PIL import Image
+from langchain_core.documents import Document
 
-from app.deepdoc.parser.docling_parser import DoclingParser, JsonReportProcessor
+from app.rag.ingestion.parsing.parsers.docling_parser import DoclingParser, _html_table_to_markdown
+from app.services.parsing import docling
 
 
-def _prov(page_no: int, bbox: tuple[float, float, float, float]) -> SimpleNamespace:
-    left, top, right, bottom = bbox
-    return SimpleNamespace(
-        page_no=page_no,
-        bbox=SimpleNamespace(l=left, t=top, r=right, b=bottom),
+class _Response:
+    def __init__(self, payload=None, *, error=None):
+        self.payload = payload
+        self.error = error
+        self.closed = 0
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        if self.error is not None:
+            raise self.error
+        return self.payload
+
+    def close(self):
+        self.closed += 1
+
+
+class _Session:
+    def __init__(self, response):
+        self.response = response
+        self.uploaded = []
+
+    def post(self, url, **kwargs):
+        self.uploaded.append((url, kwargs))
+        return self.response
+
+
+def test_docling_table_processing_preserves_content_metadata_and_identity():
+    source = Document(
+        page_content="<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>",
+        metadata={"content_type": "table", "source": "report.pdf"},
+        id="table-1",
     )
+    expected = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+    assert _html_table_to_markdown(source.page_content) == expected
+    result = DoclingParser(table_mode="markdown")._process_document(source)
+    assert result[0].page_content == expected
+    assert result[0].metadata["source"] == "report.pdf"
+    assert result[0].id == "table-1"
+    image = Document(page_content="image", metadata={"doc_type_kwd": "image"})
+    assert DoclingParser(extract_images=False)._process_document(image) == []
 
 
-def test_json_report_processor_build_report_keeps_output_fields_and_fallbacks(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    parser = DoclingParser()
-    crop_positions = [(0, 10.0, 20.0, 30.0, 40.0)]
-    crop_result = ("cropped-image", crop_positions)
-    monkeypatch.setattr(
-        parser,
-        "_transfer_to_sections",
-        lambda doc, parse_method="raw": [("Section body", "@@1\t10.0\t20.0\t30.0\t40.0##")],
-    )
-    monkeypatch.setattr(parser, "cropout_docling_table", lambda page_no, bbox: crop_result)
-
-    table = SimpleNamespace(
-        prov=[_prov(1, (10.0, 20.0, 30.0, 40.0))],
-        export_to_html=lambda doc: (_ for _ in ()).throw(RuntimeError("table fallback")),
-    )
-    picture = SimpleNamespace(
-        prov=[_prov(3, (11.0, 21.0, 31.0, 41.0))],
-        caption_text=lambda doc: (_ for _ in ()).throw(RuntimeError("picture fallback")),
-    )
-    doc = SimpleNamespace(
-        num_pages=lambda: (_ for _ in ()).throw(RuntimeError("page-count fallback")),
-        texts=[SimpleNamespace(prov=[_prov(1, (1.0, 2.0, 3.0, 4.0))])],
-        tables=[table],
-        pictures=[picture],
-    )
-
-    report = JsonReportProcessor(parser).build_report(doc, parse_method="raw")
-    sections, tables = JsonReportProcessor.to_sections_tables(report)
-
-    assert report["schema"] == "mimirq.docling_json_report.v1"
-    assert report["metainfo"]["page_count"] == 0
-    assert report["metainfo"]["page_continuity"] == {
-        "pages_seen": [1, 3],
-        "missing_pages": [2],
-        "continuous": False,
-    }
-    assert report["content"] == [("Section body", "@@1\t10.0\t20.0\t30.0\t40.0##")]
-    assert report["tables"] == [((crop_result[0], ""), crop_positions)]
-    assert report["pictures"] == [((crop_result[0], [""]), crop_positions)]
-    assert sections == report["content"]
-    assert tables == report["tables"] + report["pictures"]
-
-
-def test_crop_normalizes_inverted_bottom_before_spanning_pages() -> None:
-    parser = DoclingParser()
-    parser.page_images = [
-        Image.new("RGB", (10, 10), "white"),
-        Image.new("RGB", (10, 10), "white"),
-    ]
-    parser.page_from = 0
-
-    picture, positions = parser.crop("@@1-2\t0\t10\t8\t5##", need_position=True)
-
-    assert picture is not None
-    assert positions == [
-        (0, 0, 10, 8, 10),
-        (1, 0, 10, 0, 2),
-    ]
-
-
-def test_parse_pdf_returns_sections_tables_and_deletes_temp_output(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    parser = DoclingParser()
-    callback_events: list[tuple[float, str]] = []
-    image_calls: list[str] = []
-    convert_paths: list[str] = []
-    report_calls: list[tuple[object, str]] = []
-
-    class _FakeConverter:
-        def convert(self, src_path: str) -> SimpleNamespace:
-            convert_paths.append(src_path)
-            return SimpleNamespace(document=SimpleNamespace(num_pages=2))
-
-    def _build_report(self, doc: object, *, parse_method: str = "raw") -> dict[str, object]:
-        report_calls.append((doc, parse_method))
-        return {
-            "content": [("Section A", "@@1\t1.0\t2.0\t3.0\t4.0##")],
-            "tables": [(("table-image", "<table>"), [(0, 1.0, 2.0, 3.0, 4.0)])],
-            "pictures": [],
-        }
-
-    def _callback(progress: float, message: str) -> None:
-        callback_events.append((progress, message))
-
-    monkeypatch.setattr(parser, "check_installation", lambda: True)
-    monkeypatch.setattr(
-        parser,
-        "__images__",
-        lambda src_path, zoomin=1, page_from=0, page_to=600, callback=None: image_calls.append(src_path),
-    )
-    monkeypatch.setattr("app.deepdoc.parser.docling_parser.DocumentConverter", lambda: _FakeConverter())
-    monkeypatch.setattr(JsonReportProcessor, "build_report", _build_report)
-
-    output_dir = tmp_path / "docling-output"
-    sections, tables = parser.parse_pdf(
-        filepath="nested/report.pdf",
-        binary=BytesIO(b"%PDF-1.4\n"),
-        callback=_callback,
-        output_dir=str(output_dir),
-        parse_method="paper",
-    )
-
-    temp_pdf = output_dir / "report.pdf"
-
-    assert sections == [("Section A", "@@1\t1.0\t2.0\t3.0\t4.0##")]
-    assert tables == [(("table-image", "<table>"), [(0, 1.0, 2.0, 3.0, 4.0)])]
-    assert not temp_pdf.exists()
-    assert image_calls == [str(temp_pdf)]
-    assert convert_paths == [str(temp_pdf)]
-    assert report_calls == [(SimpleNamespace(num_pages=2), "paper")]
-    assert callback_events == [
-        (0.1, f"[Docling] Converting: {temp_pdf}"),
-        (0.7, "[Docling] Parsed doc: 2 pages"),
-        (0.95, "[Docling] Sections: 1, Tables: 1"),
-        (1.0, "[Docling] Done."),
-    ]
-
-
-def test_parse_pdf_swallow_render_failure_but_preserve_conversion_result(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    pdf_path = tmp_path / "input.pdf"
-    pdf_path.write_bytes(b"%PDF-1.4\n")
-    parser = DoclingParser()
-
-    class _FakeConverter:
-        def convert(self, src_path: str) -> SimpleNamespace:
-            return SimpleNamespace(document=SimpleNamespace(num_pages="n/a"))
-
-    monkeypatch.setattr(parser, "check_installation", lambda: True)
-    monkeypatch.setattr(parser, "__images__", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("render")))
-    monkeypatch.setattr("app.deepdoc.parser.docling_parser.DocumentConverter", lambda: _FakeConverter())
-    monkeypatch.setattr(
-        JsonReportProcessor,
-        "build_report",
-        lambda self, doc, *, parse_method="raw": {"content": [("Body", "")], "tables": [], "pictures": []},
-    )
-
-    sections, tables = parser.parse_pdf(filepath=pdf_path)
-
-    assert sections == [("Body", "")]
+def test_remote_docling_conversion_closes_response_and_restores_caller_stream(monkeypatch):
+    monkeypatch.setattr(docling.settings, "DOCLING_ENABLED", True)
+    response = _Response({"status": "success", "document": {"md_content": "# Body"}})
+    session = _Session(response)
+    parser = docling.DoclingServiceParser(api_url="http://docling.invalid", session=session)
+    stream = BytesIO(b"PDF fixture")
+    stream.seek(3)
+    sections, tables = parser.parse_pdf("nested/report.pdf", binary=stream)
+    assert sections == [("# Body", "")]
     assert tables == []
+    assert stream.tell() == 3
+    assert not stream.closed
+    assert response.closed == 1
+    assert session.uploaded[0][1]["files"]["files"][0] == "report.pdf"
 
 
-def test_parse_pdf_preserves_runtime_and_missing_file_errors(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    parser = DoclingParser()
-    missing_path = tmp_path / "missing.pdf"
+def test_docling_conversion_error_remains_visible_and_closes_response(monkeypatch):
+    monkeypatch.setattr(docling.settings, "DOCLING_ENABLED", True)
+    response = _Response(error=ValueError("not json"))
+    parser = docling.DoclingServiceParser(api_url="http://docling.invalid", session=_Session(response))
+    with pytest.raises(RuntimeError, match="non-JSON") as error:
+        parser.parse_pdf("report.pdf", binary=b"PDF fixture")
+    assert isinstance(error.value.__cause__, ValueError)
+    assert response.closed == 1
 
-    monkeypatch.setattr(parser, "check_installation", lambda: False)
-    with pytest.raises(RuntimeError, match=r"^Docling not available, please install `docling`$"):
-        parser.parse_pdf(filepath=missing_path)
 
-    monkeypatch.setattr(parser, "check_installation", lambda: True)
-    with pytest.raises(FileNotFoundError, match=rf"^PDF not found: {re.escape(str(missing_path))}$"):
-        parser.parse_pdf(filepath=missing_path)
+def test_docling_path_payload_closes_owned_file_on_failure(tmp_path):
+    path = tmp_path / "input.pdf"
+    path.write_bytes(b"PDF fixture")
+    with pytest.raises(RuntimeError, match="downstream"):
+        with docling.DoclingServiceParser._source_payload(path, None) as (actual, stream):
+            assert actual == path
+            assert stream.read() == b"PDF fixture"
+            raise RuntimeError("downstream")
+    assert stream.closed
+
+
+@pytest.mark.parametrize("max_pages", [0, -1, False, "2"])
+def test_docling_rejects_invalid_page_limits_before_conversion(max_pages):
+    with pytest.raises(ValueError, match="positive integer"):
+        DoclingParser(max_pages=max_pages)

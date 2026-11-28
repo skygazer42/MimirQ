@@ -1,0 +1,248 @@
+{
+  "conversation": "工程能力问答",
+  "metrics": [
+    [
+      "faithfulness",
+      "忠实度"
+    ],
+    [
+      "response_relevancy",
+      "回答相关性"
+    ],
+    [
+      "context_precision",
+      "上下文精准度"
+    ]
+  ],
+  "selected_run": {
+    "id": "EV-1042",
+    "title": "工程能力问答",
+    "time": "今天 10:42",
+    "status": "completed",
+    "count": 8,
+    "duration": "22.4s",
+    "scores": {
+      "faithfulness": 0.82875,
+      "response_relevancy": 0.89375,
+      "context_precision": 0.82375
+    }
+  },
+  "runs": [
+    {
+      "id": "EV-1042",
+      "title": "工程能力问答",
+      "time": "今天 10:42",
+      "status": "completed",
+      "count": 8,
+      "duration": "22.4s",
+      "scores": {
+        "faithfulness": 0.82875,
+        "response_relevancy": 0.89375,
+        "context_precision": 0.82375
+      }
+    },
+    {
+      "id": "EV-1041",
+      "title": "设备维护问答",
+      "time": "今天 10:31",
+      "status": "running",
+      "count": 6,
+      "duration": "运行中",
+      "scores": {}
+    },
+    {
+      "id": "EV-1040",
+      "title": "文档入库流程",
+      "time": "今天 10:18",
+      "status": "failed",
+      "count": 4,
+      "duration": "8.2s",
+      "scores": {}
+    },
+    {
+      "id": "EV-1039",
+      "title": "检索引用检查",
+      "time": "今天 09:56",
+      "status": "completed",
+      "count": 12,
+      "duration": "34.1s",
+      "scores": {
+        "faithfulness": 0.91,
+        "response_relevancy": 0.94,
+        "context_precision": 0.89
+      }
+    },
+    {
+      "id": "EV-1038",
+      "title": "研发规范问答",
+      "time": "今天 09:22",
+      "status": "completed",
+      "count": 10,
+      "duration": "28.8s",
+      "scores": {
+        "faithfulness": 0.87,
+        "response_relevancy": 0.9,
+        "context_precision": 0.84
+      }
+    },
+    {
+      "id": "EV-1037",
+      "title": "工程能力问答",
+      "time": "昨天 17:36",
+      "status": "completed",
+      "count": 8,
+      "duration": "24.9s",
+      "scores": {
+        "faithfulness": 0.78,
+        "response_relevancy": 0.86,
+        "context_precision": 0.8
+      }
+    },
+    {
+      "id": "EV-1036",
+      "title": "系统架构问答",
+      "time": "昨天 16:40",
+      "status": "completed",
+      "count": 9,
+      "duration": "26.2s",
+      "scores": {
+        "faithfulness": 0.89,
+        "response_relevancy": 0.92,
+        "context_precision": 0.86
+      }
+    },
+    {
+      "id": "EV-1035",
+      "title": "知识库使用",
+      "time": "昨天 15:18",
+      "status": "pending",
+      "count": 5,
+      "duration": "—",
+      "scores": {}
+    },
+    {
+      "id": "EV-1034",
+      "title": "设备保养记录",
+      "time": "昨天 14:25",
+      "status": "completed",
+      "count": 7,
+      "duration": "19.7s",
+      "scores": {
+        "faithfulness": 0.94,
+        "response_relevancy": 0.91,
+        "context_precision": 0.88
+      }
+    },
+    {
+      "id": "EV-1033",
+      "title": "研发工作指引",
+      "time": "10月23日",
+      "status": "completed",
+      "count": 11,
+      "duration": "31.3s",
+      "scores": {
+        "faithfulness": 0.85,
+        "response_relevancy": 0.88,
+        "context_precision": 0.82
+      }
+    }
+  ],
+  "samples": [
+    {
+      "id": 1,
+      "question": "系统架构设计能力包含哪些方面？",
+      "scores": {
+        "faithfulness": 0.96,
+        "response_relevancy": 0.94,
+        "context_precision": 0.91
+      },
+      "contexts": 2
+    },
+    {
+      "id": 2,
+      "question": "初级与高级工程师的架构职责有什么区别？",
+      "scores": {
+        "faithfulness": 0.91,
+        "response_relevancy": 0.93,
+        "context_precision": 0.88
+      },
+      "contexts": 3
+    },
+    {
+      "id": 3,
+      "question": "知识资产化的主要工作是什么？",
+      "scores": {
+        "faithfulness": 0.88,
+        "response_relevancy": 0.92,
+        "context_precision": 0.87
+      },
+      "contexts": 1
+    },
+    {
+      "id": 4,
+      "question": "代码审核需要关注哪些问题？",
+      "scores": {
+        "faithfulness": 0.89,
+        "response_relevancy": 0.9,
+        "context_precision": 0.83
+      },
+      "contexts": 2
+    },
+    {
+      "id": 5,
+      "question": "只增加代码生成量，就能达到高级工程师要求吗？",
+      "scores": {
+        "faithfulness": 0.42,
+        "response_relevancy": 0.78,
+        "context_precision": 0.63
+      },
+      "contexts": 3,
+      "response": "高级工程师主要以代码生成量与自动化比例作为衡量标准，完成更多代码即可满足相应能力要求。",
+      "contexts_text": [
+        "能够主导建立跨模块的系统架构规范与复用标准，设计 AI 驱动的技术架构演进路线图，主导技术债务治理和架构优化。",
+        "能够定义端到端系统边界、数据流向与关键技术决策，主导复杂系统的架构设计与评审，确保技术架构与业务战略一致。"
+      ]
+    },
+    {
+      "id": 6,
+      "question": "如何提升团队的交付质量？",
+      "scores": {
+        "faithfulness": 0.86,
+        "response_relevancy": 0.89,
+        "context_precision": 0.81
+      },
+      "contexts": 2
+    },
+    {
+      "id": 7,
+      "question": "技术债务应该怎样识别和治理？",
+      "scores": {
+        "faithfulness": 0.93,
+        "response_relevancy": 0.95,
+        "context_precision": 0.9
+      },
+      "contexts": 2
+    },
+    {
+      "id": 8,
+      "question": "团队知识库与个人经验有什么关系？",
+      "scores": {
+        "faithfulness": 0.78,
+        "response_relevancy": 0.84,
+        "context_precision": 0.76
+      },
+      "contexts": 2
+    }
+  ],
+  "selected_sample": 5,
+  "assistant_turns": 12,
+  "evaluable_turns": 8,
+  "low_score_count": 2,
+  "contexts": 17,
+  "params": {
+    "max_turns": 20,
+    "skip_empty_contexts": true
+  },
+  "low_score_threshold": 0.8,
+  "note": "设计排版数据，遵循已有 RagasRun / RagasItem 契约，不是实际执行的评测，也不代表真实模型质量。"
+}

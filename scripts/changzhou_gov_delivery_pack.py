@@ -7,6 +7,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.changzhou_gov_plugin_chunk_evidence import _join_inline, _load_json, _write_text  # noqa: E402
+
 SCHEMA = "mimirq.changzhou_gov.delivery_pack.v1"
 DEFAULT_PLUGIN_REPORT = "/tmp/changzhou_gov_plugin_chunk_report.json"
 DEFAULT_PLUGIN_CHUNK_EVIDENCE = "/tmp/changzhou_gov_plugin_chunk_evidence.json"
@@ -25,11 +31,6 @@ def _text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
-
-
-def _load_json(path: str | Path) -> dict[str, Any]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    return payload if isinstance(payload, dict) else {}
 
 
 def _parse_timestamp(value: str) -> datetime | None:
@@ -341,10 +342,6 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
-def _join_inline(values: list[str], *, limit: int = 10) -> str:
-    return ", ".join(f"`{value}`" for value in values[:limit])
-
-
 def format_markdown_pack(pack: dict[str, Any]) -> str:
     summary = pack.get("summary") if isinstance(pack.get("summary"), dict) else {}
     artifacts = pack.get("artifacts") if isinstance(pack.get("artifacts"), dict) else {}
@@ -509,12 +506,6 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
         "tokens, passwords, or API keys.",
     ]
     return "\n".join(lines) + "\n"
-
-
-def _write_text(path: str | Path, text: str) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

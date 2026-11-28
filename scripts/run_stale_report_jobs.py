@@ -19,19 +19,20 @@ Examples:
 
 import argparse
 import json
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 from uuid import UUID
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.tenant import Tenant
-from app.services.stale_report_jobs import run_daily_stale_report
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
-    except Exception as exc:  # noqa: BLE001
+        return UUID(value)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
 
 
@@ -54,12 +55,18 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.config import settings
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.identity.workspaces import Tenant
+    from app.services.observability.stale_reports import run_daily_stale_report
+
     tenant_ids: list[UUID] = []
-    if bool(args.all_tenants):
+    if args.all_tenants:
         db = SessionLocal()
         try:
             rows = db.query(Tenant.id).all()
-            tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+            tenant_ids = [tenant_id for (tenant_id,) in rows]
         finally:
             db.close()
     elif args.tenant_id is not None:
@@ -68,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
 
     ran_at = datetime.now(UTC)
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     ok = True
 
     for tid in tenant_ids:
@@ -77,19 +84,19 @@ def main(argv: list[str] | None = None) -> int:
             res = run_daily_stale_report(
                 db,
                 tenant_id=tid,
-                stale_after_days=int(args.stale_after_days or 0),
-                max_documents=int(args.max_documents or 0),
-                execute=bool(args.execute),
-                force=bool(args.force),
+                stale_after_days=args.stale_after_days,
+                max_documents=args.max_documents,
+                execute=args.execute,
+                force=args.force,
                 actor_id="system:stale_report",
                 now=ran_at,
             )
             results.append(res)
-            ok = ok and bool(res.get("ok") is True)
+            ok = ok and res["ok"]
         finally:
             db.close()
 
-    print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    print(json.dumps({"ok": ok, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1
 
 

@@ -10,20 +10,26 @@ Supports any embedding API that follows the OpenAI embeddings format:
 - ModelScope
 - Any OpenAI-compatible endpoint
 """
+
+from typing import Unpack
+from urllib.parse import urlsplit
+
 import httpx
 
-from app.core.config import settings
-from app.core.http_client import get_http_client_pool
-from app.rag.embedding.base import BaseEmbeddingModel
+from app.infrastructure.config import settings
+from app.infrastructure.http.client import get_http_client_pool
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
 from app.rag.embedding.providers._embedding_http import (
     EmbeddingHTTPConcurrency,
+    iter_embedding_batches,
     post_with_retries_async,
     post_with_retries_sync,
 )
-from app.rag.embedding.utils import logger
+from app.rag.embedding.utils import decode_embedding_response, logger
 
-_DASHSCOPE_OPENAI_COMPAT_BATCH_CAP = 10
-_HTTP_CONCURRENCY = EmbeddingHTTPConcurrency("OpenAI embedding")
+DASHSCOPE_BATCH_CAP = 10
+SILICONFLOW_QWEN3_VL_BATCH_CAP = 8
+_HTTP_CONCURRENCY = EmbeddingHTTPConcurrency()
 
 
 class OpenAICompatibleEmbedding(BaseEmbeddingModel):
@@ -34,7 +40,13 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
     - Response: {"data": [{"embedding": [...]}]}
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        *,
+        http_client: httpx.Client | None = None,
+        http_async_client: httpx.AsyncClient | None = None,
+        **kwargs: Unpack[EmbeddingModelOptions],
+    ) -> None:
         """Initialize OpenAI-compatible embedding model.
 
         Args:
@@ -51,24 +63,31 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
             self.headers["Authorization"] = f"Bearer {self.api_key}"
 
         # Use shared external HTTP clients (no internal tenant/user headers).
-        pool = get_http_client_pool()
-        self.http_client = pool.get_external_sync_client()
-        self.http_async_client = pool.get_external_async_client()
+        self.http_client = http_client if http_client is not None else get_http_client_pool().get_external_sync_client()
+        self.http_async_client = (
+            http_async_client if http_async_client is not None else get_http_client_pool().get_external_async_client()
+        )
 
-    def _build_payload(self, message: str | list[str]) -> dict:
+    def _build_payload(self, message: str | list[str]) -> dict[str, object]:
         """Build API request payload."""
         return {"model": self.model, "input": message}
 
     def _effective_batch_size(self) -> int:
-        configured = max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64))
-        base_url = str(self.base_url or "").lower()
-        if "dashscope.aliyuncs.com" in base_url:
-            return min(configured, _DASHSCOPE_OPENAI_COMPAT_BATCH_CAP)
+        configured = settings.EMBEDDING_API_BATCH_SIZE
+        if self.base_url is not None and "dashscope.aliyuncs.com" in self.base_url.lower():
+            return min(configured, DASHSCOPE_BATCH_CAP)
+        if (
+            self.model == "Qwen/Qwen3-VL-Embedding-8B"
+            and self.base_url is not None
+            and urlsplit(self.base_url).hostname == "api.siliconflow.cn"
+        ):
+            # SiliconFlow restarts response indices after every eighth VL input.
+            return min(configured, SILICONFLOW_QWEN3_VL_BATCH_CAP)
         return configured
 
     def _encode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
-        timeout_sec = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC
         try:
             return post_with_retries_sync(
                 client=self.http_client,
@@ -78,42 +97,30 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
                     "headers": self.headers,
                     "timeout": timeout_sec,
                 },
-                parse_response=self._parse_response,
+                parse_response=lambda response: self._parse_response(response, count=len(texts)),
                 concurrency=_HTTP_CONCURRENCY,
-                schema_errors=(KeyError, TypeError, ValueError),
             )
         except (httpx.HTTPStatusError, httpx.RequestError, KeyError, TypeError, ValueError) as exc:
             msg = f"OpenAI-compatible Embedding request failed: {exc}"
-            logger.error("%s, payload: %s", msg, payload)
+            logger.error("%s", msg)
             raise ValueError(msg) from exc
 
-    @staticmethod
-    def _parse_response(response: httpx.Response) -> list[list[float]]:
+    def _parse_response(self, response: httpx.Response, *, count: int) -> list[list[float]]:
         result = response.json()
         if not isinstance(result, dict) or "data" not in result:
-            raise ValueError(f"Invalid embeddings response format: {result}")
-        data = result.get("data") or []
-        return [item["embedding"] for item in data]
+            raise ValueError("Embeddings response must contain a data array")
+        return decode_embedding_response(result["data"], count=count, dimension=self.dimension)
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
         """Synchronously encode text(s) to embeddings."""
-        if isinstance(message, str):
-            texts = [message]
-        else:
-            texts = list(message or [])
-
-        if not texts:
-            return []
-
-        batch_size = self._effective_batch_size()
         out: list[list[float]] = []
-        for start in range(0, len(texts), batch_size):
-            out.extend(self._encode_one_batch(texts[start : start + batch_size]))
+        for batch in iter_embedding_batches(message, self._effective_batch_size()):
+            out.extend(self._encode_one_batch(batch))
         return out
 
     async def _aencode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
-        timeout_sec = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC
         try:
             return await post_with_retries_async(
                 client=self.http_async_client,
@@ -123,27 +130,17 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
                     "headers": self.headers,
                     "timeout": timeout_sec,
                 },
-                parse_response=self._parse_response,
+                parse_response=lambda response: self._parse_response(response, count=len(texts)),
                 concurrency=_HTTP_CONCURRENCY,
-                schema_errors=(KeyError, TypeError, ValueError),
             )
         except (httpx.HTTPStatusError, httpx.RequestError, KeyError, TypeError, ValueError) as exc:
             msg = f"OpenAI-compatible Embedding async request failed: {exc}"
-            logger.error("%s, payload: %s, base_url: %s", msg, payload, self.base_url)
+            logger.error("%s", msg)
             raise ValueError(msg) from exc
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""
-        if isinstance(message, str):
-            texts = [message]
-        else:
-            texts = list(message or [])
-
-        if not texts:
-            return []
-
-        batch_size = self._effective_batch_size()
         out: list[list[float]] = []
-        for start in range(0, len(texts), batch_size):
-            out.extend(await self._aencode_one_batch(texts[start : start + batch_size]))
+        for batch in iter_embedding_batches(message, self._effective_batch_size()):
+            out.extend(await self._aencode_one_batch(batch))
         return out

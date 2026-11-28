@@ -46,7 +46,7 @@ security:
         - ALL
     runAsNonRoot: true
     # NOTE: readOnlyRootFilesystem is intentionally NOT enabled by default.
-    # Some optional local backends (e.g., Chroma/FAISS) may write under /app.
+    # Local upload and parser cache paths must remain writable.
     # If you enable it, consider also enabling `security.tmpEmptyDir` and mounting
     # writable volumes for any required paths.
 
@@ -92,6 +92,7 @@ secretEnv:
 
   # Postgres / Redis / Vector store
   DATABASE_URL: ""
+  # External ARQ broker must use maxmemory-policy=noeviction; this chart does not configure Redis.
   REDIS_URL: ""
   VECTOR_BACKEND: "milvus"
   MILVUS_HOST: ""
@@ -284,8 +285,10 @@ persistence:
     enabled: true
     existingClaim: ""
     storageClassName: ""
+    # API and worker each mount this claim, even with one replica apiece.
+    # Select a storage class that supports ReadWriteMany on your cluster.
     accessModes:
-      - ReadWriteOnce
+      - ReadWriteMany
     size: 20Gi
 
 migrations:

@@ -4,8 +4,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag.tools import mcp_tools
-from app.rag.tools.mcp_tools import _parse_pages_selector, calculate
+from app.rag.agents.tools import mcp_tools
+from app.rag.agents.tools.mcp_client import DocumentToolScope, MCPToolError
+from app.rag.agents.tools.mcp_tools import _parse_pages_selector, calculate
 
 
 @pytest.mark.parametrize(
@@ -61,10 +62,8 @@ def test_calculate_preserves_supported_math(expression: str, expected) -> None:
     ],
 )
 def test_calculate_preserves_rejection_boundary(expression: str) -> None:
-    result = calculate(expression)
-    assert result["success"] is False
-    assert result["result"] is None
-    assert result["error"]
+    with pytest.raises(MCPToolError, match=r"\S"):
+        calculate(expression)
 
 
 class _Query:
@@ -119,12 +118,23 @@ def test_get_document_content_sync_preserves_scope_page_and_content_contract(mon
         yield db
 
     monkeypatch.setattr(mcp_tools, "_db_session", fake_session)
-    monkeypatch.setattr(mcp_tools.settings, "DEFAULT_TENANT_ID", str(tenant_id))
+    account_id = "authorized-reader"
+    scope = DocumentToolScope(tenant_id, account_id, frozenset({dataset_id}), frozenset({document_id}))
+
+    def allowed_document_ids(session, requested_tenant, requested_account, requested_document_ids):
+        assert session is db
+        assert requested_tenant == tenant_id
+        assert requested_account == account_id
+        assert requested_document_ids == [document_id]
+        return {document_id}, set()
+
+    monkeypatch.setattr("app.services.documents.read_scope.get_allowed_document_id_sets", allowed_document_ids)
 
     result = mcp_tools._get_document_content_sync(
         str(document_id),
         page=2,
         dataset_id=str(dataset_id),
+        _scope=scope,
     )
 
     assert result == {
@@ -141,16 +151,16 @@ def test_get_document_content_sync_preserves_scope_page_and_content_contract(mon
     }
 
 
-def test_get_document_content_sync_preserves_validation_errors(monkeypatch) -> None:
+def test_get_document_content_sync_preserves_validation_errors() -> None:
     document_id = str(uuid4())
-    assert mcp_tools._get_document_content_sync(document_id)["error"] == "dataset_id is required"
-    assert mcp_tools._get_document_content_sync(document_id, dataset_id="bad")["error"] == (
+    scope = DocumentToolScope(uuid4(), "authorized-reader")
+    assert mcp_tools._get_document_content_sync(document_id, _scope=scope)["error"] == "dataset_id is required"
+    assert mcp_tools._get_document_content_sync(document_id, dataset_id="bad", _scope=scope)["error"] == (
         "dataset_id must be a UUID"
     )
-    assert mcp_tools._get_document_content_sync("bad", dataset_id=str(uuid4()))["error"] == (
+    assert mcp_tools._get_document_content_sync("bad", dataset_id=str(uuid4()), _scope=scope)["error"] == (
         "document_id must be a UUID"
     )
-    monkeypatch.setattr(mcp_tools.settings, "DEFAULT_TENANT_ID", "bad")
     assert mcp_tools._get_document_content_sync(document_id, dataset_id=str(uuid4()))["error"] == (
-        "DEFAULT_TENANT_ID is invalid"
+        "Document tool scope with a tenant is required"
     )

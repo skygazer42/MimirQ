@@ -5,7 +5,7 @@ sidebar_position: 4
 
 # Deployment
 
-MimirQ provides two ready-to-use paths: a complete Docker Web stack, or host API/Web processes with an optional Arq worker backed by Docker infrastructure. Kubernetes production deployments use the Helm chart in this repository.
+Ragvia provides two ready-to-use paths: a complete Docker Web stack, or host API/Web processes with an optional Arq worker backed by Docker infrastructure. Kubernetes production deployments use the Helm chart in this repository.
 
 Complete the [Quick Start](./getting-started) model and initial-owner configuration first.
 
@@ -27,7 +27,7 @@ make logs
 make down
 ```
 
-Heavy parser profiles are optional and remain stopped by default. See the repository [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md) for their exact commands.
+Heavy parser profiles are optional and remain stopped by default. See the repository [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md) for their exact commands.
 
 ### Stop or rebuild from scratch
 
@@ -37,7 +37,7 @@ Heavy parser profiles are optional and remain stopped by default. See the reposi
 | Rebuild from empty data | `make docker-reset` | Deleted | Kept |
 | Rebuild images and data | `make docker-purge` | Deleted | Deleted |
 
-The last two operations are destructive. MimirQ defaults to an isolated `mimirq` Compose project name, so Dify and other stacks are not treated as orphans. These commands do not delete `.env` or source files. See the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for the exact database, upload, vector-index, parser-cache, and shared-image impact.
+The last two operations are destructive. Ragvia defaults to an isolated `mimirq` Compose project name, so Dify and other stacks are not treated as orphans. These commands do not delete `.env` or source files. See the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for the exact database, upload, vector-index, parser-cache, and shared-image impact.
 
 ### Ownership checks and recovery
 
@@ -48,16 +48,16 @@ docker compose ls
 docker ps -a --filter "label=com.docker.compose.project=mimirq"
 ```
 
-Only MimirQ services should appear under the `mimirq` project. Compose `[+] Running N/N` counts
+Only Ragvia services should appear under the `mimirq` project. Compose `[+] Running N/N` counts
 container, volume, image, and network operations; it does not mean that N containers were running.
 The standard Web stack contains eight containers when optional parsers are disabled.
 
 If an older cleanup command removed Dify containers, stop immediately and do not run
 `docker system prune` or `docker volume prune`. From the original Dify Compose directory, reuse its
 original project name and run `docker compose up -d`. Verify Dify data before running `git pull`,
-`make up-web`, `make ps`, and `make api-ping` from MimirQ. Legacy MimirQ `docker_*` volumes are not
+`make up-web`, `make ps`, and `make api-ping` from Ragvia. Legacy Ragvia `docker_*` volumes are not
 automatically migrated to the new `mimirq_*` volumes; back up and migrate data before deleting them.
-See the repository [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for complete PowerShell, project-name, and recovery steps.
+See the repository [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for complete PowerShell, project-name, and recovery steps.
 
 ## Host source processes
 
@@ -101,7 +101,7 @@ make up-prod-web
 make ps
 ```
 
-Follow every guardrail in the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md), not only this summary.
+Follow every guardrail in the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md), not only this summary.
 
 ## Helm / Kubernetes
 
@@ -115,7 +115,7 @@ helm upgrade --install mimirq deploy/helm/mimirq \
   -f <values-file>
 ```
 
-Prefer `existingSecretName` with an externally managed Secret. See the complete [Helm guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/helm.md) for migrations, NetworkPolicy, multi-replica guards, and rollback.
+Prefer `existingSecretName` with an externally managed Secret. See the complete [Helm guide](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/helm.md) for migrations, NetworkPolicy, multi-replica guards, and rollback.
 
 ## Acceptance check
 

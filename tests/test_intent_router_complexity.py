@@ -1,9 +1,13 @@
 import pytest
 
-import app.rag.retrieval.orchestration.intent_router as intent_router
-from app.rag.retrieval.orchestration.intent_router import (
-    ADAPTIVE_ROUTER_POLICY_SCHEMA_V1,
-    INTENT_ROUTER_POLICY_SCHEMA_V1,
+import app.rag.policy.intent_router as intent_router
+from app.rag.policy.intent_router import (
+    _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1 as ADAPTIVE_ROUTER_POLICY_SCHEMA_V1,
+)
+from app.rag.policy.intent_router import (
+    _INTENT_ROUTER_POLICY_SCHEMA_V1 as INTENT_ROUTER_POLICY_SCHEMA_V1,
+)
+from app.rag.policy.intent_router import (
     normalize_adaptive_router_policy,
     normalize_intent_router_policy,
     route_adaptive_retrieval_overrides,
@@ -131,7 +135,7 @@ def test_route_retrieval_preset_learned_hint_only_fills_missing_overrides(
     monkeypatch.setattr(intent_router, "normalize_intent_router_model", lambda model: {"ready": True})
     monkeypatch.setattr(
         intent_router,
-        "predict_learned_router_hint",
+        "predict_normalized_router_hint",
         lambda **kwargs: {
             "confidence": 0.8,
             "rule_id": "learned-rule",

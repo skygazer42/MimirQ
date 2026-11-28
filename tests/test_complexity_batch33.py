@@ -8,63 +8,15 @@ import pytest
 from fastapi import HTTPException
 from fastapi.responses import Response
 from langchain_core.documents import Document
-from starlette.requests import Request
 
-from app.api.v1 import documents as documents_module
-from app.api.v1 import parsing as parsing_module
+from app.api.schemas.documents import ChunkPreviewByShaForm, ChunkPreviewQuery
+from app.api.v1.documents import routes as documents_module
+from app.api.v1.pipelines import parsing as parsing_module
 from app.main import _expand_dev_cors_origins, app, lifespan
-from app.parsing.processors.support import recovery as recovery_module
-from app.services.preview_cache import ParseCacheEntry
+from app.rag.ingestion.indexing.support import recovery as recovery_module
+from app.services.documents.preview_cache import ParseCacheEntry
 
 preview_module = documents_module.document_chunk_preview
-
-
-def _request() -> Request:
-    return Request(
-        {
-            "type": "http",
-            "method": "POST",
-            "path": "/",
-            "headers": [],
-            "query_string": b"",
-        }
-    )
-
-
-def _preview_params(**overrides: object) -> preview_module.ChunkPreviewRequestFields:
-    params = preview_module.ChunkPreviewRequestFields(
-        chunk_size=1000,
-        chunk_overlap=200,
-        include_original_text=True,
-        include_review_signals=False,
-        include_chunks=True,
-        original_text_max_chars=100000,
-        max_chunks=0,
-        use_parse_cache=True,
-        parser_backend="basic",
-        chunk_strategy="langchain_recursive",
-        child_ratio=None,
-        min_child_size=None,
-        separator_preset=None,
-        separator=None,
-        keep_separator=None,
-        separator_max_chunk_size=None,
-        dataset_id=None,
-        pipeline=None,
-        governance_enabled=None,
-        governance_remove_toc_lines=None,
-        governance_remove_noise_lines=None,
-        governance_unwrap_lines=None,
-        governance_remove_common_lines=None,
-        governance_unwrap_max_line_length=None,
-        governance_noise_min_chars=None,
-        governance_noise_ratio_threshold=None,
-        governance_common_lines_min_docs=None,
-        governance_common_lines_min_ratio=None,
-    )
-    for key, value in overrides.items():
-        setattr(params, key, value)
-    return params
 
 
 def test_expand_dev_cors_origins_adds_local_aliases_without_touching_remote_origins() -> None:
@@ -79,13 +31,17 @@ def test_expand_dev_cors_origins_adds_local_aliases_without_touching_remote_orig
 
 
 @pytest.mark.asyncio
-async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import app.main as main_module
+    from app.services.dify import warmup as dify_warmup
 
     events: list[str] = []
 
     class _DB:
-        def close(self) -> None:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
             events.append("db.close")
 
     async def _init_queue() -> None:
@@ -97,11 +53,13 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
     async def _close_queue() -> None:
         events.append("close_queue")
 
-    fake_dify = types.SimpleNamespace(
-        start_dify_external_knowledge_warmup=lambda: events.append("dify_warmup"),
-    )
+    def shutdown_recorder(event):
+        async def record(*_args):
+            events.append(event)
 
-    monkeypatch.setattr(main_module.settings, "UPLOAD_DIR", "/tmp/mimirq-tests", raising=False)
+        return record
+
+    monkeypatch.setattr(main_module.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(main_module.settings, "TABLE_STORE_DIR", None, raising=False)
     monkeypatch.setattr(main_module.settings, "VECTOR_BACKEND", "milvus", raising=False)
     monkeypatch.setattr(main_module.settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True, raising=False)
@@ -133,9 +91,21 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
     monkeypatch.setattr(main_module, "_start_runtime_warmup", lambda: events.append("warmup_runtime"), raising=True)
     monkeypatch.setattr(main_module, "close_http_client_pool", _close_http, raising=True)
     monkeypatch.setattr(main_module, "close_queue", _close_queue, raising=True)
+    for name in (
+        "_stop_background_warmups",
+        "_stop_task_queue_observability_poller",
+        "drain_blocking_retrieval_workers",
+        "close_mcp_client",
+    ):
+        monkeypatch.setattr(main_module, name, shutdown_recorder(name))
+    monkeypatch.setattr(main_module, "close_tracing", lambda: events.append("close_tracing"))
+    monkeypatch.setattr(main_module, "reset_rag_engine", lambda: events.append("reset_rag_engine"))
+    monkeypatch.setattr(main_module, "reset_reranker_caches", lambda: events.append("reset_reranker_caches"))
     monkeypatch.setattr(main_module.engine, "dispose", lambda: events.append("dispose"), raising=True)
     monkeypatch.setattr(main_module, "shutdown_otel", lambda: events.append("shutdown_otel"), raising=True)
-    monkeypatch.setitem(sys.modules, "app.api.v1.integrations_dify", fake_dify)
+    monkeypatch.setattr(
+        dify_warmup, "start_dify_external_knowledge_warmup", lambda: events.append("dify_warmup")
+    )
 
     async with lifespan(app):
         events.append("yield")
@@ -151,8 +121,15 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
         "warmup_runtime",
         "dify_warmup",
         "yield",
-        "close_http",
+        "_stop_background_warmups",
+        "_stop_task_queue_observability_poller",
+        "drain_blocking_retrieval_workers",
+        "close_tracing",
+        "close_mcp_client",
         "close_queue",
+        "reset_rag_engine",
+        "reset_reranker_caches",
+        "close_http",
         "dispose",
         "shutdown_otel",
     ]
@@ -190,16 +167,6 @@ def test_build_pdf_fallback_candidates_preserves_order_and_basic_fallback(
     ]
 
 
-class _PreviewPipeline:
-    governance_enabled = False
-    chunk_strategy_params: dict[str, object] = {}
-    chunk_merge_small_min_chars = 0
-    governance_regex_rules: list[object] = []
-
-    def __getattr__(self, _name: str) -> object:
-        return 0
-
-
 def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authorization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -226,23 +193,17 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     monkeypatch.setattr(preview_module.settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 10, raising=False)
     monkeypatch.setattr(preview_module.settings, "PREVIEW_PARSE_CACHE_VERSION", "v1", raising=False)
     monkeypatch.setattr(preview_module.settings, "CHUNK_MIN_CHARS", 0, raising=False)
-    monkeypatch.setattr(preview_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(preview_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        preview_module.DatasetService,
+        preview_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, dataset_metadata={}),
         raising=True,
     )
     monkeypatch.setattr(
-        preview_module.DatasetService,
+        preview_module.dataset_service,
         "assert_dataset_readable",
-        lambda _db, _ds, acct: readable_calls.append(("readable", acct)),
-        raising=True,
-    )
-    monkeypatch.setattr(
-        preview_module,
-        "resolve_pipeline_effective",
-        lambda **_kwargs: _PreviewPipeline(),
+        lambda _db, ds, acct: readable_calls.append((str(ds.id), acct)),
         raising=True,
     )
     monkeypatch.setattr(preview_module.chunker_factory, "resolve_strategy", lambda _strategy: "langchain_recursive")
@@ -270,28 +231,31 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     )
     monkeypatch.setitem(
         sys.modules,
-        "app.rag.chunking.quality_scorer",
+        "app.rag.ingestion.chunking.quality_scorer",
         types.SimpleNamespace(
             score_chunk_semantic_quality=lambda content, *, tokens_est, prev_token_set: ({}, prev_token_set or set()),
         ),
     )
 
     response = preview_module.preview_chunking_by_sha(
-        request=_request(),
         response=Response(),
-        file_fields=preview_module.ChunkPreviewByShaFileFields(
+        form=ChunkPreviewByShaForm(
             file_sha256="a" * 64,
             file_type="txt",
             filename="demo.txt",
             file_size=10,
+            parser_backend="basic",
+            chunk_strategy="langchain_recursive",
+            dataset_id=str(dataset_id),
+            pipeline='{"chunk_merge_small_min_chars":0,"governance_enabled":false}',
         ),
-        params=_preview_params(dataset_id=str(dataset_id)),
+        query=ChunkPreviewQuery(),
         tenant_id=tenant_id,
         account_id=account_id,
         db=object(),
     )
 
-    assert readable_calls == [("readable", account_id)]
+    assert readable_calls == [(str(dataset_id), account_id)]
     assert response.parse_cache_hit is True
     assert response.parse_cache_age_ms == 17
     assert response.total_characters == len("abcdef\nwxyz")
@@ -317,6 +281,23 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
     class _DB:
         def __init__(self) -> None:
             self.commits = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.close()
+
+        def close(self):
+            return None
+
+        def update(self, values, **_kwargs):
+            for column, value in values.items():
+                if column.key == "processing_attempts":
+                    doc.processing_attempts += 1
+                else:
+                    setattr(doc, column.key, value)
+            return 1
 
         def commit(self) -> None:
             self.commits += 1
@@ -344,21 +325,27 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
         file_path=str(source_path),
         file_type="pdf",
         status="pending",
+        processing_attempts=0,
         processing_progress=0,
         current_stage="queued",
         error_message=None,
         doc_metadata={"workspace": "parsing", "parser_backend_requested": "mineru"},
     )
     db = _DB()
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    monkeypatch.setattr(db, "close", lambda: None, raising=False)
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: db)
+    monkeypatch.setattr(parsing_module, "SessionLocal", lambda: db)
 
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True
+        parsing_module.dataset_service, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_args, **_kwargs: doc, raising=True)
     monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda _path: False, raising=True)
@@ -383,13 +370,14 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
         await parsing_module.parse_workspace_document(
             document_id=document_id,
             request=_Request(),
-            parser_backend="mineru",
-            image_caption_enabled=False,
-            image_ocr_enabled=False,
-            vlm_correction_enabled=None,
+            params=parsing_module.ParsingDocumentParseQuery(
+                parser_backend="mineru",
+                image_caption_enabled=False,
+                image_ocr_enabled=False,
+                vlm_correction_enabled=None,
+            ),
             tenant_id=tenant_id,
             account_id="acct-1",
-            db=db,
         )
 
     assert exc_info.value.status_code == 502
@@ -432,7 +420,6 @@ def test_apply_pending_retry_cleanup_rejects_stale_pipeline_requests_without_mut
         db_document=db_document,
         tenant_id=tenant_id,
         document_id=document_id,
-        indexer_factory=lambda _db: None,
     )
 
     assert status == "invalid"

@@ -1,26 +1,21 @@
 import { diffLines } from 'diff'
 
-import type {
-  DiffCell,
-  DiffCellStatus,
-  JsonTokenKind,
-  SideBySideDiffRow,
-} from './types'
+import type { DiffCell, DiffCellStatus, JsonTokenKind, SideBySideDiffRow } from './types'
 
 export function splitCodeLines(value: string): string[] {
-  const normalized = String(value ?? '').replaceAll('\r', '')
+  const normalized = value.replaceAll('\r', '')
   const lines = normalized.split('\n')
   if (lines.length > 1 && lines.at(-1) === '') lines.pop()
-  return lines.length ? lines : ['']
+  return lines
 }
 
-export function buildPairedRows(
+function buildPairedRows(
   leftLines: string[],
   rightLines: string[],
   leftStatus: DiffCellStatus,
   rightStatus: DiffCellStatus,
   leftCounter: { value: number },
-  rightCounter: { value: number }
+  rightCounter: { value: number },
 ): SideBySideDiffRow[] {
   const maxLength = Math.max(leftLines.length, rightLines.length)
   return Array.from({ length: maxLength }, (_, index) => {
@@ -41,10 +36,7 @@ export function buildPairedRows(
   })
 }
 
-export function buildSideBySideDiffRows(
-  aText: string,
-  bText: string
-): SideBySideDiffRow[] {
+export function buildSideBySideDiffRows(aText: string, bText: string): SideBySideDiffRow[] {
   const changes = diffLines(aText, bText)
   const leftCounter = { value: 1 }
   const rightCounter = { value: 1 }
@@ -52,20 +44,10 @@ export function buildSideBySideDiffRows(
 
   for (let index = 0; index < changes.length; index += 1) {
     const change = changes[index]
-    if (!change) continue
 
     if (!change.added && !change.removed) {
       const lines = splitCodeLines(change.value)
-      rows.push(
-        ...buildPairedRows(
-          lines,
-          lines,
-          'same',
-          'same',
-          leftCounter,
-          rightCounter
-        )
-      )
+      rows.push(...buildPairedRows(lines, lines, 'same', 'same', leftCounter, rightCounter))
       continue
     }
 
@@ -78,8 +60,8 @@ export function buildSideBySideDiffRows(
           'removed',
           'added',
           leftCounter,
-          rightCounter
-        )
+          rightCounter,
+        ),
       )
       index += 1
       continue
@@ -93,45 +75,27 @@ export function buildSideBySideDiffRows(
           'removed',
           'added',
           leftCounter,
-          rightCounter
-        )
+          rightCounter,
+        ),
       )
       index += 1
       continue
     }
 
     if (change.removed) {
-      rows.push(
-        ...buildPairedRows(
-          splitCodeLines(change.value),
-          [],
-          'removed',
-          'empty',
-          leftCounter,
-          rightCounter
-        )
-      )
+      rows.push(...buildPairedRows(splitCodeLines(change.value), [], 'removed', 'empty', leftCounter, rightCounter))
       continue
     }
 
     if (change.added) {
-      rows.push(
-        ...buildPairedRows(
-          [],
-          splitCodeLines(change.value),
-          'empty',
-          'added',
-          leftCounter,
-          rightCounter
-        )
-      )
+      rows.push(...buildPairedRows([], splitCodeLines(change.value), 'empty', 'added', leftCounter, rightCounter))
     }
   }
 
   return rows
 }
 
-export function readJsonStringEnd(line: string, startIndex: number) {
+function readJsonStringEnd(line: string, startIndex: number) {
   let index = startIndex + 1
   while (index < line.length) {
     const char = line[index]
@@ -145,7 +109,7 @@ export function readJsonStringEnd(line: string, startIndex: number) {
   return line.length
 }
 
-export function readJsonKeySuffix(line: string, startIndex: number) {
+function readJsonKeySuffix(line: string, startIndex: number) {
   let index = startIndex
   while (index < line.length && /\s/.test(line[index])) index += 1
   return line[index] === ':' ? index + 1 : startIndex
@@ -212,22 +176,16 @@ export function tokenizeJsonLine(line: string): Array<{ text: string; kind: Json
   return mergedTokens
 }
 
-export function lineNumberClassForStatus(status: DiffCellStatus | 'single'): string {
+export function lineNumberClassForStatus(status: DiffCellStatus): string {
   if (status === 'added') return 'text-success'
   if (status === 'removed') return 'text-destructive'
   return 'text-muted-foreground'
 }
 
-export function jsonLineSurfaceClass(status: DiffCellStatus | 'single', side: 'left' | 'right' | 'single') {
-  if (status === 'single') return 'bg-transparent'
-  return cellSurfaceClass(status, side === 'single' ? 'left' : side)
-}
-
 export function cellSurfaceClass(status: DiffCellStatus, side: 'left' | 'right') {
   if (status === 'removed') return 'bg-destructive/5'
   if (status === 'added') return 'bg-success/5'
-  if (status === 'empty')
-    return side === 'left' ? 'bg-destructive/5' : 'bg-success/5'
+  if (status === 'empty') return side === 'left' ? 'bg-destructive/5' : 'bg-success/5'
   return 'bg-card'
 }
 

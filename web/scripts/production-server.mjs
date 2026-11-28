@@ -5,12 +5,15 @@ import next from 'next'
 import { sanitizeForwardedHeaders } from './trusted-forwarding.mjs'
 
 const defaultHostname = process.argv.includes('--public') ? '0.0.0.0' : '127.0.0.1'
-const hostname = String(process.env.HOST || defaultHostname).trim() || defaultHostname
-const port = Number.parseInt(process.env.PORT || '3000', 10)
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
+const configuredHostname = process.env.HOST?.trim()
+const hostname = configuredHostname === undefined || configuredHostname === '' ? defaultHostname : configuredHostname
+const configuredPort = process.env.PORT
+const portText = configuredPort === undefined || configuredPort === '' ? '3000' : configuredPort.trim()
+const port = Number(portText)
+if (!/^\+?\d+$/.test(portText) || port < 1 || port > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535')
 }
-if (!String(process.env.MARKDOWN_IMAGE_PROXY_SECRET || '').trim()) {
+if (!process.env.MARKDOWN_IMAGE_PROXY_SECRET?.trim()) {
   throw new Error('MARKDOWN_IMAGE_PROXY_SECRET is required in production')
 }
 

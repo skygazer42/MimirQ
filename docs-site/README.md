@@ -1,6 +1,8 @@
-# MimirQ 全栈手册（Docusaurus）
+# Ragvia 全栈手册（Docusaurus）
 
-本目录为 [MimirQ](https://github.com/skygazer42/MimirQ) 的 **docs-site**：与 `docs/api/site` 的 Redoc **并存**，部署在 GitHub Pages 的 **`/MimirQ/handbook/`** 路径下。
+本目录为 [Ragvia](https://github.com/skygazer42/MimirQ) 的 **docs-site**：与 `docs/api/site` 的 Redoc **并存**，部署在 GitHub Pages 的 **`/MimirQ/handbook/`** 路径下。
+
+与应用一起在 `feat/ragvia-ui` 开发。文档站复用 `web/public/brand/ragvia/` 中的正式品牌资产，仓库与 Pages 路径保留现有名称。
 
 ## 本地开发
 

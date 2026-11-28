@@ -9,8 +9,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from app.models.chat import Conversation
-from app.models.tenant import TenantMember
+from app.models.conversations.chat import Conversation
+from app.models.identity.workspaces import TenantMember
 
 
 def _criterion_value(expr):  # noqa: ANN001
@@ -142,15 +142,15 @@ class _FakeDB:
 
 
 def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     tenant_id = uuid4()
     dataset_id = uuid4()
     db = _FakeDB()
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(conversations_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        conversations_api.DatasetService,
+        conversations_api.dataset_service,
         "assert_dataset_readable",
         lambda *_a, **_k: None,
         raising=True,
@@ -167,7 +167,7 @@ def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.MonkeyPat
 
 
 def test_ensure_conversation_access_fails_closed_for_ownerless_rows() -> None:
-    import app.services.chat_conversation_access as conversation_access
+    import app.services.chat.conversation_access as conversation_access
 
     tenant_id = uuid4()
     conversation = Conversation(id=uuid4(), tenant_id=tenant_id, owner_account_id=None, document_ids=[])
@@ -191,7 +191,7 @@ def test_ensure_conversation_access_fails_closed_for_ownerless_rows() -> None:
 
 
 def test_ensure_conversation_access_accepts_matching_legacy_user_id_without_writing() -> None:
-    import app.services.chat_conversation_access as conversation_access
+    import app.services.chat.conversation_access as conversation_access
 
     tenant_id = uuid4()
     legacy_user_id = uuid4()
@@ -217,7 +217,7 @@ def test_ensure_conversation_access_accepts_matching_legacy_user_id_without_writ
 
 
 def test_ensure_conversation_access_fails_closed_for_ownerless_row_with_single_effective_member() -> None:
-    import app.services.chat_conversation_access as conversation_access
+    import app.services.chat.conversation_access as conversation_access
 
     tenant_id = uuid4()
     conversation = Conversation(
@@ -251,7 +251,7 @@ def test_ensure_conversation_access_fails_closed_for_ownerless_row_with_single_e
 def test_ensure_conversation_access_rechecks_dataset_scope_readability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_conversation_access as conversation_access
+    import app.services.chat.conversation_access as conversation_access
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -263,13 +263,13 @@ def test_ensure_conversation_access_rechecks_dataset_scope_readability(
         document_ids=[],
     )
 
-    monkeypatch.setattr(conversation_access.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(conversation_access.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     def _deny(*_args, **_kwargs) -> None:  # noqa: ANN001
         raise HTTPException(status_code=403, detail="dataset denied")
 
     monkeypatch.setattr(
-        conversation_access.DatasetService,
+        conversation_access.dataset_service,
         "assert_dataset_readable",
         _deny,
         raising=True,
@@ -335,7 +335,7 @@ async def test_conversation_routes_reject_cross_account_access(
     name: str,
     invoke,
 ) -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     tenant_id = uuid4()
     conversation = Conversation(
@@ -345,7 +345,7 @@ async def test_conversation_routes_reject_cross_account_access(
         document_ids=[],
     )
     db = _FakeDB(conversations=[conversation])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await invoke(conversations_api, conversation.id, tenant_id, db)
@@ -356,7 +356,7 @@ async def test_conversation_routes_reject_cross_account_access(
 def test_list_conversations_hides_other_accounts_open_scope_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     tenant_id = uuid4()
     mine = Conversation(
@@ -376,7 +376,7 @@ def test_list_conversations_hides_other_accounts_open_scope_rows(
         message_count=1,
     )
     db = _FakeDB(conversations=[mine, theirs])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     response = conversations_api.list_conversations(
         tenant_id=tenant_id,
@@ -391,7 +391,7 @@ def test_list_conversations_hides_other_accounts_open_scope_rows(
 def test_list_conversations_searches_all_pages_by_title_and_latest_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     tenant_id = uuid4()
     title_match = Conversation(
@@ -428,15 +428,13 @@ def test_list_conversations_searches_all_pages_by_title_and_latest_message(
         created_at=None,
     )
     db = _FakeDB(conversations=[title_match, *fillers, message_match])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         conversations_api,
         "_get_latest_messages_by_conversation_id",
-        lambda _db, _tenant_id, conversation_ids: {
-            message_match.id: latest_message
-        }
-        if message_match.id in conversation_ids
-        else {},
+        lambda _db, _tenant_id, conversation_ids: (
+            {message_match.id: latest_message} if message_match.id in conversation_ids else {}
+        ),
         raising=False,
     )
 
@@ -445,8 +443,7 @@ def test_list_conversations_searches_all_pages_by_title_and_latest_message(
         query._rows = [  # noqa: SLF001 - focused fake query seam
             conversation
             for conversation in query._rows  # noqa: SLF001
-            if search_term in str(conversation.title or "").casefold()
-            or conversation.id == message_match.id
+            if search_term in str(conversation.title or "").casefold() or conversation.id == message_match.id
         ]
         return query
 
@@ -485,7 +482,7 @@ def test_list_conversations_searches_all_pages_by_title_and_latest_message(
 
 
 def test_conversation_search_sql_uses_latest_message_and_literal_wildcards() -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     engine = create_engine("sqlite://")
     tenant_id = uuid4()
@@ -585,7 +582,7 @@ def test_conversation_search_sql_uses_latest_message_and_literal_wildcards() -> 
 def test_list_conversations_hides_revoked_dataset_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     tenant_id = uuid4()
     allowed = Conversation(
@@ -606,13 +603,13 @@ def test_list_conversations_hides_revoked_dataset_scope(
         message_count=1,
     )
     db = _FakeDB(conversations=[allowed, revoked])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(conversations_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     def _deny(*_args, **_kwargs) -> None:  # noqa: ANN001
         raise HTTPException(status_code=403, detail="dataset denied")
 
-    monkeypatch.setattr(conversations_api.DatasetService, "assert_dataset_readable", _deny, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "assert_dataset_readable", _deny, raising=True)
 
     response = conversations_api.list_conversations(
         tenant_id=tenant_id,
@@ -629,7 +626,7 @@ def test_list_conversations_hides_revoked_dataset_scope(
 def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.chat_conversations as conversations_api
+    import app.api.v1.conversations.history as conversations_api
 
     tenant_id = uuid4()
     legacy_user_id = uuid4()
@@ -643,7 +640,7 @@ def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
         message_count=1,
     )
     db = _FakeDB(conversations=[legacy])
-    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(conversations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     response = conversations_api.list_conversations(
         tenant_id=tenant_id,
@@ -657,7 +654,7 @@ def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
 
 
 def test_resolve_chat_conversation_scope_sets_owner_for_new_conversation() -> None:
-    import app.services.chat_scope as chat_scope
+    import app.services.chat.scope as chat_scope
 
     tenant_id = uuid4()
     db = _FakeDB()
@@ -682,7 +679,7 @@ def test_resolve_chat_conversation_scope_sets_owner_for_new_conversation() -> No
 
 
 def test_resolve_chat_conversation_scope_rejects_cross_account_continuation() -> None:
-    import app.services.chat_scope as chat_scope
+    import app.services.chat.scope as chat_scope
 
     tenant_id = uuid4()
     conversation = Conversation(
@@ -713,9 +710,123 @@ def test_resolve_chat_conversation_scope_rejects_cross_account_continuation() ->
     assert exc_info.value.status_code == 403
 
 
+def test_ag_ui_thread_creation_keeps_the_supplied_id_and_authorized_document_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.chat.scope as chat_scope
+
+    tenant_id, thread_id, document_id = uuid4(), uuid4(), uuid4()
+    db = _FakeDB()
+    checked_documents = []
+
+    def authorized_documents(_db, actual_tenant_id, account_id, document_ids):
+        checked_documents.append((actual_tenant_id, account_id, document_ids))
+        return [document_id]
+
+    monkeypatch.setattr(chat_scope, "filter_allowed_document_ids", authorized_documents)
+    resolved = chat_scope.resolve_chat_conversation_scope(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        conversation_id=thread_id,
+        request_document_ids=[document_id],
+        request_dataset_id=None,
+        request_message="hello",
+        allow_empty_docs=True,
+        allow_open_scope=False,
+        conversation_not_found_detail="missing",
+        dataset_required_detail="dataset required",
+        document_scope_mismatch_detail="mismatch",
+        empty_scope_detail="empty",
+        create_conversation_if_missing=True,
+    )
+
+    assert resolved.conversation_id == thread_id
+    assert resolved.conversation.owner_account_id == "acct-1"
+    assert resolved.allowed_doc_ids == [document_id]
+    assert checked_documents == [(tenant_id, "acct-1", [document_id])]
+    assert db.added == [resolved.conversation]
+
+
+@pytest.mark.parametrize("same_tenant,expected_status", [(True, 403), (False, 404)])
+def test_ag_ui_existing_thread_is_never_recreated_for_an_unauthorized_account(
+    same_tenant: bool, expected_status: int
+) -> None:
+    import app.services.chat.scope as chat_scope
+
+    tenant_id, thread_id = uuid4(), uuid4()
+    conversation = Conversation(
+        id=thread_id,
+        tenant_id=tenant_id if same_tenant else uuid4(),
+        owner_account_id="owner-account",
+        document_ids=[],
+    )
+    db = _FakeDB(conversations=[conversation])
+    with pytest.raises(HTTPException) as error:
+        chat_scope.resolve_chat_conversation_scope(
+            db=db,
+            tenant_id=tenant_id,
+            account_id="other-account",
+            conversation_id=thread_id,
+            request_document_ids=None,
+            request_dataset_id=None,
+            request_message="overwrite",
+            allow_empty_docs=True,
+            allow_open_scope=True,
+            conversation_not_found_detail="missing",
+            dataset_required_detail="dataset required",
+            document_scope_mismatch_detail="mismatch",
+            empty_scope_detail="empty",
+            create_conversation_if_missing=True,
+        )
+
+    assert error.value.status_code == expected_status
+    assert db.added == []
+    assert conversation.owner_account_id == "owner-account"
+
+
+@pytest.mark.parametrize("constraint", ["conversations_pkey", "other_constraint"])
+def test_ag_ui_thread_creation_rolls_back_and_only_translates_its_primary_key_collision(constraint: str) -> None:
+    from psycopg2.errors import UniqueViolation
+    from sqlalchemy.exc import IntegrityError
+
+    import app.services.chat.scope as chat_scope
+
+    class ConstraintViolation(UniqueViolation):
+        @property
+        def diag(self):
+            return SimpleNamespace(constraint_name=constraint)
+
+    class ConflictingDB(_FakeDB):
+        rolled_back = False
+
+        def flush(self) -> None:
+            raise IntegrityError("INSERT conversations", {}, ConstraintViolation("conflict"))
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    db = ConflictingDB()
+    expected_error = HTTPException if constraint == "conversations_pkey" else IntegrityError
+    with pytest.raises(expected_error) as error:
+        chat_scope._create_conversation(
+            db,
+            tenant_id=uuid4(),
+            account_id="acct-1",
+            request_message="hello",
+            scope_dataset_id=None,
+            allowed_doc_ids=[],
+            conversation_id=uuid4(),
+        )
+
+    assert db.rolled_back is True
+    if isinstance(error.value, HTTPException):
+        assert error.value.status_code == 409
+
+
 def test_conversation_owner_runtime_migration_contracts_present() -> None:
-    migrations_text = Path("app/core/migrations.py").read_text(encoding="utf-8")
-    model_text = Path("app/models/chat.py").read_text(encoding="utf-8")
+    migrations_text = Path("app/infrastructure/database/migrations.py").read_text(encoding="utf-8")
+    model_text = Path("app/models/conversations/chat.py").read_text(encoding="utf-8")
     alembic_text = Path("alembic/versions/0021_add_conversation_owner_account_id.py").read_text(encoding="utf-8")
 
     assert "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS owner_account_id VARCHAR(255);" in migrations_text
@@ -728,7 +839,7 @@ def test_conversation_owner_runtime_migration_contracts_present() -> None:
 
 
 def test_latest_message_lookup_index_contract_present() -> None:
-    model_text = Path("app/models/chat.py").read_text(encoding="utf-8")
+    model_text = Path("app/models/conversations/chat.py").read_text(encoding="utf-8")
     alembic_text = Path("alembic/versions/0022_add_latest_message_lookup_index.py").read_text(encoding="utf-8")
 
     expected = 'Index("ix_messages_tenant_conversation_created_at", "tenant_id", "conversation_id", "created_at")'
@@ -740,4 +851,4 @@ def test_latest_message_lookup_index_contract_present() -> None:
 def test_alembic_migration_graph_has_single_head() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["0027_add_document_index_channels"]
+    assert script.get_heads() == ["0034_ontology_action_workflows"]

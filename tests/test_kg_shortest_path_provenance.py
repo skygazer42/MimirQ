@@ -1,4 +1,3 @@
-
 from uuid import UUID
 
 
@@ -101,4 +100,3 @@ def test_build_kg_shortest_path_provenance_falls_back_to_entity_event_entity() -
 
     assert (edges[0] or {}).get("kind") == "event_entity"
     assert (edges[1] or {}).get("kind") == "event_entity"
-

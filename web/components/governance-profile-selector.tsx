@@ -1,240 +1,215 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileUp, RefreshCw, Sparkles } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Download, FileUp, RefreshCw, Sparkles } from '@/components/icons'
+import { profileRef } from '@/components/governance-profiles/profile-presentation'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { pipelineApi } from '@/lib/api'
-import type { DocumentPipelineOptions } from '@/types'
+import { pipelineApi } from '@/lib/api/pipeline'
+import type { DocumentPipelineOptions } from '@/types/processing'
 import { toast } from 'sonner'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
+import { downloadBlob } from '@/lib/download'
 import { queryKeys } from '@/lib/query-keys'
 
-type Props = {
+type GovernanceProfileSelectorProps = {
   className?: string
   compact?: boolean
   onApplyPatch: (patch: Partial<DocumentPipelineOptions>) => void
 }
 
 const SELECT_NONE = '__none__'
+const PROFILE_PARAMS = { include_builtin: true, limit: 200 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
-
-export function GovernanceProfileSelector({ className, compact, onApplyPatch }: Readonly<Props>) {
+export function GovernanceProfileSelector({
+  className,
+  compact,
+  onApplyPatch,
+}: Readonly<GovernanceProfileSelectorProps>) {
   const queryClient = useQueryClient()
   const [selectedRef, setSelectedRef] = useState<string>(SELECT_NONE)
+  const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const profilesQuery = useQuery({
-    queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
-    queryFn: async () => {
-      try {
-        const res = await pipelineApi.listGovernanceProfiles({ include_builtin: true, limit: 200 })
-        return res.items || []
-      } catch (e) {
-        reportClientError('Failed to load governance profiles', e)
-        toast.error(formatApiError(e, '加载治理预设失败'))
-        return []
-      }
-    },
+    queryKey: queryKeys.governance.profiles(PROFILE_PARAMS),
+    queryFn: ({ signal }) => pipelineApi.listGovernanceProfiles(PROFILE_PARAMS, { signal }),
   })
 
   const selectedResolvedQuery = useQuery({
     queryKey: queryKeys.governance.profileResolved(selectedRef),
-    queryFn: async () => {
-      if (!selectedRef || selectedRef === SELECT_NONE) return null
-      try {
-        return await pipelineApi.getGovernanceProfileResolved(selectedRef)
-      } catch (e) {
-        reportClientError('Failed to load governance profile detail', e)
-        toast.error(formatApiError(e, '加载治理预设详情失败'))
-        return null
-      }
-    },
-    enabled: Boolean(selectedRef && selectedRef !== SELECT_NONE),
+    queryFn:
+      selectedRef === SELECT_NONE
+        ? skipToken
+        : ({ signal }) => pipelineApi.getGovernanceProfileResolved(selectedRef, { signal }),
   })
 
-  const profiles = useMemo(() => profilesQuery.data || [], [profilesQuery.data])
-  const selectedResolved = selectedResolvedQuery.data || null
-  const loading = profilesQuery.isFetching
+  const profiles = profilesQuery.data?.items
+  const selectedResolved = selectedResolvedQuery.data
+  const selectedSummary = profiles?.find((profile) => profileRef(profile) === selectedRef)
+  const canApply =
+    selectedResolved !== undefined &&
+    !isImporting &&
+    selectedResolvedQuery.fetchStatus === 'idle' &&
+    !selectedResolvedQuery.isError
 
-  const selectedSummary = useMemo(() => {
-    if (!selectedRef || selectedRef === SELECT_NONE) return null
-    return profiles.find((p) => p.key === selectedRef || p.id === selectedRef) || null
-  }, [profiles, selectedRef])
-
-  const handleApply = useCallback(() => {
-    const resolved = selectedResolved
-    const profile = resolved?.profile
-    const effective = resolved?.effective
-    if (!profile || !effective) {
-      toast.error('请先选择一个治理预设')
-      return
-    }
-
-    const normalizedRegexRules = Array.isArray(effective.regex_rules)
-      ? effective.regex_rules
-          .map((r) => ({
-            pattern: String(r?.pattern || '').trim(),
-            repl: String(r?.repl ?? ''),
-            flags: Number(r?.flags ?? 0),
-          }))
-          .filter((r) => r.pattern.length > 0)
-      : []
-
-    const patch: Partial<DocumentPipelineOptions> = {
+  function handleApply() {
+    if (!canApply) return
+    const { profile, effective } = selectedResolved
+    const regexRules = effective.regex_rules
+      .map((rule) => ({ ...rule, pattern: rule.pattern.trim() }))
+      .filter((rule) => rule.pattern.length > 0)
+    onApplyPatch({
       ...effective.pipeline_patch,
-      governance_regex_rules: normalizedRegexRules,
+      governance_regex_rules: regexRules,
       governance_enabled: true,
-    }
-    onApplyPatch(patch)
+    })
     toast.success(`已应用预设：${profile.name}`)
-  }, [selectedResolved, onApplyPatch])
+  }
 
-  const handleImportClick = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
-
-  const handleImportFile = useCallback(async (file: File | null) => {
-    if (!file) return
+  async function handleImportFile(file: File) {
+    if (isImporting) return
+    setIsImporting(true)
     try {
-      const res = await pipelineApi.importGovernanceProfiles(file, true /* overwrite */)
-      toast.success(`导入成功：新增 ${res.created} / 更新 ${res.updated}`)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
-      })
-    } catch (e) {
-      reportClientError('Failed to import governance profiles', e)
-      toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
+      const result = await pipelineApi.importGovernanceProfiles(file, true)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.governance.all })
+      toast.success(`导入成功：新增 ${result.created} / 更新 ${result.updated}`)
+    } catch (error) {
+      reportClientError('Failed to import governance profiles', error)
+      toast.error(formatApiError(error, '导入治理预设失败'))
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      setIsImporting(false)
     }
-  }, [queryClient])
+  }
 
-  const handleExport = useCallback(async () => {
-    if (!selectedRef || selectedRef === SELECT_NONE) {
-      toast.error('请先选择一个治理预设')
-      return
-    }
+  function refreshProfiles() {
+    void profilesQuery.refetch()
+    if (selectedRef !== SELECT_NONE) void selectedResolvedQuery.refetch()
+  }
+
+  async function handleExport() {
+    if (selectedRef === SELECT_NONE) return
     try {
       const blob = await pipelineApi.exportGovernanceProfile(selectedRef)
-      const safe = (selectedSummary?.name || selectedRef).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
-      downloadBlob(blob, `${safe}.governance-profile.json`)
-    } catch (e) {
-      reportClientError('Failed to export governance profile', e)
-      toast.error(formatApiError(e, '导出失败'))
+      const filename = (selectedSummary?.name ?? selectedRef).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      downloadBlob(`${filename}.governance-profile.json`, blob)
+    } catch (error) {
+      reportClientError('Failed to export governance profile', error)
+      toast.error(formatApiError(error, '导出治理预设失败'))
     }
-  }, [selectedRef, selectedSummary])
+  }
 
-  const triggerCls = compact
-    ? 'h-8 rounded-[0.9rem] border-border/45 bg-card/74 text-[11px] font-medium text-foreground/80 shadow-none'
-    : 'h-9 rounded-[0.95rem] border-border/45 bg-card/78 text-sm font-medium text-foreground/80 shadow-none'
-  const primaryActionClass =
-    'h-7 gap-1.5 rounded-full border-primary/24 bg-primary/[0.09] px-2.5 text-[11px] font-semibold text-primary shadow-none hover:border-primary/34 hover:bg-primary/[0.16] hover:text-primary'
-  const secondaryActionClass =
-    'h-7 gap-1.5 rounded-full border-border/38 bg-background/36 px-2.5 text-[11px] font-medium text-muted-foreground/78 shadow-none hover:border-border/50 hover:bg-background/58 hover:text-foreground'
-  const actionRailClass =
-    'flex flex-wrap items-center justify-end gap-1 rounded-[0.95rem] border border-border/28 bg-muted/[0.10] px-1.5 py-1'
-
-  const inheritanceText = useMemo(() => {
-    const chain = selectedResolved?.chain || []
-    if (!chain.length) return ''
-    return chain.map((c) => c.name || c.key).join(' → ')
-  }, [selectedResolved?.chain])
+  const inheritanceText = selectedResolved?.chain.map((profile) => profile.name).join(' → ')
 
   return (
-    <div className={cn('space-y-1.5', className)}>
-      <div className="flex items-center gap-1.5">
+    <div className={cn(compact ? 'space-y-2' : 'space-y-3', className)}>
+      <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
-          <Select value={selectedRef} onValueChange={setSelectedRef} disabled={loading}>
-            <SelectTrigger className={cn('w-full', triggerCls)}>
-              <SelectValue placeholder={loading ? '加载治理预设…' : '选择治理预设（Profiles/脚本）'} />
+          <Select value={selectedRef} onValueChange={setSelectedRef} disabled={profilesQuery.isLoading}>
+            <SelectTrigger
+              aria-label="治理预设"
+              className="h-9 w-full rounded-md border-border bg-card text-[13px] font-normal text-foreground shadow-none"
+            >
+              <SelectValue placeholder="选择治理预设" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={SELECT_NONE}>不使用预设</SelectItem>
-              {profiles.map((p) => (
-                <SelectItem key={p.key || p.id || p.name} value={p.key || p.id || p.name}>
-                  {p.is_system ? '内置' : '自定义'} · {p.name}
-                </SelectItem>
-              ))}
+              {profiles?.map((profile) => {
+                const ref = profileRef(profile)
+                return (
+                  <SelectItem key={ref} value={ref}>
+                    {profile.is_system ? '内置' : '自定义'} · {profile.name}
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
         </div>
         <Button
           variant="outline"
-          size={compact ? 'sm' : 'default'}
-          onClick={() => profilesQuery.refetch()}
-          disabled={loading}
+          size="icon"
+          onClick={refreshProfiles}
+          disabled={profilesQuery.isFetching || selectedResolvedQuery.isFetching || isImporting}
           aria-label="刷新治理预设"
           title="刷新治理预设"
-          className="h-8 rounded-[0.9rem] border-border/42 bg-background/46 px-2.5 text-muted-foreground shadow-none hover:bg-background/68 hover:text-foreground"
+          className="h-9 w-9 shrink-0 rounded-md border-border bg-card text-muted-foreground shadow-none hover:text-foreground"
         >
           <RefreshCw className="w-4 h-4" />
         </Button>
       </div>
 
-      {selectedSummary?.description && (
-        <div className={cn('text-muted-foreground/80', compact ? 'text-[10.5px]' : 'text-xs')}>
-          {selectedSummary.description}
-        </div>
-      )}
-
-      {inheritanceText ? (
-        <div className={cn('text-muted-foreground/75', compact ? 'text-[10.5px]' : 'text-xs')}>
-          继承链：{inheritanceText}
-        </div>
-      ) : null}
-
-      <div className={actionRailClass}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Button
           onClick={handleApply}
-          size={compact ? 'sm' : 'default'}
+          size="sm"
           variant="outline"
-          className={primaryActionClass}
-          disabled={!selectedResolved}
+          className="h-8 gap-1.5 rounded-md border-border bg-card px-3 text-xs font-medium shadow-none sm:h-8"
+          disabled={!canApply}
         >
           <Sparkles className="w-4 h-4" />
           应用到当前配置
         </Button>
-        <Button
-          variant="outline"
-          onClick={handleImportClick}
-          size={compact ? 'sm' : 'default'}
-          className={secondaryActionClass}
-        >
-          <FileUp className="w-4 h-4" />
-          导入脚本
-        </Button>
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          size={compact ? 'sm' : 'default'}
-          className={secondaryActionClass}
-          disabled={!selectedRef || selectedRef === SELECT_NONE}
-        >
-          <Download className="w-4 h-4" />
-          导出
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <LoadingButton
+            variant="ghost"
+            loading={isImporting}
+            onClick={() => fileInputRef.current?.click()}
+            size="sm"
+            className="h-8 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground sm:h-8"
+          >
+            <FileUp className="w-4 h-4" />
+            导入脚本
+          </LoadingButton>
+          <Button
+            variant="ghost"
+            onClick={handleExport}
+            size="sm"
+            className="h-8 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground sm:h-8"
+            disabled={selectedRef === SELECT_NONE}
+          >
+            <Download className="w-4 h-4" />
+            导出
+          </Button>
+        </div>
       </div>
+
+      {profilesQuery.isError && (
+        <WorkspaceNotice>{formatApiError(profilesQuery.error, '加载治理预设失败')}</WorkspaceNotice>
+      )}
+      {selectedResolvedQuery.isError && (
+        <WorkspaceNotice retry={() => void selectedResolvedQuery.refetch()} pending={selectedResolvedQuery.isFetching}>
+          {formatApiError(selectedResolvedQuery.error, '加载治理预设详情失败')}
+        </WorkspaceNotice>
+      )}
+      {selectedResolvedQuery.isPaused && (
+        <p role="status" className="text-xs leading-5 text-muted-foreground">
+          网络恢复后将重新读取治理预设详情。
+        </p>
+      )}
+
+      {selectedSummary?.description && (
+        <div className="text-xs leading-5 text-muted-foreground">{selectedSummary.description}</div>
+      )}
+
+      {inheritanceText ? (
+        <div className="text-xs leading-5 text-muted-foreground">继承链：{inheritanceText}</div>
+      ) : null}
 
       <input
         ref={fileInputRef}
         type="file"
         accept="application/json,.json"
         className="hidden"
-        onChange={(e) => handleImportFile(e.target.files?.[0] || null)}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.item(0)
+          event.currentTarget.value = ''
+          if (file != null) void handleImportFile(file)
+        }}
       />
     </div>
   )

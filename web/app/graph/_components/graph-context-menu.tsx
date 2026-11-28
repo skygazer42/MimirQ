@@ -1,6 +1,18 @@
 'use client'
 
-import { Copy, FileText, Info, Layers, Maximize, MessageSquare, Route, Trash2, Type, X, Link as LinkIcon } from 'lucide-react'
+import {
+  Copy,
+  FileText,
+  Info,
+  Layers,
+  Maximize,
+  MessageSquare,
+  Route,
+  Trash2,
+  Type,
+  X,
+  Link as LinkIcon,
+} from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 
@@ -8,6 +20,7 @@ import {
   type GraphContextMenuState,
   type GraphLinkLike,
   type GraphNodeLike,
+  coerceTrimmedString,
   getGraphLinkPredicate,
 } from '../graph-page-utils'
 
@@ -16,13 +29,13 @@ type GraphContextMenuProps = Readonly<{
   viewMode: '2d' | '3d'
   showEdgeLabels: boolean
   onClose: () => void
-  onExpandNode: (nodeId: string) => void
+  onExpandNode?: (nodeId: string) => void
   onStartPathFromNode: (node: GraphNodeLike) => void
-  onStartConnectFromNode: (node: GraphNodeLike) => void
+  onStartConnectFromNode?: (node: GraphNodeLike) => void
   onChatWithNode: (node: GraphNodeLike) => void
   onViewSourceForNode: (node: GraphNodeLike) => void
   onCopyNodeId: (nodeId: string) => void
-  onDeleteNode: (node: GraphNodeLike) => void
+  onDeleteNode?: (node: GraphNodeLike) => void
   onOpenLinkDetail: (link: GraphLinkLike) => void
   onCopyLinkPredicate: (predicate: string) => void
   onZoomToFit: () => void
@@ -31,23 +44,8 @@ type GraphContextMenuProps = Readonly<{
 }>
 
 function getGraphContextLinkId(link: GraphLinkLike): string {
-  if (typeof link?.id === 'string' || typeof link?.id === 'number') {
-    return String(link.id)
-  }
-  if (typeof link?.meta?.id === 'string' || typeof link?.meta?.id === 'number') {
-    return String(link.meta.id)
-  }
-  return ''
-}
-
-function getGraphViewLabel(viewMode: '2d' | '3d'): string {
-  if (viewMode === '3d') return '3D View'
-  return '2D View'
-}
-
-function getEdgeLabelsActionLabel(showEdgeLabels: boolean): string {
-  if (showEdgeLabels) return '隐藏连线标签'
-  return '显示连线标签'
+  const id = link.id ?? link.meta?.id
+  return typeof id === 'string' || typeof id === 'number' ? String(id) : ''
 }
 
 export function GraphContextMenu({
@@ -73,31 +71,31 @@ export function GraphContextMenu({
   let menuContent: React.ReactNode
   if (contextMenu.target.type === 'node') {
     const node = contextMenu.target.node
+    const nodeId = coerceTrimmedString(node.id)
+    const nodeLabel = coerceTrimmedString(node.label)
     menuContent = (
       <div>
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Node</div>
-          <div className="truncate text-sm font-semibold text-foreground">
-            {String(node?.label || node?.id || 'Node')}
-          </div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
-            {String(node?.id || '')}
-          </div>
+          <div className="truncate text-sm font-semibold text-foreground">{nodeLabel === '' ? nodeId : nodeLabel}</div>
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{nodeId}</div>
         </div>
         <div className="p-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start"
-            onClick={() => {
-              onClose()
-              onExpandNode(String(node?.id || ''))
-            }}
-          >
-            <Layers className="w-4 h-4 mr-2" />
-            展开邻居
-          </Button>
+          {onExpandNode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-start"
+              onClick={() => {
+                onClose()
+                onExpandNode(nodeId)
+              }}
+            >
+              <Layers className="w-4 h-4 mr-2" />
+              展开邻居
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -111,19 +109,21 @@ export function GraphContextMenu({
             <Route className="w-4 h-4 mr-2" />
             查找路径
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start"
-            onClick={() => {
-              onClose()
-              onStartConnectFromNode(node)
-            }}
-          >
-            <LinkIcon className="w-4 h-4 mr-2" />
-            连线
-          </Button>
+          {onStartConnectFromNode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-start"
+              onClick={() => {
+                onClose()
+                onStartConnectFromNode(node)
+              }}
+            >
+              <LinkIcon className="w-4 h-4 mr-2" />
+              连线
+            </Button>
+          )}
           <div className="my-1 h-px bg-border/60" />
           <Button
             type="button"
@@ -158,25 +158,27 @@ export function GraphContextMenu({
             className="h-8 w-full justify-start"
             onClick={() => {
               onClose()
-              onCopyNodeId(String(node?.id || ''))
+              onCopyNodeId(nodeId)
             }}
           >
             <Copy className="w-4 h-4 mr-2" />
             复制 ID
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start text-destructive hover:text-destructive"
-            onClick={() => {
-              onClose()
-              onDeleteNode(node)
-            }}
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            删除
-          </Button>
+          {onDeleteNode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-start text-destructive hover:text-destructive"
+              onClick={() => {
+                onClose()
+                onDeleteNode(node)
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              删除
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -187,12 +189,8 @@ export function GraphContextMenu({
       <div>
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Link</div>
-          <div className="truncate text-sm font-semibold text-foreground">
-            {predicate || 'Relationship'}
-          </div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">
-            {getGraphContextLinkId(link)}
-          </div>
+          <div className="truncate text-sm font-semibold text-foreground">{predicate || 'Relationship'}</div>
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{getGraphContextLinkId(link)}</div>
         </div>
         <div className="p-1">
           <Button
@@ -230,7 +228,7 @@ export function GraphContextMenu({
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Graph</div>
           <div className="truncate text-sm font-semibold text-foreground">
-            {getGraphViewLabel(viewMode)}
+            {viewMode === '3d' ? '3D View' : '2D View'}
           </div>
         </div>
         <div className="p-1">
@@ -271,7 +269,7 @@ export function GraphContextMenu({
             }}
           >
             <Type className="w-4 h-4 mr-2" />
-            {getEdgeLabelsActionLabel(showEdgeLabels)}
+            {showEdgeLabels ? '隐藏连线标签' : '显示连线标签'}
           </Button>
         </div>
       </div>
@@ -288,9 +286,7 @@ export function GraphContextMenu({
       onMouseDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="w-64 overflow-hidden rounded-xl border border-border/60 bg-card shadow-none">
-        {menuContent}
-      </div>
+      <div className="w-64 overflow-hidden rounded-xl border border-border/60 bg-card shadow-none">{menuContent}</div>
     </div>
   )
 }

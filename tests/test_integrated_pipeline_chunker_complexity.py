@@ -4,9 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-book_chunker = import_module("app.third_party.integrated_pipeline.chunkers.book")
-email_chunker = import_module("app.third_party.integrated_pipeline.chunkers.email")
-laws_chunker = import_module("app.third_party.integrated_pipeline.chunkers.laws")
+from app.rag.ingestion.parsing.utils import tokenizer
+
+book_chunker = import_module("app.rag.ingestion.parsing.files.book")
+email_chunker = import_module("app.rag.ingestion.parsing.files.email")
+laws_chunker = import_module("app.rag.ingestion.parsing.files.laws")
 
 
 def _callback_recorder():
@@ -25,9 +27,9 @@ def _record_sections(recorder, key):
     return _recorder
 
 
-def _patch_tokenizer(monkeypatch, module):
-    monkeypatch.setattr(module.rag_tokenizer, "tokenize", lambda text: f"TOK:{text}")
-    monkeypatch.setattr(module.rag_tokenizer, "fine_grained_tokenize", lambda text: f"SM:{text}")
+def _patch_tokenizer(monkeypatch):
+    monkeypatch.setattr(tokenizer, "tokenize", lambda text: f"TOK:{text}")
+    monkeypatch.setattr(tokenizer, "fine_grained_tokenize", lambda text: f"SM:{text}")
 
 
 def test_book_chunk_pdf_preserves_table_then_chunk_order_and_real_metadata(monkeypatch):
@@ -39,7 +41,7 @@ def test_book_chunk_pdf_preserves_table_then_chunk_order_and_real_metadata(monke
         "layout_recognize": "Docling",
     }
 
-    _patch_tokenizer(monkeypatch, book_chunker)
+    _patch_tokenizer(monkeypatch)
 
     class _PdfParserStub:
         def crop(self, chunk, need_position=True):
@@ -140,7 +142,7 @@ def test_book_chunk_pdf_preserves_table_then_chunk_order_and_real_metadata(monke
         ("Tail@P2", True),
     ]
     assert recorded["remove_tag_calls"] == ["Heading@P1\nParagraph@P1", "Tail@P2"]
-    assert parser_config["chunk_token_num"] == 0
+    assert parser_config["chunk_token_num"] == 512
     assert calls == [((0.1, "Start to parse."), {}), ((0.8, "Finish parsing."), {})]
 
 
@@ -159,7 +161,7 @@ def test_email_chunk_separates_plain_and_html_sections_and_appends_attachments(m
         filename="notes.txt",
     )
 
-    _patch_tokenizer(monkeypatch, email_chunker)
+    _patch_tokenizer(monkeypatch)
 
     def _txt_parser(text, chunk_token_num=128, delimiter="\n!?;。；！？"):
         recorded["txt_parser_args"] = (text, chunk_token_num, delimiter)
@@ -177,8 +179,8 @@ def test_email_chunk_separates_plain_and_html_sections_and_appends_attachments(m
         recorded["attachment_call"] = (filename, payload, callback, dict(kwargs))
         return [{"content_with_weight": "attachment chunk", "docnm_kwd": filename}]
 
-    monkeypatch.setattr(email_chunker.TxtParser, "parser_txt", staticmethod(_txt_parser))
-    monkeypatch.setattr(email_chunker.HtmlParser, "parser_txt", staticmethod(_html_parser))
+    monkeypatch.setattr(email_chunker, "split_text_sections", _txt_parser)
+    monkeypatch.setattr(email_chunker, "extract_html_sections", _html_parser)
     monkeypatch.setattr(email_chunker, "naive_merge", _naive_merge)
     monkeypatch.setattr(email_chunker, "naive_chunk", _naive_chunk)
 
@@ -208,9 +210,7 @@ def test_email_chunk_separates_plain_and_html_sections_and_appends_attachments(m
             "docnm_kwd": "mail.eml",
             "title_tks": "TOK:mail",
             "title_sm_tks": "SM:TOK:mail",
-            "page_num_int": [1],
-            "position_int": [(1, 0, 0, 0, 0)],
-            "top_int": [0],
+            "geometry_unavailable_reason": "source_positions_unavailable",
             "content_with_weight": "plain email chunk",
             "content_ltks": "TOK:plain email chunk",
             "content_sm_ltks": "SM:TOK:plain email chunk",
@@ -219,9 +219,7 @@ def test_email_chunk_separates_plain_and_html_sections_and_appends_attachments(m
             "docnm_kwd": "mail.eml",
             "title_tks": "TOK:mail",
             "title_sm_tks": "SM:TOK:mail",
-            "page_num_int": [2],
-            "position_int": [(2, 1, 1, 1, 1)],
-            "top_int": [1],
+            "geometry_unavailable_reason": "source_positions_unavailable",
             "content_with_weight": "html email chunk",
             "content_ltks": "TOK:html email chunk",
             "content_sm_ltks": "SM:TOK:html email chunk",
@@ -241,7 +239,7 @@ def test_laws_chunk_pdf_preserves_position_suffix_order_and_real_metadata(monkey
         "layout_recognize": "Docling",
     }
 
-    _patch_tokenizer(monkeypatch, laws_chunker)
+    _patch_tokenizer(monkeypatch)
 
     class _PdfParserStub:
         def crop(self, chunk, need_position=True):
@@ -312,7 +310,7 @@ def test_laws_chunk_pdf_preserves_position_suffix_order_and_real_metadata(monkey
     assert recorded["removed"] == [(["Section 1@P1", "Body@P2"], True)]
     assert recorded["crop_calls"] == [("MERGED:Section 1@P1", True), ("MERGED:Body@P2", True)]
     assert recorded["remove_tag_calls"] == ["MERGED:Section 1@P1", "MERGED:Body@P2"]
-    assert parser_config["chunk_token_num"] == 0
+    assert parser_config["chunk_token_num"] == 512
     assert calls == [((0.1, "Start to parse."), {}), ((0.8, "Finish parsing."), {})]
 
 
@@ -320,8 +318,8 @@ def test_laws_chunk_markdown_branch_uses_real_tokenization_and_positions(monkeyp
     calls, callback = _callback_recorder()
     recorded = {}
 
-    _patch_tokenizer(monkeypatch, laws_chunker)
-    monkeypatch.setattr(laws_chunker, "get_text", lambda filename, binary: "Article 1\nBody line")
+    _patch_tokenizer(monkeypatch)
+    monkeypatch.setattr(laws_chunker, "read_text_source", lambda filename, binary: "Article 1\nBody line")
     monkeypatch.setattr(
         laws_chunker,
         "remove_contents_table",
@@ -347,9 +345,7 @@ def test_laws_chunk_markdown_branch_uses_real_tokenization_and_positions(monkeyp
             "docnm_kwd": "rules.md",
             "title_tks": "TOK:rules",
             "title_sm_tks": "SM:TOK:rules",
-            "page_num_int": [1],
-            "position_int": [(1, 0, 0, 0, 0)],
-            "top_int": [0],
+            "geometry_unavailable_reason": "source_positions_unavailable",
             "content_with_weight": "Article 1\nBody line",
             "content_ltks": "TOK:Article 1\nBody line",
             "content_sm_ltks": "SM:TOK:Article 1\nBody line",
@@ -369,7 +365,7 @@ def test_laws_chunk_markdown_branch_uses_real_tokenization_and_positions(monkeyp
 def test_doc_chunk_returns_empty_when_tika_produces_no_content(monkeypatch, module, filename):
     calls, callback = _callback_recorder()
 
-    _patch_tokenizer(monkeypatch, module)
+    _patch_tokenizer(monkeypatch)
     monkeypatch.setattr(
         module,
         "optional_import",

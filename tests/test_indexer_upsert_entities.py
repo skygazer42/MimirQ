@@ -9,7 +9,7 @@ from app.types.indexing import EventEntityInput
 
 
 def test_indexer_upsert_entities_sets_extra_data_and_indexes_vectors(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.indexer as indexer_mod
+    import app.rag.ingestion.indexing.indexer as indexer_mod
 
     class _StubMilvus:  # noqa: D401
         """No-op vector adapter."""
@@ -75,7 +75,7 @@ def test_indexer_upsert_entities_sets_extra_data_and_indexes_vectors(monkeypatch
 
 
 def test_index_text_uses_query_normalization_and_preserves_display_content() -> None:
-    import app.services.indexer as indexer_mod
+    import app.rag.ingestion.indexing.indexer as indexer_mod
 
     raw = " ＡＢＣ。 V1.2 １，０００ mb C:\\Docs "
     expected = "abc. 1.2 1000 MB c:/docs"
@@ -89,7 +89,7 @@ def test_index_text_uses_query_normalization_and_preserves_display_content() -> 
 
 
 def test_index_text_injects_existing_metadata_without_changing_chunk_body() -> None:
-    import app.services.indexer as indexer_mod
+    import app.rag.ingestion.indexing.indexer as indexer_mod
 
     body = "Install the package."
     index_text, metadata = indexer_mod._chunk_index_content(
@@ -112,7 +112,7 @@ def test_index_text_injects_existing_metadata_without_changing_chunk_body() -> N
 
 
 def test_index_text_prefers_record_title_and_literal_section_question_metadata() -> None:
-    import app.services.indexer as indexer_mod
+    import app.rag.ingestion.indexing.indexer as indexer_mod
 
     index_text, metadata = indexer_mod._chunk_index_content(
         "办理形式：网上办理",
@@ -131,10 +131,11 @@ def test_index_text_prefers_record_title_and_literal_section_question_metadata()
 
 
 def test_embedding_quota_gate_can_degrade_without_failing_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.indexer as indexer_mod
-    import app.services.tenant_quota_service as quota_service
+    import app.rag.ingestion.indexing.indexer as indexer_mod
+    import app.services.identity.tenant_quotas as quota_service
 
     events: list[tuple[str, str]] = []
+    rollbacks = []
 
     monkeypatch.setattr(indexer_mod.settings, "TENANT_QUOTA_FAIL_CLOSED", False, raising=False)
     monkeypatch.setattr(
@@ -145,14 +146,14 @@ def test_embedding_quota_gate_can_degrade_without_failing_closed(monkeypatch: py
     )
     monkeypatch.setattr(
         indexer_mod,
-        "_persist_ingest_gate_outcome_best_effort",
+        "_record_document_ingest_gate_outcome",
         lambda *_args, **kwargs: events.append((kwargs["outcome"], kwargs["reason"])),
         raising=True,
     )
     monkeypatch.setattr(indexer_mod, "_audit_ingest_gate_event", lambda *_args, **_kwargs: None, raising=True)
 
     result = indexer_mod._enforce_embedding_quota_gate(
-        object(),  # type: ignore[arg-type]
+        SimpleNamespace(rollback=lambda: rollbacks.append(True)),
         tenant_id=UUID(int=1),
         document_id=UUID(int=2),
         additional_chars=123,
@@ -161,12 +162,14 @@ def test_embedding_quota_gate_can_degrade_without_failing_closed(monkeypatch: py
     assert result["gate_outcome"] == "degraded"
     assert result["gate_reason"] == "tenant_quota_gate_unavailable"
     assert events == [("degraded", "tenant_quota_gate_unavailable")]
+    assert rollbacks == [True]
 
 
 def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.indexer as indexer_mod
-    import app.services.tenant_quota_service as quota_service
+    import app.rag.ingestion.indexing.indexer as indexer_mod
+    import app.services.identity.tenant_quotas as quota_service
 
+    rollbacks = []
     monkeypatch.setattr(indexer_mod.settings, "TENANT_QUOTA_FAIL_CLOSED", True, raising=False)
     monkeypatch.setattr(
         quota_service,
@@ -175,13 +178,13 @@ def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatc
         raising=True,
     )
     monkeypatch.setattr(
-        indexer_mod, "_persist_ingest_gate_outcome_best_effort", lambda *_args, **_kwargs: None, raising=True
+        indexer_mod, "_record_document_ingest_gate_outcome", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(indexer_mod, "_audit_ingest_gate_event", lambda *_args, **_kwargs: None, raising=True)
 
     with pytest.raises(quota_service.TenantQuotaExceededError) as exc_info:
         indexer_mod._enforce_embedding_quota_gate(
-            object(),  # type: ignore[arg-type]
+            SimpleNamespace(rollback=lambda: rollbacks.append(True)),
             tenant_id=UUID(int=1),
             document_id=UUID(int=2),
             additional_chars=123,
@@ -190,10 +193,11 @@ def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatc
     assert exc_info.value.quota == "embedding_chars_gate_unavailable"
     assert exc_info.value.meta["outcome"] == "closed"
     assert exc_info.value.meta["reason"] == "tenant_quota_gate_unavailable"
+    assert rollbacks == [True]
 
 
 def test_index_chunks_tracks_vector_and_bm25_channel_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.indexer as indexer_mod
+    import app.rag.ingestion.indexing.indexer as indexer_mod
 
     class _StubMilvus:
         def add_vectors(self, *_a, **_k):  # noqa: ANN001, ANN002, ANN003
@@ -271,12 +275,13 @@ def test_index_chunks_tracks_vector_and_bm25_channel_transitions(monkeypatch: py
     )
 
     indexer = indexer_mod.Indexer(_FakeSession())  # type: ignore[arg-type]
-    indexer.index_chunks(
-        tenant_id=UUID(int=1),
-        document_id=UUID(int=2),
-        chunks=[indexer_mod.ChunkInput(content="body", metadata={})],
-        options=indexer_mod.IndexingOptions(chunk_vector_enabled=True, bm25_index_enabled=True),
-    )
+    with pytest.raises(RuntimeError, match="bm25 down"):
+        indexer.index_chunks(
+            tenant_id=UUID(int=1),
+            document_id=UUID(int=2),
+            chunks=[indexer_mod.ChunkInput(content="body", metadata={})],
+            options=indexer_mod.IndexingOptions(chunk_vector_enabled=True, bm25_index_enabled=True),
+        )
 
     assert transitions == [
         ("vector", "processing", True, None),
@@ -287,7 +292,7 @@ def test_index_chunks_tracks_vector_and_bm25_channel_transitions(monkeypatch: py
 
 
 def test_index_events_tracks_event_and_entity_vector_channels(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.indexer as indexer_mod
+    import app.rag.ingestion.indexing.indexer as indexer_mod
 
     class _StubMilvus:
         def add_vectors(self, *_a, **_k):  # noqa: ANN001, ANN002, ANN003

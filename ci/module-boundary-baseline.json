@@ -1,0 +1,10 @@
+[
+  {
+    "file": "app/rag/pipeline_plugins/registry.py",
+    "rule": "opaque-owner",
+    "scope": "_module_file_path",
+    "target": "module",
+    "count": 1,
+    "task": "U04"
+  }
+]

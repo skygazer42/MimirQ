@@ -1,6 +1,6 @@
 # 前后端接口契约（API Contract）
 
-目标：保证 **后端提供的每个 API** 都在前端有明确的“对应入口”（统一放在 `web/lib/api-client.ts`），并且前端不会调用不存在的后端路由。
+前端在 `web/lib/api/` 按领域维护对应调用，并检查前端请求与后端公开路由一致。
 
 ## 一键检查
 
@@ -22,7 +22,7 @@ pnpm run api-check
 `make api-check` 会执行三类校验：
 
 1. `web/scripts/check-api-contract.mjs`：前端代码里出现的 API 调用，必须在后端存在对应路由（防止“前端调了不存在的接口”）。
-2. `web/scripts/check-api-coverage.mjs`：后端 `app/api/v1/*`（含 KG）里的路由，必须在 `web/lib/api-client.ts` 出现对应调用（防止“后端新增接口但前端没有入口”）。
+2. `web/scripts/check-api-coverage.mjs` 检查 `app/api/v1/*`（含 KG）面向浏览器的路由是否在 `web/lib/api/` 中有对应调用。
 3. `web/scripts/check-api-types-drift.mjs`：**字段级类型漂移检测**。报告 `web/lib/api/*.ts` 中仍手写 response/request 类型（而非消费生成类型 `@/types/backend`）的模块——这些手写类型在后端 schema 变更时会静默漂移。默认 **warning 级**（exit 0，不阻断 CI）；`cd web && node scripts/check-api-types-drift.mjs --strict --baseline scripts/api-types-drift-baseline.json`（即 `pnpm -C web api-types-drift`）会在手写类型模块数超过 baseline 时失败。随迁移推进应逐步收紧 `web/scripts/api-types-drift-baseline.json` 棘轮基线。
 
 ## 开发约定（新增/修改接口时）

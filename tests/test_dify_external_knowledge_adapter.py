@@ -12,15 +12,59 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from app.core.database import get_db
+from app.api.middleware.request_context import RequestContextMiddleware
+from app.api.schemas.conversations.retrieval import EvidenceRetrieveResponse
+from app.api.v1.integrations.dify_support import external_api as dify_external_api
+from app.infrastructure.database.connection import get_db
+from app.services.dify import (
+    anchor_strength,
+    chunk_hydration,
+    citation_records,
+    knowledge_scope,
+    query_policy,
+    query_terms,
+    record_ranking,
+    request_preferences,
+    response_cache,
+    retrieval_policy,
+    scoring,
+    tracing,
+)
+from app.services.dify import compaction as compaction_service
 
 
 class _DummyDB:
-    pass
+    def __init__(self) -> None:
+        self.closed = False
+
+    def rollback(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def _offline_dify_workers(monkeypatch):
+    from app.api.v1.integrations import dify as dify_api
+    from app.services.chat import response_cache as chat_response_cache
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    monkeypatch.setattr(chat_response_cache, "_get_redis_client", lambda: None)
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", _DummyDB)
+    monkeypatch.setattr(chunk_hydration, "SessionLocal", _DummyDB)
+    monkeypatch.setattr(dify_api, "get_readable_datasets_map", lambda *_args: {})
+    monkeypatch.setattr(dify_api, "_resolve_dify_response_cache_corpus_token", lambda **_kwargs: "fixture-corpus")
 
 
 def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
+
+
+def _new_dify_test_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(RequestContextMiddleware)
+    return app
 
 
 class _FakeRedis:
@@ -104,17 +148,19 @@ def _patch_fake_dify_redis(monkeypatch: pytest.MonkeyPatch, dify_api, redis: _Fa
         return bool(redis.expire(key, ttl_sec))
 
     monkeypatch.setattr(dify_api, "get_best_effort_json_cache_value", _get_json, raising=True)
-    monkeypatch.setattr(dify_api, "set_best_effort_json_cache_value", _set_json, raising=True)
     monkeypatch.setattr(dify_api, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
-    monkeypatch.setattr(dify_api, "release_best_effort_redis_lease", _release, raising=True)
-    monkeypatch.setattr(dify_api, "extend_best_effort_redis_lease", _extend, raising=True)
+    monkeypatch.setattr(response_cache, "get_best_effort_json_cache_value", _get_json, raising=True)
+    monkeypatch.setattr(response_cache, "set_best_effort_json_cache_value", _set_json, raising=True)
+    monkeypatch.setattr(response_cache, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
+    monkeypatch.setattr(response_cache, "release_best_effort_redis_lease", _release, raising=True)
+    monkeypatch.setattr(response_cache, "extend_best_effort_redis_lease", _extend, raising=True)
 
 
 @pytest.mark.asyncio
 async def test_dify_lease_heartbeat_tolerates_transient_redis_extend_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     calls = 0
 
@@ -126,7 +172,7 @@ async def test_dify_lease_heartbeat_tolerates_transient_redis_extend_errors(
     async def _sleep(*_args, **_kwargs) -> None:  # noqa: ANN003, ANN202
         return None
 
-    monkeypatch.setattr(dify_api, "extend_best_effort_redis_lease", _extend, raising=True)
+    monkeypatch.setattr(response_cache, "extend_best_effort_redis_lease", _extend, raising=True)
     monkeypatch.setattr(dify_api.asyncio, "sleep", _sleep, raising=False)
 
     await dify_api._maintain_best_effort_dify_lease(
@@ -141,7 +187,7 @@ async def test_dify_lease_heartbeat_tolerates_transient_redis_extend_errors(
 async def test_startup_warmup_retries_once_after_locked_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
     results = iter(
         [
@@ -157,11 +203,10 @@ async def test_startup_warmup_retries_once_after_locked_lease(
     async def _sleep(seconds: float) -> None:
         sleeps.append(seconds)
 
-    monkeypatch.setattr(dify_api, "_resolve_dify_warmup_start_delay_sec", lambda: 0.0, raising=True)
-    monkeypatch.setattr(dify_api, "warmup_dify_external_knowledge", _warmup, raising=True)
-    monkeypatch.setattr(dify_api.asyncio, "sleep", _sleep, raising=False)
+    monkeypatch.setattr(warmup, "warmup_dify_external_knowledge", _warmup, raising=True)
+    monkeypatch.setattr(warmup.asyncio, "sleep", _sleep, raising=False)
 
-    result = await dify_api._delayed_warmup_dify_external_knowledge()
+    result = await warmup._delayed_warmup_dify_external_knowledge(0.0)
 
     assert result == {"reason": "completed"}
     assert sleeps == [0, 120]
@@ -175,7 +220,7 @@ _DEMO_PLUGIN_REF = "plugin:demo-service@1.0.0:chunk"
 
 
 def test_dify_citation_record_preserves_rerank_metadata() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     record = dify_api._citation_to_dify_record(
         {
@@ -391,6 +436,14 @@ def _demo_policy(**overrides: object) -> dict[str, object]:
     return policy
 
 
+def _patch_policy_lookup(monkeypatch, resolver):
+    from app.api.v1.integrations import dify as integrations_dify
+    from app.services.dify import retrieval_policy as policy_helpers
+
+    monkeypatch.setattr(policy_helpers, "retrieval_policy_for_plugin_ref", resolver)
+    monkeypatch.setattr(integrations_dify, "_retrieval_policy_for_plugin_ref", resolver)
+
+
 def _patch_demo_policy(
     monkeypatch: pytest.MonkeyPatch,
     dify_api: object,
@@ -399,11 +452,9 @@ def _patch_demo_policy(
     **overrides: object,
 ) -> dict[str, object]:
     policy = _demo_policy(**overrides)
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
     return policy
 
@@ -438,11 +489,11 @@ def _patch_dify_retrieval_settings(
 
 
 def _patch_empty_chunk_content_map(monkeypatch: pytest.MonkeyPatch, dify_api: object) -> None:
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
 
 def _make_dify_test_client(dify_api: object) -> TestClient:
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     return TestClient(app)
@@ -467,6 +518,7 @@ def _run_metadata_anchor_db_fallback(
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=existing_records,
         prefer_question_anchor_first=prefer_question_anchor_first,
+        account_id="system:dify",
     )
 
 
@@ -474,6 +526,10 @@ def _collect_condition_values(condition: object) -> list[str]:
     values: list[str] = []
 
     def walk(node: object) -> None:
+        if isinstance(node, (list, tuple)):
+            for child in node:
+                walk(child)
+            return
         value = getattr(node, "value", None)
         if isinstance(value, str):
             values.append(value)
@@ -504,7 +560,7 @@ class _MetadataFallbackQuery:
         return self
 
     def filter(self, *_conditions: object) -> "_MetadataFallbackQuery":
-        self._condition = _conditions[-1] if _conditions else None
+        self._condition = list(_conditions)
         return self
 
     def order_by(self, *_args: object, **_kwargs: object) -> "_MetadataFallbackQuery":
@@ -559,12 +615,12 @@ class _CapturingMetadataFallbackDB(_MetadataFallbackDB):
 
 
 def test_dify_warmup_knowledge_ids_default_to_map_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 2, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "", raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 2, raising=False)
 
-    ids = dify_api._resolve_dify_warmup_knowledge_ids(
+    ids = warmup.resolve_warmup_knowledge_ids(
         {"city": "dataset-a", "district": "dataset-b", "faq": "dataset-c"}
     )
 
@@ -575,7 +631,7 @@ def test_dify_warmup_knowledge_ids_default_to_map_keys(monkeypatch: pytest.Monke
 async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     city_dataset_id = uuid.uuid4()
@@ -595,30 +651,30 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
         return []
 
     async def _acquire_warmup_lease(**_kwargs):  # noqa: ANN003, ANN202
-        return dify_api._DifyDistributedLease(lease_key="warmup", owner="test"), 300
+        return warmup._DifyDistributedLease(lease_key="warmup", owner="test"), 300
 
     async def _release_warmup_lease(_lease) -> None:  # noqa: ANN001
         return None
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city,faq", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "warmup probe", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city,faq", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "warmup probe", raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{city_dataset_id}", "faq": "{faq_dataset_id}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_acquire_dify_warmup_lease", _acquire_warmup_lease, raising=True)
-    monkeypatch.setattr(dify_api, "_release_distributed_dify_response_lease", _release_warmup_lease, raising=True)
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "_acquire_dify_warmup_lease", _acquire_warmup_lease, raising=True)
+    monkeypatch.setattr(warmup, "_release_distributed_dify_response_lease", _release_warmup_lease, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: session)
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: session)
 
     assert result["attempted"] == 2
     assert result["completed"] == 2
@@ -637,19 +693,19 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
 async def test_dify_delayed_warmup_stays_on_startup_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
     startup_loop = asyncio.get_running_loop()
     observed_loops: list[asyncio.AbstractEventLoop] = []
 
     async def fake_warmup() -> dict[str, object]:
         observed_loops.append(asyncio.get_running_loop())
-        return {"enabled": True}
+        return {"enabled": True, "reason": "completed"}
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
-    monkeypatch.setattr(dify_api, "warmup_dify_external_knowledge", fake_warmup)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
+    monkeypatch.setattr(warmup, "warmup_dify_external_knowledge", fake_warmup)
 
-    assert await dify_api._delayed_warmup_dify_external_knowledge() == {"enabled": True}
+    assert await warmup._delayed_warmup_dify_external_knowledge(0.0) == {"enabled": True, "reason": "completed"}
     assert observed_loops == [startup_loop]
 
 
@@ -657,7 +713,7 @@ async def test_dify_delayed_warmup_stays_on_startup_event_loop(
 async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     retrieval_calls: list[dict[str, object]] = []
@@ -666,20 +722,20 @@ async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
         retrieval_calls.append(dict(kwargs))
         return []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{uuid.uuid4()}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
 
     assert result["reason"] == "warmup_skipped_single_retrieval_slot"
     assert retrieval_calls == []
@@ -689,7 +745,7 @@ async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
 async def test_dify_warmup_skips_when_distributed_lease_is_held(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     fake_redis = _FakeRedis()
@@ -699,22 +755,22 @@ async def test_dify_warmup_skips_when_distributed_lease_is_held(
         retrieval_calls.append(dict(kwargs))
         return []
 
-    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
-    fake_redis.set(dify_api._DIFY_WARMUP_LEASE_KEY, "owner-a", ex=300, nx=True)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    _patch_fake_dify_redis(monkeypatch, response_cache, fake_redis)
+    fake_redis.set(response_cache._DIFY_WARMUP_LEASE_KEY, "owner-a", ex=300, nx=True)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{uuid.uuid4()}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
 
     assert result["reason"] == "warmup_locked"
     assert retrieval_calls == []
@@ -724,7 +780,7 @@ async def test_dify_warmup_skips_when_distributed_lease_is_held(
 async def test_dify_warmup_skips_when_distributed_lease_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     retrieval_calls: list[dict[str, object]] = []
@@ -736,21 +792,21 @@ async def test_dify_warmup_skips_when_distributed_lease_is_unavailable(
         retrieval_calls.append(dict(kwargs))
         return []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{uuid.uuid4()}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_acquire_dify_warmup_lease", _lease_unavailable, raising=True)
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "_acquire_dify_warmup_lease", _lease_unavailable, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
 
     assert result["reason"] == "warmup_lease_unavailable"
     assert retrieval_calls == []
@@ -760,7 +816,7 @@ async def test_dify_warmup_skips_when_distributed_lease_is_unavailable(
 async def test_dify_lease_heartbeat_renews_owner_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     lease = dify_api._DifyDistributedLease(lease_key="lease:key", owner="owner-a")
     renewals: list[tuple[str, str, int]] = []
@@ -776,7 +832,7 @@ async def test_dify_lease_heartbeat_renews_owner_ttl(
         if sleeps > 1:
             raise asyncio.CancelledError
 
-    monkeypatch.setattr(dify_api, "extend_best_effort_redis_lease", _fake_extend, raising=True)
+    monkeypatch.setattr(response_cache, "extend_best_effort_redis_lease", _fake_extend, raising=True)
     monkeypatch.setattr(dify_api.asyncio, "sleep", _fake_sleep)
 
     with pytest.raises(asyncio.CancelledError):
@@ -785,32 +841,39 @@ async def test_dify_lease_heartbeat_renews_owner_ttl(
     assert renewals == [("lease:key", "owner-a", 90)]
 
 
-def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+@pytest.mark.asyncio
+async def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.dify import warmup
 
-    scheduled = []
+    started = asyncio.Event()
+    finish = asyncio.Event()
 
-    def _fake_create_task(coro):  # noqa: ANN001, ANN202
-        scheduled.append(coro)
-        coro.close()
-        return object()
+    async def probe() -> dict[str, object]:
+        started.set()
+        await finish.wait()
+        return {"enabled": True, "reason": "completed"}
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0, raising=False)
-
-    task = dify_api.start_dify_external_knowledge_warmup(create_task=_fake_create_task)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
+    monkeypatch.setattr(warmup, "warmup_dify_external_knowledge", probe)
+    task = warmup.start_dify_external_knowledge_warmup()
 
     assert task is not None
-    assert scheduled
-    assert scheduled[0].cr_code.co_name == "_delayed_warmup_dify_external_knowledge"
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert not task.done()
+        finish.set()
+        assert await asyncio.wait_for(task, timeout=1) == {"enabled": True, "reason": "completed"}
+    finally:
+        await warmup.stop_dify_external_knowledge_warmup()
 
 
 def test_dify_retrieval_logs_request_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -842,9 +905,9 @@ def test_dify_retrieval_logs_request_diagnostics(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -899,8 +962,8 @@ def test_dify_retrieval_logs_request_diagnostics(
 async def test_dify_direct_retrieval_uses_configured_reranker_and_overfetch_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.api.v1.rag as rag_api
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.retrieval.requests as retrieval_requests
 
     captured: dict[str, object] = {}
 
@@ -919,21 +982,27 @@ async def test_dify_direct_retrieval_uses_configured_reranker_and_overfetch_conf
         captured["body"] = kwargs["body"]
         captured["rag_config"] = kwargs["body"].rag_config
 
-        class _Response:
-            citations: list[dict[str, object]] = []
+        return EvidenceRetrieveResponse(query_for_retrieval=kwargs["body"].query, citations=[])
 
-        return _Response()
+    monkeypatch.setattr(retrieval_requests, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
 
-    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
-
+    kg_flags = request_preferences._resolve_dify_kg_flags(dify_api.DifyRetrievalSetting())
     await dify_api._retrieve_dataset_citations(
         db=_DummyDB(),
         tenant_id=uuid.uuid4(),
         account_id="system:dify",
         dataset_ids=[uuid.uuid4()],
         query="区域乙在哪里办理企业社会保险登记",
-        top_k=5,
+        top_k=20,
         score_threshold=0.0,
+        requested_top_k=5,
+        enable_kg_query_expansion=kg_flags.enable_query_expansion,
+        enable_kg_chunk_injection=kg_flags.enable_chunk_injection,
+        kg_chunk_injection_max_chunks=kg_flags.chunk_injection_max_chunks,
+        enable_kg_chunk_boost=kg_flags.enable_chunk_boost,
+        kg_chunk_boost_weight=kg_flags.chunk_boost_weight,
+        kg_chunk_boost_max_promoted=kg_flags.chunk_boost_max_promoted,
+        enable_reranker=dify_api._dify_external_reranker_enabled(),
     )
 
     body = captured["body"]
@@ -961,8 +1030,8 @@ async def test_dify_direct_retrieval_uses_configured_reranker_and_overfetch_conf
 async def test_dify_direct_retrieval_can_enable_metadata_exact_fallbacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.api.v1.rag as rag_api
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.retrieval.requests as retrieval_requests
 
     captured: dict[str, object] = {}
 
@@ -982,13 +1051,11 @@ async def test_dify_direct_retrieval_can_enable_metadata_exact_fallbacks(
     async def _fake_retrieve_evidence(**kwargs):  # noqa: ANN003, ANN202
         captured["rag_config"] = kwargs["body"].rag_config
 
-        class _Response:
-            citations: list[dict[str, object]] = []
+        return EvidenceRetrieveResponse(query_for_retrieval=kwargs["body"].query, citations=[])
 
-        return _Response()
+    monkeypatch.setattr(retrieval_requests, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
 
-    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
-
+    kg_flags = request_preferences._resolve_dify_kg_flags(dify_api.DifyRetrievalSetting())
     await dify_api._retrieve_dataset_citations(
         db=_DummyDB(),
         tenant_id=uuid.uuid4(),
@@ -997,6 +1064,14 @@ async def test_dify_direct_retrieval_can_enable_metadata_exact_fallbacks(
         query="需要精确字段兜底的问题",
         top_k=5,
         score_threshold=0.0,
+        requested_top_k=5,
+        enable_kg_query_expansion=kg_flags.enable_query_expansion,
+        enable_kg_chunk_injection=kg_flags.enable_chunk_injection,
+        kg_chunk_injection_max_chunks=kg_flags.chunk_injection_max_chunks,
+        enable_kg_chunk_boost=kg_flags.enable_chunk_boost,
+        kg_chunk_boost_weight=kg_flags.chunk_boost_weight,
+        kg_chunk_boost_max_promoted=kg_flags.chunk_boost_max_promoted,
+        enable_reranker=dify_api._dify_external_reranker_enabled(),
     )
 
     rag_config = captured["rag_config"]
@@ -1008,8 +1083,8 @@ async def test_dify_direct_retrieval_can_enable_metadata_exact_fallbacks(
 async def test_dify_direct_retrieval_can_defer_internal_reranker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.api.v1.rag as rag_api
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.retrieval.requests as retrieval_requests
 
     captured: dict[str, object] = {}
 
@@ -1020,13 +1095,11 @@ async def test_dify_direct_retrieval_can_defer_internal_reranker(
     async def _fake_retrieve_evidence(**kwargs):  # noqa: ANN003, ANN202
         captured["rag_config"] = kwargs["body"].rag_config
 
-        class _Response:
-            citations: list[dict[str, object]] = []
+        return EvidenceRetrieveResponse(query_for_retrieval=kwargs["body"].query, citations=[])
 
-        return _Response()
+    monkeypatch.setattr(retrieval_requests, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
 
-    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
-
+    kg_flags = request_preferences._resolve_dify_kg_flags(dify_api.DifyRetrievalSetting())
     await dify_api._retrieve_dataset_citations(
         db=_DummyDB(),
         tenant_id=uuid.uuid4(),
@@ -1036,6 +1109,13 @@ async def test_dify_direct_retrieval_can_defer_internal_reranker(
         top_k=5,
         score_threshold=0.0,
         enable_reranker=False,
+        requested_top_k=5,
+        enable_kg_query_expansion=kg_flags.enable_query_expansion,
+        enable_kg_chunk_injection=kg_flags.enable_chunk_injection,
+        kg_chunk_injection_max_chunks=kg_flags.chunk_injection_max_chunks,
+        enable_kg_chunk_boost=kg_flags.enable_chunk_boost,
+        kg_chunk_boost_weight=kg_flags.chunk_boost_weight,
+        kg_chunk_boost_max_promoted=kg_flags.chunk_boost_max_promoted,
     )
 
     rag_config = captured["rag_config"]
@@ -1046,7 +1126,7 @@ async def test_dify_direct_retrieval_can_defer_internal_reranker(
 def test_dify_metadata_anchor_fallback_rows_promote_dataset_scoped_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1119,7 +1199,7 @@ def test_dify_metadata_anchor_fallback_rows_promote_dataset_scoped_anchor(
 def test_dify_metadata_anchor_fallback_rows_skip_when_question_anchor_already_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1172,7 +1252,7 @@ def test_dify_metadata_anchor_fallback_rows_skip_when_question_anchor_already_pr
 def test_dify_question_anchor_strength_tolerates_minor_rewrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
@@ -1199,7 +1279,7 @@ def test_dify_question_anchor_strength_tolerates_minor_rewrite(
 def test_dify_metadata_anchor_fallback_rows_promote_near_question_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
     dataset_id = uuid.uuid4()
@@ -1237,7 +1317,7 @@ def test_dify_metadata_anchor_fallback_rows_promote_near_question_anchor(
 def test_dify_metadata_anchor_fallback_rows_drop_anchor_only_qa(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
     dataset_id = uuid.uuid4()
@@ -1274,7 +1354,7 @@ def test_dify_metadata_anchor_fallback_rows_drop_anchor_only_qa(
 def test_dify_metadata_anchor_fallback_composes_exact_anchor_slots_before_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1349,7 +1429,7 @@ def test_dify_metadata_anchor_fallback_composes_exact_anchor_slots_before_limit(
 def test_dify_metadata_anchor_fallback_composes_unquoted_exact_anchor_slots_before_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1424,7 +1504,7 @@ def test_dify_metadata_anchor_fallback_composes_unquoted_exact_anchor_slots_befo
 def test_dify_exact_anchor_full_answer_does_not_skip_on_one_thing_partial_section(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1463,7 +1543,7 @@ def test_dify_exact_anchor_full_answer_does_not_skip_on_one_thing_partial_sectio
 def test_dify_question_bonus_does_not_promote_generic_one_thing_qa_over_specific_case_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1525,7 +1605,7 @@ def test_dify_question_bonus_does_not_promote_generic_one_thing_qa_over_specific
 def test_dify_response_compaction_keeps_single_exact_anchor_answer_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1562,7 +1642,7 @@ def test_dify_response_compaction_keeps_single_exact_anchor_answer_record(
 
 
 def test_dify_response_compaction_checks_unique_plugin_refs_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     seen_refs: list[str] = []
 
@@ -1573,8 +1653,11 @@ def test_dify_response_compaction_checks_unique_plugin_refs_in_order(monkeypatch
     def _fake_compaction(policy: dict[str, object]) -> dict[str, bool]:
         return {"enabled": policy.get("plugin_ref") == "plugin-b"}
 
-    monkeypatch.setattr(dify_api, "_retrieval_policy_for_plugin_ref", _fake_policy, raising=True)
-    monkeypatch.setattr(dify_api, "retrieval_policy_response_compaction", _fake_compaction, raising=True)
+    _patch_policy_lookup(
+        monkeypatch,
+        _fake_policy,
+    )
+    monkeypatch.setattr(compaction_service, "retrieval_policy_response_compaction", _fake_compaction, raising=True)
 
     records = [
         {"metadata": {"chunk_python_plugin": "plugin-b"}},
@@ -1592,7 +1675,7 @@ def test_dify_response_compaction_checks_unique_plugin_refs_in_order(monkeypatch
 
 
 def test_dify_knowledge_mapping_plugin_refs_dedupes_and_normalizes_inputs() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     assert dify_api._knowledge_mapping_plugin_refs(None) == ()
     assert dify_api._knowledge_mapping_plugin_refs({"plugin_ref": " plugin-a "}) == ("plugin-a",)
@@ -1603,29 +1686,23 @@ def test_dify_knowledge_mapping_plugin_refs_dedupes_and_normalizes_inputs() -> N
 
 
 def test_dify_resolve_knowledge_policy_helpers_use_mapping_plugin_refs(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
-        dify_api,
-        "_load_knowledge_map",
-        lambda: {
-            "city": {
-                "plugin_refs": [" plugin-a ", "plugin-b", "plugin-a"],
-            }
-        },
+        knowledge_scope,
+        "load_knowledge_map",
+        lambda: {"city": {"plugin_refs": [" plugin-a ", "plugin-b", "plugin-a"]}},
         raising=True,
     )
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: {
             "plugin-a": {"schema": "mimirq.retrieval_policy.v1", "filter_fields": ["category"]},
             "plugin-b": {"schema": "mimirq.retrieval_policy.v1", "filter_fields": ["district"]},
         }.get(ref, {}),
-        raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        knowledge_scope,
         "retrieval_policy_fallback_multiplier",
         lambda policy: 3 if policy.get("filter_fields") == ["district"] else 2,
         raising=True,
@@ -1637,9 +1714,9 @@ def test_dify_resolve_knowledge_policy_helpers_use_mapping_plugin_refs(monkeypat
 
 
 def test_dify_resolve_knowledge_policy_helpers_fall_back_for_unknown_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
-    monkeypatch.setattr(dify_api, "_load_knowledge_map", lambda: {}, raising=True)
+    monkeypatch.setattr(knowledge_scope, "load_knowledge_map", lambda: {}, raising=True)
 
     assert dify_api._resolve_knowledge_policy_plugin_refs("missing") == ()
     assert dify_api._resolve_knowledge_policy_filter_fields("missing") is None
@@ -1649,7 +1726,7 @@ def test_dify_resolve_knowledge_policy_helpers_fall_back_for_unknown_mapping(mon
 def test_dify_apply_policy_fallback_candidate_multiplier_enforces_bounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 20, raising=False)
 
@@ -1661,7 +1738,7 @@ def test_dify_apply_policy_fallback_candidate_multiplier_enforces_bounds(
 def test_dify_apply_policy_fallback_candidate_multiplier_uses_default_when_setting_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", "bad", raising=False)
 
@@ -1670,7 +1747,6 @@ def test_dify_apply_policy_fallback_candidate_multiplier_uses_default_when_setti
 
 
 def test_dify_policy_fast_response_helpers_preserve_plugin_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
 
     policies = {
         "plugin-a": {
@@ -1700,19 +1776,17 @@ def test_dify_policy_fast_response_helpers_preserve_plugin_order(monkeypatch: py
             },
         },
     }
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policies.get(ref, {}),
-        raising=True,
     )
 
-    assert dify_api._fast_response_field_rules_for_policy_refs(("plugin-a", "plugin-b")) == (
+    assert retrieval_policy.fast_response_field_rules_for_policy_refs(("plugin-a", "plugin-b")) == (
         ("申请材料", ("申请材料", "材料")),
         ("办理入口", ("入口",)),
         ("联系方式", ("联系电话",)),
     )
-    assert dify_api._requested_label_prefixes_for_policy_refs(("plugin-a", "plugin-b")) == (
+    assert retrieval_policy.requested_label_prefixes_for_policy_refs(("plugin-a", "plugin-b")) == (
         "必答字段",
         "补充字段",
         "更多字段",
@@ -1720,7 +1794,7 @@ def test_dify_policy_fast_response_helpers_preserve_plugin_order(monkeypatch: py
 
 
 def test_dify_record_answerfulness_wrapper_uses_api_bound_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
         dify_api,
@@ -1746,7 +1820,7 @@ def test_dify_record_answerfulness_wrapper_uses_api_bound_dependencies(monkeypat
 def test_dify_metadata_anchor_fallback_prefers_region_anchored_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
     dataset_id = uuid.uuid4()
@@ -1800,7 +1874,7 @@ def test_dify_metadata_anchor_fallback_prefers_region_anchored_duplicate(
 def test_dify_metadata_anchor_fallback_rows_promote_near_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     dataset_id = uuid.uuid4()
@@ -1838,7 +1912,7 @@ def test_dify_metadata_anchor_fallback_rows_promote_near_service_anchor(
 def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_question_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -1934,7 +2008,7 @@ def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_qu
 def test_dify_metadata_anchor_db_fallback_checks_exact_service_name_first_for_plain_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -1993,7 +2067,7 @@ def test_dify_metadata_anchor_db_fallback_checks_exact_service_name_first_for_pl
 def test_dify_metadata_anchor_db_fallback_prefers_qa_for_slot_question_before_service_item(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -2072,7 +2146,7 @@ def test_dify_metadata_anchor_db_fallback_prefers_qa_for_slot_question_before_se
 def test_dify_metadata_anchor_db_fallback_continues_alias_scan_for_slot_question(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -2151,7 +2225,7 @@ def test_dify_metadata_anchor_db_fallback_continues_alias_scan_for_slot_question
 def test_dify_metadata_anchor_db_fallback_sets_statement_timeout_and_rolls_back_on_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
         dify_api.settings,
@@ -2208,6 +2282,7 @@ def test_dify_metadata_anchor_db_fallback_sets_statement_timeout_and_rolls_back_
         top_k=5,
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
+        account_id="system:dify",
     )
 
     assert fallback_records == []
@@ -2218,7 +2293,7 @@ def test_dify_metadata_anchor_db_fallback_sets_statement_timeout_and_rolls_back_
 def test_dify_metadata_anchor_worker_owns_and_closes_its_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     class _WorkerSession:
         closed = False
@@ -2252,7 +2327,7 @@ def test_dify_metadata_anchor_worker_owns_and_closes_its_session(
 def test_dify_metadata_anchor_db_fallback_caps_each_statement_to_remaining_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
         dify_api.settings,
@@ -2305,6 +2380,7 @@ def test_dify_metadata_anchor_db_fallback_caps_each_statement_to_remaining_budge
         existing_records=[],
         statement_timeout_ms_override=80,
         max_elapsed_ms=90,
+        account_id="system:dify",
     )
     statement_timeouts = [
         int(statement.rsplit("=", 1)[1].strip()) for statement in db.executed if "statement_timeout" in statement
@@ -2320,7 +2396,7 @@ def test_dify_metadata_anchor_db_fallback_caps_each_statement_to_remaining_budge
 def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2372,7 +2448,7 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
         raise AssertionError("strong RAG question anchor should not need metadata fallback")
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -2380,7 +2456,7 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2405,7 +2481,7 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
 def test_dify_retrieval_uses_question_anchor_preflight_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2465,7 +2541,7 @@ def test_dify_retrieval_uses_question_anchor_preflight_when_enabled(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2490,8 +2566,8 @@ def test_dify_retrieval_uses_question_anchor_preflight_when_enabled(
 def test_dify_preflight_records_still_use_final_reranker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    from app.rag.reranker.types import RerankResult
+    import app.api.v1.integrations.dify as dify_api
+    from app.rag.retrieval.reranking.types import RerankResult
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2583,7 +2659,7 @@ def test_dify_preflight_records_still_use_final_reranker(
     )
     monkeypatch.setattr(dify_api, "get_reranker", lambda _provider: _FakeReranker(), raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2611,8 +2687,8 @@ def test_dify_preflight_records_still_use_final_reranker(
 async def test_dify_final_rerank_cannot_override_exact_question_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    from app.rag.reranker.types import RerankResult
+    import app.api.v1.integrations.dify as dify_api
+    from app.rag.retrieval.reranking.types import RerankResult
 
     _patch_demo_policy(
         monkeypatch,
@@ -2675,7 +2751,7 @@ async def test_dify_final_rerank_cannot_override_exact_question_anchor(
 def test_dify_mixed_intent_caps_internal_candidates_without_disabling_retrieval_reranker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2718,9 +2794,9 @@ def test_dify_mixed_intent_caps_internal_candidates_without_disabling_retrieval_
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2745,7 +2821,7 @@ def test_dify_mixed_intent_caps_internal_candidates_without_disabling_retrieval_
 def test_dify_retrieval_uses_plugin_question_intent_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2806,7 +2882,7 @@ def test_dify_retrieval_uses_plugin_question_intent_preflight(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2831,7 +2907,7 @@ def test_dify_retrieval_uses_plugin_question_intent_preflight(
 def test_dify_retrieval_uses_short_query_question_anchor_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2891,7 +2967,7 @@ def test_dify_retrieval_uses_short_query_question_anchor_preflight(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2915,7 +2991,7 @@ def test_dify_retrieval_uses_short_query_question_anchor_preflight(
 def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -2975,7 +3051,7 @@ def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_an
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -2983,7 +3059,7 @@ def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_an
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3008,7 +3084,7 @@ def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_an
 def test_dify_retrieval_uses_service_anchor_preflight_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -3059,7 +3135,7 @@ def test_dify_retrieval_uses_service_anchor_preflight_when_enabled(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -3067,7 +3143,7 @@ def test_dify_retrieval_uses_service_anchor_preflight_when_enabled(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3092,7 +3168,7 @@ def test_dify_retrieval_uses_service_anchor_preflight_when_enabled(
 def test_dify_preflight_anchor_content_uses_metadata_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -3162,7 +3238,7 @@ def test_dify_preflight_anchor_content_uses_metadata_answer(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -3170,7 +3246,7 @@ def test_dify_preflight_anchor_content_uses_metadata_answer(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3196,7 +3272,7 @@ def test_dify_preflight_anchor_content_uses_metadata_answer(
 def test_dify_mixed_quoted_preflight_requires_exact_slot_composite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -3281,7 +3357,7 @@ def test_dify_mixed_quoted_preflight_requires_exact_slot_composite(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -3289,7 +3365,7 @@ def test_dify_mixed_quoted_preflight_requires_exact_slot_composite(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3315,7 +3391,7 @@ def test_dify_mixed_quoted_preflight_requires_exact_slot_composite(
 def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -3377,7 +3453,7 @@ def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
         return []
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -3385,7 +3461,7 @@ def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3406,16 +3482,43 @@ def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
     assert res.json()["records"][0]["metadata"]["section_type"] == "channels"
 
 
+def _mock_cache_document_access(monkeypatch: pytest.MonkeyPatch, document_id: uuid.UUID) -> None:
+    from app.api.v1.integrations import dify as dify_api
+
+    def document_ids(_db, _tenant_id, _account_id, ids, *, check_member):
+        requested = set(ids)
+        return requested & {document_id}, requested - {document_id}
+
+    monkeypatch.setattr(dify_api, "get_allowed_document_id_sets", document_ids)
+
+
+async def _wait_for_mocked_retrieval(started: asyncio.Event, request: asyncio.Task[httpx.Response]) -> None:
+    signal = asyncio.create_task(started.wait())
+    try:
+        completed, _ = await asyncio.wait({signal, request}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        if signal in completed:
+            return
+        if request in completed:
+            response = request.result()
+            pytest.fail(f"Retrieval returned HTTP {response.status_code} before starting: {response.text}")
+        pytest.fail("Request did not reach mocked retrieval within 10 seconds")
+    finally:
+        signal.cancel()
+
+
 @pytest.mark.asyncio
 async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    _mock_cache_document_access(monkeypatch, document_id)
     calls = {"rag": 0}
     request_sessions = []
+    corpus_sessions = []
     retrieval_started = asyncio.Event()
     release_retrieval = asyncio.Event()
     cache_write_started = asyncio.Event()
@@ -3427,6 +3530,9 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
 
         def rollback(self) -> None:
             self.rollback_count += 1
+
+        def query(self, *_args):
+            pytest.fail("cache scope must use a managed worker session")
 
     def _override_tracking_db():  # noqa: ANN202
         session = _TrackingDB()
@@ -3447,10 +3553,15 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 60, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 32, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
+
+    def corpus_token(**kwargs):
+        corpus_sessions.append(kwargs["db"])
+        return "corpus-v1"
+
     monkeypatch.setattr(
         dify_api,
         "_resolve_dify_response_cache_corpus_token",
-        lambda **_kwargs: "corpus-v1",
+        corpus_token,
         raising=True,
     )
     _patch_demo_policy(monkeypatch, dify_api)
@@ -3465,6 +3576,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
                 "relevance_score": 0.91,
                 "document_name": "service-rag.txt",
                 "chunk_id": str(uuid.uuid4()),
+                "document_id": str(document_id),
                 "dataset_id": str(dataset_id),
                 "metadata": {
                     "dataset_id": str(dataset_id),
@@ -3476,7 +3588,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
     async def _blocking_cache_write(*_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
         cache_write_started.set()
@@ -3490,7 +3602,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_tracking_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3503,7 +3615,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
         first_task = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
-        await retrieval_started.wait()
+        await _wait_for_mocked_retrieval(retrieval_started, first_task)
         second_task = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
@@ -3528,7 +3640,8 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     assert cached.status_code == 200, cached.text
     assert calls["rag"] == 1
     assert len(request_sessions) == 3
-    assert all(session.rollback_count >= 1 for session in request_sessions)
+    assert len(corpus_sessions) == 3
+    assert all(session not in request_sessions and session.closed for session in corpus_sessions)
     assert second.json() == first.json()
     assert cached.json() == first.json()
 
@@ -3537,10 +3650,12 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
 async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instances(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    _mock_cache_document_access(monkeypatch, document_id)
     calls = {"rag": 0}
     retrieval_started = asyncio.Event()
     release_retrieval = asyncio.Event()
@@ -3571,7 +3686,7 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
     monkeypatch.setattr(
         dify_api,
         "_acquire_or_wait_for_inflight_response",
-        lambda _key: asyncio.sleep(0, result=(True, None)),
+        lambda _key: asyncio.sleep(0, result=(True, None, None)),
         raising=True,
     )
     monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
@@ -3588,15 +3703,16 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
                 "relevance_score": 0.91,
                 "document_name": "service-rag.txt",
                 "chunk_id": str(uuid.uuid4()),
+                "document_id": str(document_id),
                 "dataset_id": str(dataset_id),
                 "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
             }
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3610,7 +3726,7 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
         leader = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
-        await retrieval_started.wait()
+        await _wait_for_mocked_retrieval(retrieval_started, leader)
         lease_keys = [key for key in fake_redis._values if key.endswith(":lease")]
         assert len(lease_keys) == 1
         assert (fake_redis.ttl_remaining(lease_keys[0]) or 0) >= 60
@@ -3639,10 +3755,12 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
 async def test_dify_distributed_singleflight_reuses_transient_result_when_response_cache_ttl_is_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    _mock_cache_document_access(monkeypatch, document_id)
     calls = {"rag": 0}
     retrieval_started = asyncio.Event()
     release_retrieval = asyncio.Event()
@@ -3673,7 +3791,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
     monkeypatch.setattr(
         dify_api,
         "_acquire_or_wait_for_inflight_response",
-        lambda _key: asyncio.sleep(0, result=(True, None)),
+        lambda _key: asyncio.sleep(0, result=(True, None, None)),
         raising=True,
     )
     monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
@@ -3690,15 +3808,16 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
                 "relevance_score": 0.91,
                 "document_name": "service-rag.txt",
                 "chunk_id": str(uuid.uuid4()),
+                "document_id": str(document_id),
                 "dataset_id": str(dataset_id),
                 "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
             }
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3712,7 +3831,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
         leader = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
-        await retrieval_started.wait()
+        await _wait_for_mocked_retrieval(retrieval_started, leader)
         lease_keys = [key for key in fake_redis._values if key.endswith(":lease")]
         assert len(lease_keys) == 1
         assert (fake_redis.ttl_remaining(lease_keys[0]) or 0) >= 60
@@ -3748,8 +3867,8 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
 async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.services.chat_response_cache as cache_mod
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.chat.response_cache as cache_mod
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -3805,8 +3924,8 @@ async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
         return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
-    app = FastAPI()
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3845,7 +3964,7 @@ async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
 async def test_dify_distributed_singleflight_releases_lease_after_leader_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -3881,7 +4000,7 @@ async def test_dify_distributed_singleflight_releases_lease_after_leader_cancell
     monkeypatch.setattr(
         dify_api,
         "_acquire_or_wait_for_inflight_response",
-        lambda _key: asyncio.sleep(0, result=(True, None)),
+        lambda _key: asyncio.sleep(0, result=(True, None, None)),
         raising=True,
     )
     monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
@@ -3913,9 +4032,9 @@ async def test_dify_distributed_singleflight_releases_lease_after_leader_cancell
         return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3952,9 +4071,9 @@ async def test_dify_distributed_singleflight_releases_lease_after_leader_cancell
 async def test_dify_local_singleflight_wait_timeout_preserves_leader_future(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.services.chat_response_cache as cache_mod
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.chat.response_cache as cache_mod
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     key = "dify-local-timeout"
     cache_mod.clear_inflight_chat_responses()
@@ -3988,8 +4107,8 @@ async def test_dify_local_singleflight_wait_timeout_preserves_leader_future(
 async def test_dify_distributed_singleflight_wait_timeout_returns_retryable_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.api.v1.integrations.dify as dify_api
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     fake_redis = _FakeRedis()
     _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
@@ -4031,8 +4150,8 @@ async def test_dify_distributed_singleflight_wait_timeout_returns_retryable_503(
 def test_dify_retrieval_timeout_stays_http_503_in_route(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.api.v1.integrations.dify as dify_api
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4053,9 +4172,9 @@ def test_dify_retrieval_timeout_stays_http_503_in_route(
         raise RetrievalAdmissionTimeoutError(0.2)
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fail_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4078,7 +4197,7 @@ def test_dify_retrieval_timeout_stays_http_503_in_route(
 async def test_dify_uncacheable_request_cancellation_is_not_delayed_by_blocking_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4114,7 +4233,7 @@ async def test_dify_uncacheable_request_cancellation_is_not_delayed_by_blocking_
         return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -4140,7 +4259,7 @@ async def test_dify_uncacheable_request_cancellation_is_not_delayed_by_blocking_
 def test_dify_quality_metadata_anchor_calls_share_request_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4191,9 +4310,9 @@ def test_dify_quality_metadata_anchor_calls_share_request_budget(
         raising=True,
     )
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4217,7 +4336,7 @@ def test_dify_quality_metadata_anchor_calls_share_request_budget(
 async def test_dify_metadata_anchor_budget_includes_offload_queue_wait(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4260,9 +4379,9 @@ async def test_dify_metadata_anchor_budget_includes_offload_queue_wait(
 
     monkeypatch.setattr(dify_api, "run_blocking_retrieval_call", _blocked_offload, raising=True)
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _empty_retrieval, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     transport = httpx.ASGITransport(app=app)
@@ -4286,7 +4405,7 @@ async def test_dify_metadata_anchor_budget_includes_offload_queue_wait(
 def test_dify_kg_on_demand_skips_kg_for_confident_rag_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4327,9 +4446,9 @@ def test_dify_kg_on_demand_skips_kg_for_confident_rag_anchor(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4351,7 +4470,7 @@ def test_dify_kg_on_demand_skips_kg_for_confident_rag_anchor(
 def test_dify_kg_on_demand_runs_kg_for_low_confidence_rag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4425,9 +4544,9 @@ def test_dify_kg_on_demand_runs_kg_for_low_confidence_rag(
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(dify_api, "_dify_kg_on_demand_records", _fake_kg_on_demand_records, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4450,7 +4569,7 @@ def test_dify_kg_on_demand_runs_kg_for_low_confidence_rag(
 def test_dify_kg_on_demand_skips_second_rag_when_kg_probe_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -4512,7 +4631,7 @@ def test_dify_kg_on_demand_skips_second_rag_when_kg_probe_is_empty(
 def test_dify_kg_on_demand_service_intent_can_skip_on_primary_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1, raising=False)
@@ -4534,7 +4653,7 @@ def test_dify_kg_on_demand_service_intent_can_skip_on_primary_scope(
 def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregate_knowledge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     north_service_dataset = uuid.uuid4()
@@ -4608,7 +4727,7 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -4616,7 +4735,7 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4645,7 +4764,7 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
 def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     city_dataset = uuid.uuid4()
@@ -4748,7 +4867,7 @@ def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_se
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -4756,7 +4875,7 @@ def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_se
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4781,7 +4900,7 @@ def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_se
 def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     city_dataset = uuid.uuid4()
@@ -4892,7 +5011,7 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
     monkeypatch.setattr(
         dify_api,
         "_metadata_anchor_db_fallback_records",
@@ -4900,7 +5019,7 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4925,7 +5044,7 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
 def test_dify_metadata_anchor_sibling_scope_is_opt_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     city_dataset = uuid.uuid4()
     district_dataset = uuid.uuid4()
@@ -4969,7 +5088,7 @@ def test_dify_metadata_anchor_sibling_scope_is_opt_in(
 def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     north_service_dataset = uuid.uuid4()
     north_qa_dataset = uuid.uuid4()
@@ -5022,7 +5141,7 @@ def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
 def test_dify_mapping_does_not_inherit_routes_without_declaration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     first_dataset = uuid.uuid4()
     second_dataset = uuid.uuid4()
@@ -5051,7 +5170,7 @@ def test_dify_mapping_does_not_inherit_routes_without_declaration(
 
 
 def test_dify_mapping_can_inherit_shared_subject_routes(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     district_service_dataset = uuid.uuid4()
     district_qa_dataset = uuid.uuid4()
@@ -5090,7 +5209,7 @@ def test_dify_mapping_can_inherit_shared_subject_routes(monkeypatch: pytest.Monk
 
 
 def test_dify_mapping_applies_strict_scope_to_inherited_routes(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     base_dataset = uuid.uuid4()
     route_dataset = uuid.uuid4()
@@ -5122,7 +5241,7 @@ def test_dify_mapping_applies_strict_scope_to_inherited_routes(monkeypatch: pyte
 
 
 def test_dify_mapping_requires_explicit_mapping_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     dataset_id = uuid.uuid4()
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
@@ -5140,7 +5259,7 @@ def test_dify_mapping_requires_explicit_mapping_by_default(monkeypatch: pytest.M
 def test_dify_mapping_can_allow_direct_dataset_uuid_when_opted_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     dataset_id = uuid.uuid4()
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
@@ -5160,7 +5279,7 @@ def test_dify_mapping_can_allow_direct_dataset_uuid_when_opted_in(
 def test_dify_mapping_rejects_direct_dataset_uuid_opt_in_in_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     dataset_id = uuid.uuid4()
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
@@ -5170,7 +5289,7 @@ def test_dify_mapping_rejects_direct_dataset_uuid_opt_in_in_production(
         "allow_dataset_uuid",
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "is_production_env", lambda: True, raising=True)
+    monkeypatch.setattr(knowledge_scope, "is_production_env", lambda: True, raising=True)
 
     with pytest.raises(HTTPException, match="Dify knowledge mapping not found"):
         dify_api._resolve_knowledge_dataset_scope(str(dataset_id), query="test")
@@ -5179,7 +5298,7 @@ def test_dify_mapping_rejects_direct_dataset_uuid_opt_in_in_production(
 def test_dify_inherited_query_routes_follow_declared_source_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     first_dataset = uuid.uuid4()
     second_dataset = uuid.uuid4()
@@ -5215,7 +5334,7 @@ def test_dify_inherited_query_routes_follow_declared_source_order(
 def test_dify_local_query_route_overrides_inherited_route(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     inherited_dataset = uuid.uuid4()
     local_dataset = uuid.uuid4()
@@ -5245,7 +5364,7 @@ def test_dify_local_query_route_overrides_inherited_route(
 
 
 def test_dify_metadata_anchor_fallback_query_terms_prioritize_specific_phrases() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     terms = dify_api._metadata_anchor_fallback_query_terms("天宁区学区划分查询咨询电话是多少")
 
@@ -5254,7 +5373,7 @@ def test_dify_metadata_anchor_fallback_query_terms_prioritize_specific_phrases()
 
 
 def test_dify_metadata_anchor_fallback_query_terms_keep_short_service_names_early() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     terms = dify_api._metadata_anchor_fallback_query_terms("常州市职业介绍什么时候可以办")
 
@@ -5264,7 +5383,7 @@ def test_dify_metadata_anchor_fallback_query_terms_keep_short_service_names_earl
 def test_dify_metadata_anchor_service_terms_only_remove_declared_area_and_question_noise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5325,7 +5444,7 @@ def test_dify_metadata_anchor_service_terms_only_remove_declared_area_and_questi
 def test_dify_metadata_anchor_service_terms_strip_generic_item_suffix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
@@ -5341,11 +5460,11 @@ def test_dify_metadata_anchor_service_terms_strip_generic_item_suffix(
 def test_dify_query_treats_approval_verification_as_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
-    assert dify_api._query_has_specific_service_anchor_candidate(
+    assert query_terms._query_has_specific_service_anchor_candidate(
         "城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、受理条件、承诺办结时限。",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
@@ -5354,7 +5473,7 @@ def test_dify_query_treats_approval_verification_as_service_anchor(
 def test_dify_metadata_anchor_service_terms_keep_literal_title_before_plugin_rewrites(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5379,7 +5498,7 @@ def test_dify_metadata_anchor_service_terms_keep_literal_title_before_plugin_rew
 def test_dify_metadata_anchor_service_terms_preserve_quoted_title_punctuation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
@@ -5395,7 +5514,7 @@ def test_dify_metadata_anchor_service_terms_preserve_quoted_title_punctuation(
 def test_dify_metadata_anchor_service_terms_do_not_strip_long_title_as_admin_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5419,7 +5538,7 @@ def test_dify_metadata_anchor_service_terms_do_not_strip_long_title_as_admin_pre
 def test_dify_metadata_anchor_service_terms_only_use_explicit_cutoffs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5442,7 +5561,7 @@ def test_dify_metadata_anchor_service_terms_only_use_explicit_cutoffs(
 def test_dify_response_labels_do_not_become_service_title_cutoffs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5451,13 +5570,13 @@ def test_dify_response_labels_do_not_become_service_title_cutoffs(
         fast_response_field_rules=[{"label": "联系方式", "markers": ["联系电话"]}],
     )
 
-    assert dify_api._service_anchor_cutoff_terms_for_policy_refs((_DEMO_PLUGIN_REF,)) == ()
+    assert retrieval_policy.service_anchor_cutoff_terms_for_policy_refs((_DEMO_PLUGIN_REF,)) == ()
 
 
 def test_dify_non_admin_anchor_alias_does_not_strip_service_title_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5481,7 +5600,7 @@ def test_dify_non_admin_anchor_alias_does_not_strip_service_title_prefix(
 def test_dify_declared_admin_anchor_alias_strips_long_area_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5506,7 +5625,7 @@ def test_dify_declared_admin_anchor_alias_strips_long_area_prefix(
 def test_dify_declared_admin_alias_does_not_destroy_a_service_title_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5524,7 +5643,7 @@ def test_dify_declared_admin_alias_does_not_destroy_a_service_title_prefix(
         "常州市民卡怎么办理？",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
-    title_terms = dify_api._metadata_anchor_title_query_terms(
+    title_terms = query_policy._metadata_anchor_title_query_terms(
         "常州市民卡怎么办理？",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
@@ -5546,11 +5665,11 @@ def test_dify_does_not_guess_undeclared_administrative_areas(
     query: str,
     expected: str,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api, anchor_fields=[])
 
-    cleaned = dify_api._strip_service_anchor_query_noise(
+    cleaned = query_terms._strip_service_anchor_query_noise(
         query,
         noise_terms=tuple(_demo_service_anchor_noise_terms()),
     )
@@ -5561,7 +5680,7 @@ def test_dify_does_not_guess_undeclared_administrative_areas(
 def test_dify_metadata_anchor_service_terms_prioritize_quoted_service_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
@@ -5578,7 +5697,7 @@ def test_dify_metadata_anchor_service_terms_prioritize_quoted_service_title(
 def test_dify_compaction_keeps_mixed_intent_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5607,7 +5726,7 @@ def test_dify_compaction_keeps_mixed_intent_evidence(
 
 
 def test_dify_mixed_intent_retrieval_queries_do_not_use_platform_business_terms_without_policy() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     queries = dify_api._mixed_intent_retrieval_queries(
         "我想同时了解身份证补领需要什么材料，另外怎么查询办理进度？",
@@ -5620,7 +5739,7 @@ def test_dify_mixed_intent_retrieval_queries_do_not_use_platform_business_terms_
 def test_dify_mixed_intent_retrieval_queries_carry_subject_from_plugin_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5643,7 +5762,7 @@ def test_dify_mixed_intent_retrieval_queries_carry_subject_from_plugin_policy(
 def test_dify_mixed_intent_retrieval_queries_split_list_parts_with_subject(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5667,7 +5786,7 @@ def test_dify_mixed_intent_retrieval_queries_split_list_parts_with_subject(
 def test_dify_mixed_intent_retrieval_queries_expand_multi_value_policy_slots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5698,7 +5817,7 @@ def test_dify_mixed_intent_retrieval_queries_expand_multi_value_policy_slots(
 def test_dify_mixed_intent_retrieval_queries_split_chinese_list_conjunctions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5717,7 +5836,7 @@ def test_dify_mixed_intent_retrieval_queries_split_chinese_list_conjunctions(
 
     query = "我想办“Alpha Package”，先帮我看下涉及事项、材料和办理入口/电话。"
 
-    assert dify_api._query_has_mixed_intent(query)
+    assert scoring._query_has_mixed_intent(query)
     assert dify_api._mixed_intent_retrieval_queries(
         query,
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
@@ -5733,7 +5852,7 @@ def test_dify_mixed_intent_retrieval_queries_split_chinese_list_conjunctions(
 def test_dify_mixed_intent_retrieval_queries_keep_corner_quoted_subject(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5765,7 +5884,7 @@ def test_dify_mixed_intent_retrieval_queries_keep_corner_quoted_subject(
 def test_dify_mixed_intent_retrieval_queries_infer_unquoted_compact_subject(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5799,7 +5918,7 @@ def test_dify_mixed_intent_retrieval_queries_infer_unquoted_compact_subject(
 def test_dify_mixed_intent_retrieval_queries_infer_reversed_unquoted_subject(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5832,12 +5951,12 @@ def test_dify_mixed_intent_retrieval_queries_infer_reversed_unquoted_subject(
 def test_dify_compound_answer_prompt_is_mixed_intent_for_preflight_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     query = "关于Alpha Desk，请合并回答：在哪里办理、需要多长时间、是否收费？"
 
-    assert dify_api._query_has_mixed_intent(query)
+    assert scoring._query_has_mixed_intent(query)
     assert not dify_api._query_allows_metadata_anchor_preflight(
         query,
         query_prefers_question_anchor=True,
@@ -5849,12 +5968,12 @@ def test_dify_compound_answer_prompt_is_mixed_intent_for_preflight_gate(
 def test_dify_quoted_service_mixed_intent_allows_metadata_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     query = "我要办理“Alpha Desk”，需要哪些材料？同时告诉我在哪里办理、是否收费。"
 
-    assert dify_api._query_has_mixed_intent(query)
+    assert scoring._query_has_mixed_intent(query)
     assert dify_api._query_allows_metadata_anchor_preflight(
         query,
         query_prefers_question_anchor=True,
@@ -5866,7 +5985,7 @@ def test_dify_quoted_service_mixed_intent_allows_metadata_preflight(
 def test_dify_quoted_service_anchor_prefers_service_lookup_before_broad_question_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     query = "我要办理“Alpha Desk”，需要哪些材料？同时告诉我在哪里办理、是否收费。"
@@ -5886,7 +6005,6 @@ def test_dify_quoted_service_anchor_prefers_service_lookup_before_broad_question
 
 
 def test_dify_quoted_anchor_match_rejects_slot_only_qa() -> None:
-    import app.api.v1.integrations_dify as dify_api
 
     query = "我要办理“补发《药品经营许可证》”，需要哪些材料？同时告诉我在哪里办理、是否收费。"
     slot_only_record = {
@@ -5911,20 +6029,20 @@ def test_dify_quoted_anchor_match_rejects_slot_only_qa() -> None:
         "metadata": {"service_name": "补发《药品经营许可证》"},
     }
 
-    assert not dify_api._record_matches_quoted_query_anchor(slot_only_record, query=query)
-    assert dify_api._record_matches_quoted_query_anchor(exact_qa_record, query=query)
-    assert dify_api._record_matches_quoted_query_anchor(exact_service_record, query=query)
+    assert not record_ranking._record_matches_quoted_query_anchor(slot_only_record, query=query)
+    assert record_ranking._record_matches_quoted_query_anchor(exact_qa_record, query=query)
+    assert record_ranking._record_matches_quoted_query_anchor(exact_service_record, query=query)
 
 
 def test_dify_plugin_block_term_disables_metadata_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api, metadata_anchor_preflight_block_terms=["Package"])
     query = "我想办理“Alpha Package”，请同时说明涉及哪些事项、主要材料、办理渠道和联系电话。"
 
-    assert dify_api._query_has_mixed_intent(query)
+    assert scoring._query_has_mixed_intent(query)
     assert not dify_api._query_allows_metadata_anchor_preflight(
         query,
         query_prefers_question_anchor=True,
@@ -5936,7 +6054,7 @@ def test_dify_plugin_block_term_disables_metadata_preflight(
 def test_dify_mixed_intent_exact_service_anchor_filters_slot_noise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -5988,7 +6106,7 @@ def test_dify_mixed_intent_exact_service_anchor_filters_slot_noise(
 def test_dify_mixed_intent_unquoted_anchor_keeps_supplemental_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -6037,7 +6155,7 @@ def test_dify_mixed_intent_unquoted_anchor_keeps_supplemental_evidence(
 def test_dify_mixed_intent_subquery_strong_question_anchor_beats_generic_primary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -6082,7 +6200,7 @@ def test_dify_mixed_intent_subquery_strong_question_anchor_beats_generic_primary
 def test_dify_mixed_intent_exact_anchor_synthesizes_plugin_slot_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -6169,7 +6287,7 @@ def test_dify_mixed_intent_exact_anchor_synthesizes_plugin_slot_record(
 def test_dify_mixed_intent_exact_anchor_orders_split_section_siblings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     source_record_id = "alpha-package"
     _patch_demo_policy(
@@ -6268,7 +6386,7 @@ def test_dify_mixed_intent_exact_anchor_orders_split_section_siblings(
 def test_dify_mixed_intent_compacts_unquoted_exact_entity_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -6312,7 +6430,7 @@ def test_dify_mixed_intent_compacts_unquoted_exact_entity_answer(
 def test_dify_mixed_intent_keeps_slot_records_over_single_exact_summary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -6352,7 +6470,7 @@ def test_dify_mixed_intent_keeps_slot_records_over_single_exact_summary(
 
 
 def test_dify_metadata_anchor_bonus_matches_case_title_overlap() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     record = {
         "content": "一件事：开办餐饮店“一件事”\n章节：系统入口",
@@ -6372,7 +6490,7 @@ def test_dify_metadata_anchor_bonus_matches_case_title_overlap() -> None:
 
 
 def test_dify_metadata_anchor_confident_for_contained_case_title() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     record = {
         "content": "一件事：开办餐饮店“一件事”\n章节：系统入口",
@@ -6391,11 +6509,11 @@ def test_dify_metadata_anchor_confident_for_contained_case_title() -> None:
 def test_dify_metadata_anchor_title_terms_include_short_cjk_entity_terms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
-    terms = dify_api._metadata_anchor_title_query_terms(
+    terms = query_policy._metadata_anchor_title_query_terms(
         "餐饮店设立“一件事”办理入口在哪里",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
@@ -6407,7 +6525,7 @@ def test_dify_metadata_anchor_title_terms_include_short_cjk_entity_terms(
 def test_dify_service_anchor_priority_ignores_generic_how_to_phrases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
 
@@ -6436,11 +6554,11 @@ def test_dify_service_anchor_priority_ignores_generic_how_to_phrases(
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
     assert service_terms[0] == "保健食品广告审查"
-    assert dify_api._query_has_specific_service_anchor_candidate(
+    assert query_terms._query_has_specific_service_anchor_candidate(
         "保健食品广告审查是不是能办？办理形式、办理地点、承诺办结时限，最好给我依据。",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
-    assert "service_name" in dify_api._exact_query_anchor_fields_for_policy_refs((_DEMO_PLUGIN_REF,))
+    assert "service_name" in query_policy._exact_query_anchor_fields_for_policy_refs((_DEMO_PLUGIN_REF,))
     compacted = dify_api._compact_mixed_intent_exact_anchor_records(
         [
             {
@@ -6458,7 +6576,7 @@ def test_dify_service_anchor_priority_ignores_generic_how_to_phrases(
 
 
 def test_dify_question_anchor_strength_matches_reordered_cjk_question() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     record = {
         "content": "问题：苏服办APP如何办居家适老化改造\n答案：在苏服办APP内搜索居家适老化改造。",
@@ -6477,7 +6595,7 @@ def test_dify_question_anchor_strength_matches_reordered_cjk_question() -> None:
 
 
 def test_dify_question_anchor_strength_prefers_specific_question_overlap() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     query = "三井街道公安窗口搬迁至哪里"
     broad_record = {
@@ -6503,7 +6621,7 @@ def test_dify_question_anchor_strength_prefers_specific_question_overlap() -> No
 
 
 def test_dify_question_anchor_strength_accepts_high_overlap_declarative_rewrite() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     record = {
         "content": "问题：道路运输从业人员出现哪些情况会被注销从业资格证件？\n答案：注销情形说明。",
@@ -6524,7 +6642,7 @@ def test_dify_question_anchor_strength_accepts_high_overlap_declarative_rewrite(
 def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -6621,7 +6739,7 @@ def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
 def test_dify_metadata_anchor_db_question_query_stops_after_question_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     queried_fields: list[str] = []
 
@@ -6659,7 +6777,7 @@ def test_dify_metadata_anchor_db_question_query_stops_after_question_fields(
 def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -6730,7 +6848,7 @@ def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query
 def test_dify_metadata_anchor_db_can_prefer_question_anchor_for_mixed_subquery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -6816,7 +6934,7 @@ def test_dify_metadata_anchor_db_can_prefer_question_anchor_for_mixed_subquery(
 def test_dify_metadata_anchor_db_checks_question_first_for_explicit_question_service_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -6887,7 +7005,7 @@ def test_dify_metadata_anchor_db_checks_question_first_for_explicit_question_ser
 def test_dify_metadata_anchor_db_does_not_text_scan_metadata_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     cast_called = False
 
@@ -6945,6 +7063,7 @@ def test_dify_metadata_anchor_db_does_not_text_scan_metadata_by_default(
         top_k=5,
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
+        account_id="system:dify",
     )
 
     assert fallback_records == []
@@ -6954,7 +7073,7 @@ def test_dify_metadata_anchor_db_does_not_text_scan_metadata_by_default(
 def test_dify_metadata_anchor_db_skips_when_existing_records_have_confident_metadata_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     query_count = 0
 
@@ -7005,6 +7124,7 @@ def test_dify_metadata_anchor_db_skips_when_existing_records_have_confident_meta
                 },
             }
         ],
+        account_id="system:dify",
     )
 
     assert fallback_records == []
@@ -7015,8 +7135,8 @@ def test_dify_metadata_anchor_db_skips_when_existing_records_have_confident_meta
 async def test_dify_single_dataset_keeps_dataset_ids_when_kg_assist_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.api.v1.rag as rag_api
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.retrieval.requests as retrieval_requests
 
     captured: dict[str, object] = {}
 
@@ -7027,14 +7147,12 @@ async def test_dify_single_dataset_keeps_dataset_ids_when_kg_assist_disabled(
     async def _fake_retrieve_evidence(**kwargs):  # noqa: ANN003, ANN202
         captured["body"] = kwargs["body"]
 
-        class _Response:
-            citations: list[dict[str, object]] = []
+        return EvidenceRetrieveResponse(query_for_retrieval=kwargs["body"].query, citations=[])
 
-        return _Response()
-
-    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
+    monkeypatch.setattr(retrieval_requests, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
 
     dataset_id = uuid.uuid4()
+    kg_flags = request_preferences._resolve_dify_kg_flags(dify_api.DifyRetrievalSetting())
     await dify_api._retrieve_dataset_citations(
         db=_DummyDB(),
         tenant_id=uuid.uuid4(),
@@ -7043,6 +7161,14 @@ async def test_dify_single_dataset_keeps_dataset_ids_when_kg_assist_disabled(
         query="普通检索",
         top_k=5,
         score_threshold=0.0,
+        requested_top_k=5,
+        enable_kg_query_expansion=kg_flags.enable_query_expansion,
+        enable_kg_chunk_injection=kg_flags.enable_chunk_injection,
+        kg_chunk_injection_max_chunks=kg_flags.chunk_injection_max_chunks,
+        enable_kg_chunk_boost=kg_flags.enable_chunk_boost,
+        kg_chunk_boost_weight=kg_flags.chunk_boost_weight,
+        kg_chunk_boost_max_promoted=kg_flags.chunk_boost_max_promoted,
+        enable_reranker=dify_api._dify_external_reranker_enabled(),
     )
 
     body = captured["body"]
@@ -7057,8 +7183,8 @@ async def test_dify_single_dataset_keeps_dataset_ids_when_kg_assist_disabled(
 async def test_dify_direct_retrieval_request_can_override_kg_assist_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.api.v1.rag as rag_api
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.retrieval.requests as retrieval_requests
 
     captured: dict[str, object] = {}
 
@@ -7069,14 +7195,12 @@ async def test_dify_direct_retrieval_request_can_override_kg_assist_settings(
     async def _fake_retrieve_evidence(**kwargs):  # noqa: ANN003, ANN202
         captured["body"] = kwargs["body"]
 
-        class _Response:
-            citations: list[dict[str, object]] = []
+        return EvidenceRetrieveResponse(query_for_retrieval=kwargs["body"].query, citations=[])
 
-        return _Response()
-
-    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
+    monkeypatch.setattr(retrieval_requests, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
 
     dataset_id = uuid.uuid4()
+    kg_flags = request_preferences._resolve_dify_kg_flags(dify_api.DifyRetrievalSetting())
     await dify_api._retrieve_dataset_citations(
         db=_DummyDB(),
         tenant_id=uuid.uuid4(),
@@ -7088,6 +7212,11 @@ async def test_dify_direct_retrieval_request_can_override_kg_assist_settings(
         enable_kg_query_expansion=False,
         enable_kg_chunk_injection=False,
         enable_kg_chunk_boost=False,
+        requested_top_k=5,
+        kg_chunk_injection_max_chunks=kg_flags.chunk_injection_max_chunks,
+        kg_chunk_boost_weight=kg_flags.chunk_boost_weight,
+        kg_chunk_boost_max_promoted=kg_flags.chunk_boost_max_promoted,
+        enable_reranker=dify_api._dify_external_reranker_enabled(),
     )
 
     body = captured["body"]
@@ -7100,23 +7229,21 @@ async def test_dify_direct_retrieval_request_can_override_kg_assist_settings(
 
 @pytest.mark.asyncio
 async def test_dify_multi_dataset_scope_keeps_dataset_ids_for_rag(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.api.v1.rag as rag_api
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.retrieval.requests as retrieval_requests
 
     captured: dict[str, object] = {}
 
     async def _fake_retrieve_evidence(**kwargs):  # noqa: ANN003, ANN202
         captured["body"] = kwargs["body"]
 
-        class _Response:
-            citations: list[dict[str, object]] = []
+        return EvidenceRetrieveResponse(query_for_retrieval=kwargs["body"].query, citations=[])
 
-        return _Response()
-
-    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
+    monkeypatch.setattr(retrieval_requests, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
 
     dataset_a = uuid.uuid4()
     dataset_b = uuid.uuid4()
+    kg_flags = request_preferences._resolve_dify_kg_flags(dify_api.DifyRetrievalSetting())
     await dify_api._retrieve_dataset_citations(
         db=_DummyDB(),
         tenant_id=uuid.uuid4(),
@@ -7125,6 +7252,14 @@ async def test_dify_multi_dataset_scope_keeps_dataset_ids_for_rag(monkeypatch: p
         query="跨库检索",
         top_k=5,
         score_threshold=0.0,
+        requested_top_k=5,
+        enable_kg_query_expansion=kg_flags.enable_query_expansion,
+        enable_kg_chunk_injection=kg_flags.enable_chunk_injection,
+        kg_chunk_injection_max_chunks=kg_flags.chunk_injection_max_chunks,
+        enable_kg_chunk_boost=kg_flags.enable_chunk_boost,
+        kg_chunk_boost_weight=kg_flags.chunk_boost_weight,
+        kg_chunk_boost_max_promoted=kg_flags.chunk_boost_max_promoted,
+        enable_reranker=dify_api._dify_external_reranker_enabled(),
     )
 
     body = captured["body"]
@@ -7133,7 +7268,7 @@ async def test_dify_multi_dataset_scope_keeps_dataset_ids_for_rag(monkeypatch: p
 
 
 def test_dify_retrieval_uses_rag_path_without_fast_chunk_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7168,9 +7303,9 @@ def test_dify_retrieval_uses_rag_path_without_fast_chunk_runtime(monkeypatch: py
 
     assert not any("fast_chunk" in name.lower() for name in dir(dify_api))
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7191,7 +7326,7 @@ def test_dify_retrieval_uses_rag_path_without_fast_chunk_runtime(monkeypatch: py
 
 
 def test_dify_retrieval_runs_supplemental_queries_for_mixed_intent(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7254,9 +7389,9 @@ def test_dify_retrieval_runs_supplemental_queries_for_mixed_intent(monkeypatch: 
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7287,7 +7422,7 @@ def test_dify_retrieval_runs_supplemental_queries_for_mixed_intent(monkeypatch: 
 def test_dify_retrieval_skips_mixed_intent_queries_when_exact_anchor_is_complete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7338,9 +7473,9 @@ def test_dify_retrieval_skips_mixed_intent_queries_when_exact_anchor_is_complete
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7363,7 +7498,7 @@ def test_dify_retrieval_skips_mixed_intent_queries_when_exact_anchor_is_complete
 def test_dify_retrieval_skips_unquoted_mixed_intent_when_exact_anchor_record_is_complete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7412,9 +7547,9 @@ def test_dify_retrieval_skips_unquoted_mixed_intent_when_exact_anchor_record_is_
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7437,7 +7572,7 @@ def test_dify_retrieval_skips_unquoted_mixed_intent_when_exact_anchor_record_is_
 def test_dify_retrieval_does_not_skip_mixed_intent_queries_for_unquoted_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7502,9 +7637,9 @@ def test_dify_retrieval_does_not_skip_mixed_intent_queries_for_unquoted_anchor(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7529,7 +7664,7 @@ def test_dify_retrieval_does_not_skip_mixed_intent_queries_for_unquoted_anchor(
 
 
 def test_dify_retrieval_request_passes_kg_overrides_to_rag(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7551,7 +7686,7 @@ def test_dify_retrieval_request_passes_kg_overrides_to_rag(monkeypatch: pytest.M
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7580,7 +7715,7 @@ def test_dify_retrieval_request_passes_kg_overrides_to_rag(monkeypatch: pytest.M
 
 
 def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_a = uuid.uuid4()
@@ -7629,7 +7764,7 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7662,7 +7797,7 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
 
 
 def test_dify_retrieval_caps_top_k_for_external_timeout_budget(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -7694,9 +7829,9 @@ def test_dify_retrieval_caps_top_k_for_external_timeout_budget(monkeypatch: pyte
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7718,7 +7853,7 @@ def test_dify_retrieval_caps_top_k_for_external_timeout_budget(monkeypatch: pyte
 
 
 def test_dify_compacts_high_confidence_score_cliff_records(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
         dify_api.settings,
@@ -7758,7 +7893,7 @@ def test_dify_compacts_high_confidence_score_cliff_records(monkeypatch: pytest.M
 
 
 def test_dify_compaction_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
         dify_api.settings,
@@ -7779,7 +7914,7 @@ def test_dify_compaction_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     record = {
@@ -7803,7 +7938,7 @@ def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
         )
         >= dify_api._QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
     )
-    assert dify_api._record_question_anchor_has_intent_conflict(
+    assert anchor_strength._record_question_anchor_has_intent_conflict(
         record,
         query=query,
         anchor_fields=("question", "primary_alias"),
@@ -7824,7 +7959,7 @@ def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
 
 
 def test_dify_strong_question_anchor_records_require_answerful_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     answerful = {
@@ -7858,12 +7993,11 @@ def test_dify_strong_question_anchor_records_require_answerful_content(monkeypat
 def test_dify_record_ranking_uses_registered_plugin_retrieval_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -7872,7 +8006,6 @@ def test_dify_record_ranking_uses_registered_plugin_retrieval_policy(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -7897,12 +8030,11 @@ def test_dify_record_ranking_uses_registered_plugin_retrieval_policy(
 def test_dify_record_ranking_uses_plugin_policy_from_indexed_metadata_view(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -7911,7 +8043,6 @@ def test_dify_record_ranking_uses_plugin_policy_from_indexed_metadata_view(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -7942,12 +8073,11 @@ def test_dify_record_ranking_uses_plugin_policy_from_indexed_metadata_view(
 def test_dify_record_ranking_uses_plugin_query_expansion_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -7956,7 +8086,6 @@ def test_dify_record_ranking_uses_plugin_query_expansion_fields(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -7984,12 +8113,11 @@ def test_dify_record_ranking_uses_plugin_query_expansion_fields(
 def test_dify_record_ranking_prefers_declared_anchor_over_slot_only_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8008,7 +8136,6 @@ def test_dify_record_ranking_prefers_declared_anchor_over_slot_only_match(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -8036,12 +8163,11 @@ def test_dify_record_ranking_prefers_declared_anchor_over_slot_only_match(
 def test_dify_record_ranking_uses_knowledge_map_plugin_policy_when_records_lack_plugin_ref(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8052,7 +8178,6 @@ def test_dify_record_ranking_uses_knowledge_map_plugin_policy_when_records_lack_
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -8092,12 +8217,11 @@ def test_dify_record_ranking_uses_knowledge_map_plugin_policy_when_records_lack_
 def test_dify_record_ranking_uses_plugin_rerank_features(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8106,7 +8230,6 @@ def test_dify_record_ranking_uses_plugin_rerank_features(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -8134,7 +8257,7 @@ def test_dify_record_ranking_uses_plugin_rerank_features(
 def test_dify_record_ranking_protects_exact_service_anchor_from_generic_qa_policy_boost(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -8195,12 +8318,11 @@ def test_dify_record_ranking_protects_exact_service_anchor_from_generic_qa_polic
 def test_dify_record_ranking_demotes_plugin_anchor_mismatches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8218,7 +8340,6 @@ def test_dify_record_ranking_demotes_plugin_anchor_mismatches(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -8248,12 +8369,11 @@ def test_dify_record_ranking_demotes_plugin_anchor_mismatches(
 def test_dify_record_policy_diagnostics_summarize_active_plugin_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8262,7 +8382,6 @@ def test_dify_record_policy_diagnostics_summarize_active_plugin_policy(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -8298,12 +8417,11 @@ def test_dify_record_policy_diagnostics_summarize_active_plugin_policy(
 def test_dify_record_policy_diagnostics_split_policy_signal_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8314,7 +8432,6 @@ def test_dify_record_policy_diagnostics_split_policy_signal_counts(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
     records = [
         {
@@ -8356,7 +8473,7 @@ def test_dify_record_policy_diagnostics_split_policy_signal_counts(
 def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -8371,9 +8488,8 @@ def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
         (f'{{"city": {{"dataset_ids": ["{dataset_id}"],"plugin_refs": ["{plugin_ref}"]}}}}'),
         raising=False,
     )
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8382,7 +8498,6 @@ def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
 
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
@@ -8396,9 +8511,9 @@ def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8430,7 +8545,7 @@ def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
 def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -8446,9 +8561,8 @@ def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
         (f'{{"city": {{"dataset_ids": ["{dataset_id}"],"plugin_refs": ["{plugin_ref}"]}}}}'),
         raising=False,
     )
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8457,7 +8571,6 @@ def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
@@ -8472,9 +8585,9 @@ def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8501,7 +8614,7 @@ def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
 def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -8521,9 +8634,8 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
         (f'{{"city": {{"dataset_ids": ["{dataset_id}"],"plugin_refs": ["{plugin_ref}"]}}}}'),
         raising=False,
     )
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -8532,7 +8644,6 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
@@ -8547,9 +8658,9 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8571,7 +8682,7 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
 def test_dify_fast_latency_profile_uses_single_small_retrieval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -8650,7 +8761,7 @@ def test_dify_fast_latency_profile_uses_single_small_retrieval(
 def test_dify_fast_latency_profile_limits_candidates_and_compacts_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -8700,9 +8811,9 @@ def test_dify_fast_latency_profile_limits_candidates_and_compacts_context(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8734,7 +8845,7 @@ def test_dify_fast_latency_profile_limits_candidates_and_compacts_context(
 
 
 def test_dify_fast_response_enforces_total_context_budget(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 3, raising=False)
@@ -8770,7 +8881,7 @@ def test_dify_fast_response_enforces_total_context_budget(monkeypatch: pytest.Mo
 def test_dify_fast_response_trims_first_record_when_budget_is_smaller_than_compacted_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2, raising=False)
@@ -8811,7 +8922,7 @@ def test_dify_fast_response_trims_first_record_when_budget_is_smaller_than_compa
 
 
 def test_dify_fast_response_prefers_exact_field_label_over_generic_marker(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -8854,7 +8965,7 @@ def test_dify_fast_response_prefers_exact_field_label_over_generic_marker(monkey
 
 
 def test_dify_fast_response_does_not_backfill_exact_field_with_generic_marker(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -8897,7 +9008,7 @@ def test_dify_fast_response_does_not_backfill_exact_field_with_generic_marker(mo
 
 
 def test_dify_fast_response_can_compact_from_plugin_metadata_hints(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     response_hints = _demo_response_hints()
     response_hints["answer_highlight_metadata_fields"] = [  # type: ignore[index]
@@ -8971,7 +9082,7 @@ def test_dify_fast_response_can_compact_from_plugin_metadata_hints(monkeypatch: 
 
 
 def test_dify_fast_response_compacts_long_qa_answer_by_query_terms(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400, raising=False)
@@ -9014,7 +9125,7 @@ def test_dify_fast_response_compacts_long_qa_answer_by_query_terms(monkeypatch: 
 def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -9072,7 +9183,7 @@ def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
     )
     monkeypatch.setattr(
         dify_api,
-        "_query_has_specific_service_anchor_candidate",
+        "_query_has_specific_fast_metadata_anchor_candidate",
         lambda *_args, **_kwargs: True,
         raising=True,
     )
@@ -9111,7 +9222,7 @@ def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
 def test_dify_fast_latency_profile_allows_quoted_question_metadata_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -9163,7 +9274,7 @@ def test_dify_fast_latency_profile_allows_quoted_question_metadata_preflight(
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        record_ranking,
         "_query_has_specific_service_anchor_candidate",
         lambda *_args, **_kwargs: False,
         raising=True,
@@ -9206,7 +9317,7 @@ def test_dify_fast_latency_profile_allows_quoted_question_metadata_preflight(
 def test_dify_fast_latency_profile_skips_broad_metadata_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -9250,7 +9361,7 @@ def test_dify_fast_latency_profile_skips_broad_metadata_preflight(
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        record_ranking,
         "_query_has_specific_service_anchor_candidate",
         lambda *_args, **_kwargs: False,
         raising=True,
@@ -9282,15 +9393,14 @@ def test_dify_retrieval_logs_policy_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
     _patch_dify_retrieval_settings(monkeypatch, dify_api, token=token, dataset_id=dataset_id)
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -9299,7 +9409,6 @@ def test_dify_retrieval_logs_policy_diagnostics(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
 
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
@@ -9313,9 +9422,9 @@ def test_dify_retrieval_logs_policy_diagnostics(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9355,14 +9464,14 @@ def test_dify_retrieval_logs_policy_diagnostics(
 
 
 def test_dify_integration_does_not_expose_fast_chunk_helpers() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     assert "_retrieve_fast_chunk_citations" not in dir(dify_api)
     assert "_fast_chunk_candidate_score" not in dir(dify_api)
 
 
 def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     city_dataset = uuid.uuid4()
@@ -9401,9 +9510,9 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9424,7 +9533,7 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
 
 
 def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     city_dataset = uuid.uuid4()
@@ -9477,9 +9586,9 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9502,7 +9611,7 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
 def test_dify_query_routes_prioritize_matching_hints_without_including_unmatched_hints_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     base_dataset = uuid.uuid4()
     one_thing_dataset = uuid.uuid4()
@@ -9527,8 +9636,8 @@ def test_dify_query_routes_prioritize_matching_hints_without_including_unmatched
         raising=False,
     )
 
-    assert dify_api._resolve_knowledge_dataset_ids("city", query="普通查询") == [base_dataset]
-    assert dify_api._resolve_knowledge_dataset_ids("city", query="不动产登记交易中心地址") == [
+    assert knowledge_scope.resolve_dataset_ids("city", query="普通查询") == [base_dataset]
+    assert knowledge_scope.resolve_dataset_ids("city", query="不动产登记交易中心地址") == [
         department_qa_dataset,
         base_dataset,
     ]
@@ -9537,7 +9646,7 @@ def test_dify_query_routes_prioritize_matching_hints_without_including_unmatched
 def test_dify_unmatched_route_hints_can_be_enabled_for_aggregate_knowledge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     base_dataset = uuid.uuid4()
@@ -9599,9 +9708,9 @@ def test_dify_unmatched_route_hints_can_be_enabled_for_aggregate_knowledge(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9625,7 +9734,7 @@ def test_dify_unmatched_route_hints_can_be_enabled_for_aggregate_knowledge(
 def test_dify_matched_replace_route_prioritizes_route_dataset_without_narrowing_primary_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     base_dataset = uuid.uuid4()
@@ -9676,9 +9785,9 @@ def test_dify_matched_replace_route_prioritizes_route_dataset_without_narrowing_
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9701,7 +9810,7 @@ def test_dify_matched_replace_route_prioritizes_route_dataset_without_narrowing_
 def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
     policy = {
@@ -9717,11 +9826,9 @@ def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
             "min_records": 1,
         },
     }
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
     broad_record = {
         "content": "问题：核发居民身份证（补领）\n答案：办理入口和基础说明。",
@@ -9765,7 +9872,7 @@ def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
 
 
 def test_dify_sort_prefers_exact_primary_alias_over_partial_question_match() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     partial_question = {
         "content": "问题：如何预约办事？\n答案：可在首页网上预约。",
@@ -9801,7 +9908,7 @@ def test_dify_sort_prefers_exact_primary_alias_over_partial_question_match() -> 
 
 
 def test_dify_dedupe_collapses_chunks_from_same_source_record(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     records = [
         {
@@ -9843,7 +9950,7 @@ def test_dify_dedupe_collapses_chunks_from_same_source_record(monkeypatch: pytes
 
 
 def test_dify_dedupe_prefers_answerful_duplicate_over_higher_raw_score(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     records = [
@@ -9877,7 +9984,7 @@ def test_dify_dedupe_prefers_answerful_duplicate_over_higher_raw_score(monkeypat
 
 
 def test_dify_answerfulness_score_uses_bonus_and_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     answer_record = {
@@ -9908,7 +10015,7 @@ def test_dify_answerfulness_score_uses_bonus_and_penalty(monkeypatch: pytest.Mon
 
 
 def test_dify_answer_bearing_qa_beats_anchor_only_metadata_match(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = _DEMO_PLUGIN_REF
     policy = _demo_policy(
@@ -9918,11 +10025,9 @@ def test_dify_answer_bearing_qa_beats_anchor_only_metadata_match(monkeypatch: py
         ],
         rerank_features=["question", "aliases"],
     )
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
     anchor_only_record = {
         "content": (
@@ -9958,7 +10063,7 @@ def test_dify_answer_bearing_qa_beats_anchor_only_metadata_match(monkeypatch: py
 
 
 def test_dify_question_intent_anchor_beats_broad_alias_answer(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = _DEMO_PLUGIN_REF
     policy = _demo_policy(
@@ -9968,11 +10073,9 @@ def test_dify_question_intent_anchor_beats_broad_alias_answer(monkeypatch: pytes
         ],
         rerank_features=["question", "aliases"],
     )
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
     broad_answer = {
         "content": "问题：核发居民身份证（补领）\n答案：本省户籍人员凭户口簿、驾驶证、居住证、护照其中之一办理。",
@@ -10010,7 +10113,7 @@ def test_dify_question_intent_anchor_beats_broad_alias_answer(monkeypatch: pytes
 
 
 def test_dify_compaction_keeps_strong_question_anchor_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
     policy = {
@@ -10022,11 +10125,9 @@ def test_dify_compaction_keeps_strong_question_anchor_context(monkeypatch: pytes
             "min_records": 1,
         },
     }
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
     channel_answer = {
         "content": "问题：线上业务渠道\n答案：“常州住房公积金”微信公众号、我的常州APP、江苏政务服务网。",
@@ -10062,7 +10163,7 @@ def test_dify_compaction_keeps_strong_question_anchor_context(monkeypatch: pytes
 
 
 def test_dify_query_routes_can_be_strict_scope_filters(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     base_dataset = uuid.uuid4()
     route_dataset = uuid.uuid4()
@@ -10084,14 +10185,14 @@ def test_dify_query_routes_can_be_strict_scope_filters(monkeypatch: pytest.Monke
         raising=False,
     )
 
-    assert dify_api._resolve_knowledge_dataset_ids("city", query="普通查询") == [base_dataset]
-    assert dify_api._resolve_knowledge_dataset_ids("city", query="区域甲服务卡补卡在哪里办理") == [route_dataset]
+    assert knowledge_scope.resolve_dataset_ids("city", query="普通查询") == [base_dataset]
+    assert knowledge_scope.resolve_dataset_ids("city", query="区域甲服务卡补卡在哪里办理") == [route_dataset]
 
 
 def test_dify_retrieval_preserves_short_citation_snippet_over_full_chunk_hydration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -10127,9 +10228,9 @@ def test_dify_retrieval_preserves_short_citation_snippet_over_full_chunk_hydrati
         raise AssertionError("snippet-bearing Dify citations should not trigger chunk hydration")
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10152,7 +10253,7 @@ def test_dify_retrieval_preserves_short_citation_snippet_over_full_chunk_hydrati
 def test_dify_response_hints_allow_plugin_configured_query_overlap_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     response_hints = _demo_response_hints()
     response_hints["structured_labels"] = [
@@ -10191,7 +10292,7 @@ def test_dify_response_hints_allow_plugin_configured_query_overlap_gate(
 def test_dify_sort_uses_plugin_configured_question_anchor_bonus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -10226,7 +10327,7 @@ def test_dify_sort_uses_plugin_configured_question_anchor_bonus(
 def test_dify_sort_uses_aliases_for_question_anchor_bonus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -10266,7 +10367,7 @@ def test_dify_sort_uses_aliases_for_question_anchor_bonus(
 
 
 def test_dify_sort_does_not_promote_url_evidence_for_non_entry_question() -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     unrelated_url_record = {
         "content": "问题：信用修复入口在哪里？\n答案：访问江苏政务服务网。",
@@ -10297,7 +10398,7 @@ def test_dify_sort_does_not_promote_url_evidence_for_non_entry_question() -> Non
 def test_dify_compaction_preserves_top_question_anchor_before_policy_alignment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -10340,7 +10441,7 @@ def test_dify_compaction_preserves_top_question_anchor_before_policy_alignment(
 def test_dify_compaction_does_not_drop_top_exact_answer_for_nearby_strong_questions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(
         monkeypatch,
@@ -10399,7 +10500,7 @@ def test_dify_compaction_does_not_drop_top_exact_answer_for_nearby_strong_questi
 def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lacks_plugin_ref(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -10431,7 +10532,7 @@ def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lac
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(
-        dify_api,
+        chunk_hydration,
         "_load_chunk_content_map",
         lambda **_kwargs: (_ for _ in ()).throw(
             AssertionError("snippet-bearing Dify citations should not trigger chunk hydration")
@@ -10439,7 +10540,7 @@ def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lac
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10460,7 +10561,7 @@ def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lac
 
 
 def test_dify_structured_service_hints_are_plugin_declared(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
     policy = {
@@ -10486,11 +10587,9 @@ def test_dify_structured_service_hints_are_plugin_declared(monkeypatch: pytest.M
     }
     content = "事项名称：服务卡补卡\n办理地点：区域甲政务服务中心\n收费情况：不收费"
 
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
 
     without_plugin = dify_api._content_with_answer_hints(
@@ -10513,7 +10612,7 @@ def test_dify_structured_service_hints_are_plugin_declared(monkeypatch: pytest.M
 def test_dify_response_hints_can_promote_plugin_declared_metadata_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
     policy = {
@@ -10538,11 +10637,9 @@ def test_dify_response_hints_can_promote_plugin_declared_metadata_fields(
         "answer": "请携带身份证件到窗口办理。",
     }
 
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
 
     hinted = dify_api._content_with_answer_hints(
@@ -10563,7 +10660,7 @@ def test_dify_response_hints_can_promote_plugin_declared_metadata_fields(
 def test_dify_records_hydrate_truncated_exact_anchor_slot_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     chunk_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -10587,7 +10684,7 @@ def test_dify_records_hydrate_truncated_exact_anchor_slot_content(
         hydration_calls.append(kwargs["citations"])
         return {str(chunk_id): full_content}
 
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
     citations = [
         {
             "chunk_content": "Case: Alpha Package...",
@@ -10603,7 +10700,7 @@ def test_dify_records_hydrate_truncated_exact_anchor_slot_content(
         }
     ]
 
-    records = dify_api._records_from_citations(
+    records = citation_records._records_from_citations(
         db=object(),
         tenant_id=uuid.uuid4(),
         citations=citations,
@@ -10619,7 +10716,7 @@ def test_dify_records_hydrate_truncated_exact_anchor_slot_content(
 def test_dify_subquery_records_hydrate_slots_requested_by_original_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     chunk_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -10643,7 +10740,7 @@ def test_dify_subquery_records_hydrate_slots_requested_by_original_query(
         hydration_calls.append(kwargs["citations"])
         return {str(chunk_id): full_content}
 
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
     citations = [
         {
             "chunk_content": "Case: Alpha Package...",
@@ -10659,7 +10756,7 @@ def test_dify_subquery_records_hydrate_slots_requested_by_original_query(
         }
     ]
 
-    records = dify_api._records_from_citations(
+    records = citation_records._records_from_citations(
         db=object(),
         tenant_id=uuid.uuid4(),
         citations=citations,
@@ -10676,7 +10773,7 @@ def test_dify_subquery_records_hydrate_slots_requested_by_original_query(
 def test_dify_response_hints_can_prioritize_plugin_declared_query_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
     policy = {
@@ -10711,11 +10808,9 @@ def test_dify_response_hints_can_prioritize_plugin_declared_query_fields(
         },
     }
 
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
 
     hinted = dify_api._content_with_answer_hints(
@@ -10735,7 +10830,7 @@ def test_dify_response_hints_can_prioritize_plugin_declared_query_fields(
 def test_dify_response_hints_can_promote_plugin_declared_array_metadata_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-one-thing@1.0.0:chunk"
     policy = {
@@ -10761,11 +10856,9 @@ def test_dify_response_hints_can_promote_plugin_declared_array_metadata_fields(
         "urls": ["https://cz.jszwfw.gov.cn/"],
     }
 
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
 
     hinted = dify_api._content_with_answer_hints(
@@ -10787,7 +10880,7 @@ def test_dify_response_hints_can_promote_plugin_declared_array_metadata_fields(
 def test_dify_response_hints_can_gate_declared_metadata_fields_by_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     plugin_ref = "plugin:demo-one-thing@1.0.0:chunk"
     policy = {
@@ -10818,11 +10911,9 @@ def test_dify_response_hints_can_gate_declared_metadata_fields_by_metadata(
         "materials": ["户口簿", "合法固定住所证件"],
     }
 
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: policy if ref == plugin_ref else {},
-        raising=True,
     )
 
     hinted = dify_api._content_with_answer_hints(
@@ -10842,7 +10933,7 @@ def test_dify_response_hints_can_gate_declared_metadata_fields_by_metadata(
 def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -10878,9 +10969,9 @@ def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10907,7 +10998,7 @@ def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
 def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -10942,9 +11033,9 @@ def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10974,7 +11065,7 @@ def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
 def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -11009,9 +11100,9 @@ def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11036,7 +11127,7 @@ def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints
 def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -11066,9 +11157,9 @@ def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11093,7 +11184,7 @@ def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
 def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -11126,9 +11217,9 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11156,7 +11247,7 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
 def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -11186,9 +11277,9 @@ def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11213,7 +11304,7 @@ def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
 def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_queries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -11243,9 +11334,9 @@ def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_que
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11270,7 +11361,7 @@ def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_que
 def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
@@ -11300,9 +11391,9 @@ def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11324,7 +11415,7 @@ def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
 def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11366,9 +11457,9 @@ def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11393,7 +11484,7 @@ def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
 def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11440,9 +11531,9 @@ def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11466,7 +11557,7 @@ def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
 def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_tie(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11512,9 +11603,9 @@ def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_ti
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11538,7 +11629,7 @@ def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_ti
 def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11553,9 +11644,8 @@ def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intent
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -11567,7 +11657,6 @@ def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intent
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
 
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
@@ -11589,9 +11678,9 @@ def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intent
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11615,7 +11704,7 @@ def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intent
 def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11630,9 +11719,8 @@ def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(
-        dify_api,
-        "_retrieval_policy_for_plugin_ref",
+    _patch_policy_lookup(
+        monkeypatch,
         lambda ref: (
             {
                 "schema": "mimirq.retrieval_policy.v1",
@@ -11644,7 +11732,6 @@ def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
             if ref == plugin_ref
             else {}
         ),
-        raising=False,
     )
 
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
@@ -11666,9 +11753,9 @@ def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11693,7 +11780,7 @@ def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
 def test_dify_retrieval_ignores_content_search_anchor_without_metadata_hints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11727,9 +11814,9 @@ def test_dify_retrieval_ignores_content_search_anchor_without_metadata_hints(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11753,7 +11840,7 @@ def test_dify_retrieval_ignores_content_search_anchor_without_metadata_hints(
 def test_dify_retrieval_does_not_boost_generic_anchor_terms_over_specific_hits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
@@ -11788,9 +11875,9 @@ def test_dify_retrieval_does_not_boost_generic_anchor_terms_over_specific_hits(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11812,12 +11899,12 @@ def test_dify_retrieval_does_not_boost_generic_anchor_terms_over_specific_hits(
 
 
 def test_dify_retrieval_rejects_missing_or_wrong_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "expected-token", raising=False)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11839,7 +11926,7 @@ def test_dify_retrieval_rejects_missing_or_wrong_bearer_token(monkeypatch: pytes
 def test_dify_retrieval_rejects_unmapped_dataset_uuid_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "expected-token"
     dataset_id = uuid.uuid4()
@@ -11854,7 +11941,7 @@ def test_dify_retrieval_rejects_unmapped_dataset_uuid_by_default(
         raising=False,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11876,7 +11963,7 @@ def test_dify_retrieval_rejects_unmapped_dataset_uuid_by_default(
 def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     token = "dify-test-token"
     configured_tenant_id = uuid.uuid4()
@@ -11913,9 +12000,9 @@ def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11937,7 +12024,7 @@ def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(
 def test_dify_retrieval_actor_requires_tenant_id_in_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
 
@@ -11945,13 +12032,13 @@ def test_dify_retrieval_actor_requires_tenant_id_in_production(
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "dify-test-token", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api, "is_production_env", lambda: True, raising=False)
+    monkeypatch.setattr(dify_external_api, "is_production_env", lambda: True, raising=False)
     request = SimpleNamespace(headers={})
 
     with pytest.raises(HTTPException, match="Dify external knowledge tenant is not configured"):
         dify_api._require_dify_actor(request, authorization="Bearer dify-test-token")
 
-    monkeypatch.setattr(dify_api, "is_production_env", lambda: False, raising=False)
+    monkeypatch.setattr(dify_external_api, "is_production_env", lambda: False, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "", raising=False)
 
     actor = dify_api._require_dify_actor(
@@ -11964,7 +12051,7 @@ def test_dify_retrieval_actor_requires_tenant_id_in_production(
 def test_dify_trace_conversation_id_rejects_access_to_other_account_conversation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
@@ -11972,7 +12059,7 @@ def test_dify_trace_conversation_id_rejects_access_to_other_account_conversation
     body = dify_api.DifyExternalKnowledgeRequest(knowledge_id="external-kb", query="query")
 
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="other-account"),
         raising=True,
@@ -11993,7 +12080,7 @@ def test_dify_trace_conversation_id_rejects_access_to_other_account_conversation
 def test_dify_trace_conversation_id_accepts_conversation_id_for_same_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
@@ -12001,7 +12088,7 @@ def test_dify_trace_conversation_id_accepts_conversation_id_for_same_account(
     body = dify_api.DifyExternalKnowledgeRequest(knowledge_id="external-kb", query="query")
 
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
@@ -12020,7 +12107,7 @@ def test_dify_trace_conversation_id_accepts_conversation_id_for_same_account(
 def test_dify_trace_conversation_id_rejects_mismatched_upstream_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
@@ -12031,13 +12118,13 @@ def test_dify_trace_conversation_id_rejects_mismatched_upstream_source(
         source_conversation_id="upstream-conversation-b",
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_find_dify_trace_conversation",
         lambda *_args, **_kwargs: uuid.uuid4(),
         raising=True,
@@ -12058,7 +12145,7 @@ def test_dify_trace_conversation_id_rejects_mismatched_upstream_source(
 def test_dify_metadata_anchor_db_fallback_enforces_normal_document_eligibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -12108,8 +12195,8 @@ def test_dify_metadata_anchor_db_fallback_enforces_normal_document_eligibility(
 
 
 def test_dify_metadata_condition_is_converted_to_mimirq_filter() -> None:
-    from app.api.v1.integrations_dify import _metadata_condition_to_filter
-    from app.rag.core.filters import match_metadata_filter
+    from app.api.v1.integrations.dify import _metadata_condition_to_filter
+    from app.infrastructure.metadata_filters import match_metadata_filter
 
     metadata_filter = _metadata_condition_to_filter(
         {
@@ -12138,7 +12225,7 @@ def test_dify_metadata_condition_is_converted_to_mimirq_filter() -> None:
 def test_dify_metadata_condition_rejects_invalid_logical_operator() -> None:
     from fastapi import HTTPException
 
-    from app.api.v1.integrations_dify import _metadata_condition_to_filter
+    from app.api.v1.integrations.dify import _metadata_condition_to_filter
 
     with pytest.raises(HTTPException) as exc_info:
         _metadata_condition_to_filter(
@@ -12155,7 +12242,7 @@ def test_dify_metadata_condition_rejects_invalid_logical_operator() -> None:
 def test_dify_metadata_condition_rejects_invalid_condition_shape() -> None:
     from fastapi import HTTPException
 
-    from app.api.v1.integrations_dify import _metadata_condition_to_filter
+    from app.api.v1.integrations.dify import _metadata_condition_to_filter
 
     with pytest.raises(HTTPException) as exc_info:
         _metadata_condition_to_filter(
@@ -12171,7 +12258,7 @@ def test_dify_metadata_condition_rejects_invalid_condition_shape() -> None:
 def test_dify_metadata_condition_rejects_unsupported_operator() -> None:
     from fastapi import HTTPException
 
-    from app.api.v1.integrations_dify import _dify_metadata_condition_item_to_filter
+    from app.api.v1.integrations.dify import _dify_metadata_condition_item_to_filter
 
     with pytest.raises(HTTPException) as exc_info:
         _dify_metadata_condition_item_to_filter(
@@ -12187,7 +12274,7 @@ def test_dify_metadata_condition_rejects_unsupported_operator() -> None:
 
 
 def test_dify_record_conversion_keeps_metadata_object_and_clamps_score() -> None:
-    from app.api.v1.integrations_dify import _citation_to_dify_record
+    from app.api.v1.integrations.dify import _citation_to_dify_record
 
     record = _citation_to_dify_record(
         {
@@ -12214,7 +12301,7 @@ def test_dify_record_conversion_keeps_metadata_object_and_clamps_score() -> None
 
 
 def test_dify_record_conversion_uses_mimirq_score_from_metadata() -> None:
-    from app.api.v1.integrations_dify import _citation_to_dify_record
+    from app.api.v1.integrations.dify import _citation_to_dify_record
 
     record = _citation_to_dify_record(
         {
@@ -12233,7 +12320,7 @@ def test_dify_record_conversion_uses_mimirq_score_from_metadata() -> None:
 
 
 def test_dify_record_conversion_does_not_use_generic_metadata_score() -> None:
-    from app.api.v1.integrations_dify import _citation_to_dify_record
+    from app.api.v1.integrations.dify import _citation_to_dify_record
 
     record = _citation_to_dify_record(
         {
@@ -12252,7 +12339,7 @@ def test_dify_record_conversion_does_not_use_generic_metadata_score() -> None:
 
 
 def test_dify_record_conversion_keeps_kg_diagnostics_metadata() -> None:
-    from app.api.v1.integrations_dify import _citation_to_dify_record
+    from app.api.v1.integrations.dify import _citation_to_dify_record
 
     record = _citation_to_dify_record(
         {
@@ -12280,7 +12367,6 @@ def test_dify_record_conversion_keeps_kg_diagnostics_metadata() -> None:
 def test_dify_records_from_citations_preserve_snippet_without_chunk_hydration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
 
     snippet = "答案要点：身份证补领材料为居民户口簿。"
     citation = {
@@ -12294,9 +12380,9 @@ def test_dify_records_from_citations_preserve_snippet_without_chunk_hydration(
     def _unexpected_load_chunk_content_map(**_kwargs):  # noqa: ANN003, ANN202
         raise AssertionError("bounded Dify snippets should not be replaced by hydrated chunk bodies")
 
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _unexpected_load_chunk_content_map, raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", _unexpected_load_chunk_content_map, raising=True)
 
-    records = dify_api._records_from_citations(
+    records = citation_records._records_from_citations(
         db=object(),
         tenant_id=uuid.uuid4(),
         citations=[citation],
@@ -12312,10 +12398,10 @@ def test_dify_records_from_citations_preserve_snippet_without_chunk_hydration(
 def test_dify_external_retrieval_logs_history_rag_trace_when_conversation_context_is_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     logged: list[dict[str, object]] = []
-    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload))
+    monkeypatch.setattr(tracing, "log_metrics", lambda payload: logged.append(payload))
 
     conversation_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
@@ -12386,7 +12472,7 @@ def test_dify_external_retrieval_logs_history_rag_trace_when_conversation_contex
     assert payload["citations"][0]["rerank_score"] == pytest.approx(0.91)
     assert "content" not in payload["citations"][0]
 
-    from app.services.rag_trace_service import normalize_rag_trace_record
+    from app.services.observability.rag_traces import normalize_rag_trace_record
 
     history_trace = normalize_rag_trace_record(payload)
     assert history_trace.conversation_id == str(conversation_id)
@@ -12397,9 +12483,16 @@ def test_dify_external_retrieval_logs_history_rag_trace_when_conversation_contex
     assert history_trace.citations[0].document_id == "doc-1"
 
 
-def test_dify_trace_context_accepts_body_and_header_extensions() -> None:
-    from app.api.v1 import integrations_dify as dify_api
+def test_dify_trace_context_accepts_body_and_header_extensions(monkeypatch) -> None:
+    from app.api.v1.integrations import dify as dify_api
 
+    tenant_id = uuid.uuid4()
+    accesses = []
+    monkeypatch.setattr(
+        dify_external_api,
+        "_ensure_dify_trace_conversation_accessible",
+        lambda **scope: accesses.append(scope),
+    )
     body_conversation_id = uuid.uuid4()
     body = dify_api.DifyExternalKnowledgeRequest(
         knowledge_id="external-kb",
@@ -12415,8 +12508,13 @@ def test_dify_trace_context_accepts_body_and_header_extensions() -> None:
         state=SimpleNamespace(request_id="state-request-id"),
     )
 
-    assert dify_api._dify_trace_conversation_id(request, body) == body_conversation_id
-    assert dify_api._dify_trace_request_id(request, body) == "body-request-id"
+    assert (
+        dify_api._dify_trace_conversation_id(request, body, db=object(), tenant_id=tenant_id, account_id="reader")
+        == body_conversation_id
+    )
+    assert (
+        dify_api._dify_trace_request_id(request.headers, body, request_id=request.state.request_id) == "body-request-id"
+    )
 
     header_conversation_id = uuid.uuid4()
     body_without_trace = dify_api.DifyExternalKnowledgeRequest(
@@ -12431,14 +12529,26 @@ def test_dify_trace_context_accepts_body_and_header_extensions() -> None:
         state=SimpleNamespace(request_id="state-request-id"),
     )
 
-    assert dify_api._dify_trace_conversation_id(header_request, body_without_trace) == header_conversation_id
-    assert dify_api._dify_trace_request_id(header_request, body_without_trace) == "header-request-id"
+    assert (
+        dify_api._dify_trace_conversation_id(
+            header_request, body_without_trace, db=object(), tenant_id=tenant_id, account_id="reader"
+        )
+        == header_conversation_id
+    )
+    assert (
+        dify_api._dify_trace_request_id(
+            header_request.headers, body_without_trace, request_id=header_request.state.request_id
+        )
+        == "header-request-id"
+    )
+    assert [scope["conversation_id"] for scope in accesses] == [body_conversation_id, header_conversation_id]
+    assert all(scope["tenant_id"] == tenant_id and scope["account_id"] == "reader" for scope in accesses)
 
 
 def test_dify_trace_context_auto_creates_mimirq_conversation_for_dify_conversation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     created_conversation_id = uuid.uuid4()
     calls: list[dict[str, object]] = []
@@ -12461,7 +12571,7 @@ def test_dify_trace_context_auto_creates_mimirq_conversation_for_dify_conversati
         calls.append(dict(kwargs))
         return created_conversation_id
 
-    monkeypatch.setattr(dify_api, "_ensure_dify_trace_conversation", fake_ensure, raising=True)
+    monkeypatch.setattr(dify_external_api, "_ensure_dify_trace_conversation", fake_ensure, raising=True)
 
     resolved = dify_api._dify_trace_conversation_id(
         request,
@@ -12488,7 +12598,6 @@ def test_dify_trace_context_auto_creates_mimirq_conversation_for_dify_conversati
 def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
@@ -12496,7 +12605,7 @@ def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
     events: list[tuple[str, object]] = []
 
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_lock_dify_conversation_turn_scope",
         lambda **kwargs: events.append(("lock", kwargs["conversation_scope"])),
         raising=True,
@@ -12506,14 +12615,14 @@ def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
         events.append(("find", kwargs["source_conversation_id"]))
         return conversation_id
 
-    monkeypatch.setattr(dify_api, "_find_dify_trace_conversation", _find_existing, raising=True)
+    monkeypatch.setattr(dify_external_api, "_find_dify_trace_conversation", _find_existing, raising=True)
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
     )
-    resolved = dify_api._ensure_dify_trace_conversation(
+    resolved = dify_external_api._ensure_dify_trace_conversation(
         db=db,
         tenant_id=tenant_id,
         account_id="system:dify",
@@ -12530,7 +12639,7 @@ def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
 def test_dify_trace_conversation_refuses_cross_account_reuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
@@ -12542,19 +12651,19 @@ def test_dify_trace_conversation_refuses_cross_account_reuse(
             add_called = True
 
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_lock_dify_conversation_turn_scope",
         lambda **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_find_dify_trace_conversation",
         lambda *_args, **_kwargs: conversation_id,
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="acct-other"),
         raising=True,
@@ -12566,7 +12675,7 @@ def test_dify_trace_conversation_refuses_cross_account_reuse(
         raising=False,
     )
 
-    resolved = dify_api._ensure_dify_trace_conversation(
+    resolved = dify_external_api._ensure_dify_trace_conversation(
         db=_NoWriteDB(),
         tenant_id=tenant_id,
         account_id="acct-1",
@@ -12583,7 +12692,7 @@ def test_dify_trace_conversation_refuses_cross_account_reuse(
 def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     token = "dify-test-token"
     tenant_id = uuid.uuid4()
@@ -12621,11 +12730,11 @@ def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
         return created_conversation_id
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
-    monkeypatch.setattr(dify_api, "_ensure_dify_trace_conversation", _fake_ensure, raising=True)
-    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload), raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(dify_external_api, "_ensure_dify_trace_conversation", _fake_ensure, raising=True)
+    monkeypatch.setattr(tracing, "log_metrics", lambda payload: logged.append(payload), raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -12664,7 +12773,7 @@ def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
 def test_dify_retrieval_trace_includes_mixed_intent_subqueries_and_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     token = "dify-test-token"
     tenant_id = uuid.uuid4()
@@ -12709,16 +12818,16 @@ def test_dify_retrieval_trace_includes_mixed_intent_subqueries_and_paths(
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
-    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload), raising=True)
+    monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(tracing, "log_metrics", lambda payload: logged.append(payload), raising=True)
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_ensure_dify_trace_conversation",
         lambda **_kwargs: created_conversation_id,
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -12751,7 +12860,7 @@ def test_dify_retrieval_trace_includes_mixed_intent_subqueries_and_paths(
 def test_dify_conversation_turn_endpoint_persists_final_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     token = "dify-test-token"
     tenant_id = uuid.uuid4()
@@ -12788,7 +12897,7 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
         raising=False,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -12833,7 +12942,7 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
 def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
@@ -12847,19 +12956,19 @@ def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
             raise AssertionError("an idempotent retry must not write")
 
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_lock_dify_conversation_turn_scope",
         lambda **kwargs: lock_calls.append(dict(kwargs)),
         raising=False,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_find_dify_trace_conversation",
         lambda *_args, **_kwargs: conversation_id,
         raising=True,
@@ -12870,19 +12979,19 @@ def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
         return user_message, assistant_message
 
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_find_persisted_dify_conversation_turn",
         _fake_find_existing,
         raising=False,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_find_reusable_dify_seed_message",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_log_dify_result_rag_trace",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("retry must not duplicate trace")),
         raising=True,
@@ -12917,12 +13026,12 @@ def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
 def test_dify_conversation_turn_rejects_explicit_conversation_owned_by_another_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     conversation_id = uuid.uuid4()
-    monkeypatch.setattr(dify_api, "_lock_dify_conversation_turn_scope", lambda **_kwargs: None)
+    monkeypatch.setattr(dify_external_api, "_lock_dify_conversation_turn_scope", lambda **_kwargs: None)
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="acct-other"),
     )
@@ -12948,17 +13057,17 @@ def test_dify_conversation_turn_rejects_explicit_conversation_owned_by_another_a
 def test_dify_conversation_turn_rejects_mismatched_upstream_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
+    from app.api.v1.integrations import dify as dify_api
 
     conversation_id = uuid.uuid4()
-    monkeypatch.setattr(dify_api, "_lock_dify_conversation_turn_scope", lambda **_kwargs: None)
+    monkeypatch.setattr(dify_external_api, "_lock_dify_conversation_turn_scope", lambda **_kwargs: None)
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_load_dify_trace_conversation",
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
     )
     monkeypatch.setattr(
-        dify_api,
+        dify_external_api,
         "_find_dify_trace_conversation",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -12983,7 +13092,7 @@ def test_dify_conversation_turn_rejects_mismatched_upstream_source(
 
 
 def test_dify_turn_citations_for_storage_drops_invalid_frontend_citations() -> None:
-    from app.api.v1.integrations_dify import _dify_turn_citations_for_storage
+    from app.services.chat.external_ingestion import _mimirq_citations_for_storage as _dify_turn_citations_for_storage
 
     valid_document_id = uuid.uuid4()
     valid_chunk_id = uuid.uuid4()
@@ -13015,16 +13124,16 @@ def test_dify_turn_citations_for_storage_drops_invalid_frontend_citations() -> N
 def test_dify_result_trace_logs_final_result_step_without_raw_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import integrations_dify as dify_api
-    from app.services.rag_trace_service import normalize_rag_trace_record
+    from app.api.v1.integrations import dify as dify_api
+    from app.services.observability.rag_traces import normalize_rag_trace_record
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
     logged: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload), raising=True)
+    monkeypatch.setattr(dify_external_api, "log_metrics", lambda payload: logged.append(payload), raising=True)
 
-    dify_api._log_dify_result_rag_trace(
+    dify_external_api._log_dify_result_rag_trace(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         request_id="trace-req-001",

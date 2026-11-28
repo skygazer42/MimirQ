@@ -1,6 +1,6 @@
 import { NODE_COLOR_PALETTE } from '@/components/graph/graph-colors'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
-import type { GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-types'
 
 function hashString32(value: string): number {
   let hash = 2166136261
@@ -11,17 +11,6 @@ function hashString32(value: string): number {
   return hash >>> 0
 }
 
-function getPaletteOffset(seed: string | null | undefined, size: number): number {
-  if (!seed || size <= 0) return 0
-  return hashString32(String(seed)) % size
-}
-
-function primitiveText(value: unknown, fallback = ''): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return fallback
-}
-
 export function applyClusterPalette(args: {
   graphRenderData: GraphData
   paletteSeed?: string | null
@@ -29,24 +18,22 @@ export function applyClusterPalette(args: {
 }): GraphData {
   const { graphRenderData, paletteSeed = null, clusterResult } = args
   if (!paletteSeed) return graphRenderData
-  if (!clusterResult?.nodeToCluster) return graphRenderData
+  if (clusterResult === null) return graphRenderData
 
   const palette = NODE_COLOR_PALETTE
-  const paletteOffset = getPaletteOffset(paletteSeed, palette.length)
+  const paletteOffset = hashString32(paletteSeed) % palette.length
   const nodeToCluster = clusterResult.nodeToCluster
 
   const nodes = graphRenderData.nodes.map((node) => {
     if (node.color) return node
 
-    const record = node as unknown as Record<string, unknown>
-    const meta = (record.meta ?? {}) as Record<string, unknown>
-    const kind = primitiveText(meta.kind ?? record.kind).trim().toLowerCase()
+    const rawKind = node.meta?.kind ?? node.kind
+    const kind = typeof rawKind === 'string' ? rawKind.trim().toLowerCase() : undefined
     if (kind === 'event' || kind === 'trace' || kind === 'step' || kind === 'citation') return node
 
-    const nodeId = String(node.id || '').trim()
-    if (!nodeId) return node
-
-    const clusterIndex = Math.max(1, Math.floor(Number(nodeToCluster[nodeId] || 1)))
+    const nodeId = node.id.trim()
+    if (!Object.hasOwn(nodeToCluster, nodeId)) return node
+    const clusterIndex = nodeToCluster[nodeId]
     const color = palette[(paletteOffset + (clusterIndex - 1)) % palette.length]
     return { ...node, color }
   })

@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -18,17 +17,13 @@ def _iso_now() -> str:
 
 
 def _metric_card_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    payload = dict(metrics or {})
-    for key in _CORE_METRIC_KEYS:
-        rows.append({"key": key, "value": payload.get(key)})
-    return rows
+    return [{"key": key, "value": metrics.get(key)} for key in _CORE_METRIC_KEYS]
 
 
 def _report_meta(payload: "DatasetAnalysisReportPayload") -> dict[str, Any]:
     return {
-        "dataset_id": str(payload.dataset_id or ""),
-        "dataset_name": str(payload.dataset_name or ""),
+        "dataset_id": payload.dataset_id,
+        "dataset_name": payload.dataset_name,
         "filters": dict(payload.filters or {}),
         "generated_at": _iso_now(),
         "scope_summary": dict(payload.scope_summary or {}),
@@ -39,7 +34,7 @@ def _report_meta(payload: "DatasetAnalysisReportPayload") -> dict[str, Any]:
 def _feedback_coverage(metrics: dict[str, Any]) -> dict[str, Any]:
     return {
         "key": "feedback_coverage_rate",
-        "value": dict(metrics or {}).get("feedback_coverage_rate"),
+        "value": metrics.get("feedback_coverage_rate"),
     }
 
 

@@ -1,4 +1,3 @@
-
 import re
 
 _CN_ARTICLE = re.compile(r"(第[0-9一二三四五六七八九十百千]+条)")
@@ -18,7 +17,7 @@ def normalize_clause_ref(ref: str) -> str:
     - Canonicalizes English prefixes ("ARTICLE" -> "Article", "SECTION" -> "Section")
     - Leaves non-ASCII / CN refs unchanged beyond trimming
     """
-    s = (ref or "").strip()
+    s = (ref).strip()
     if not s:
         return ""
 
@@ -46,7 +45,7 @@ def extract_clause_refs(text: str) -> list[str]:
     - No external dependencies
     - Bounded output (dedup only; caller can cap if needed)
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return []
 
@@ -55,22 +54,14 @@ def extract_clause_refs(text: str) -> list[str]:
 
     def _add(x: str) -> None:
         v = normalize_clause_ref(x)
-        if not v:
-            return
         key = v.casefold() if v.isascii() else v
         if key in seen:
             return
         seen.add(key)
         out.append(v)
 
-    for m in _CN_ARTICLE.finditer(raw):
-        _add(m.group(1))
-    for m in _CN_CLAUSE.finditer(raw):
-        _add(m.group(1))
-    for m in _EN_ARTICLE.finditer(raw):
-        _add(m.group(0))
-    for m in _EN_SECTION.finditer(raw):
-        _add(m.group(0))
+    for pattern in (_CN_ARTICLE, _CN_CLAUSE, _EN_ARTICLE, _EN_SECTION):
+        for match in pattern.finditer(raw):
+            _add(match.group())
 
     return out
-

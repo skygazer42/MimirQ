@@ -13,14 +13,18 @@ import type {
   IngestionRunCompareResponse,
   IngestionRunListResponse,
   IngestionRunOut,
-} from '@/types'
+} from '@/types/connectors'
+import { CONNECTOR_IDS } from '@/types/connectors'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { apiClient, openapiRequest } from '@/lib/api/core'
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
 
 export const connectorApi = {
   async listConnectors(): Promise<ConnectorInfo[]> {
-    return openapiRequest({ path: '/api/v1/connectors', method: 'get' })
+    const connectors = await openapiRequest({ path: '/api/v1/connectors', method: 'get' })
+    return connectors.filter((connector): connector is typeof connector & ConnectorInfo =>
+      CONNECTOR_IDS.some((id) => id === connector.id),
+    )
   },
 
   async validateConfig(payload: ConnectorValidateRequest): Promise<ConnectorValidateResponse> {
@@ -68,13 +72,12 @@ export const connectorApi = {
 
   async reconcileConfig(
     configId: string,
-    params?: { apply?: boolean; sample_limit?: number }
+    params?: { apply?: boolean; sample_limit?: number },
   ): Promise<Record<string, unknown>> {
-    const { data } = await apiClient.post(
-      `/connectors/configs/${encodeURIComponent(configId)}/reconcile`,
-      undefined,
-      { params, timeout: API_LONG_TIMEOUT_MS }
-    )
+    const { data } = await apiClient.post(`/connectors/configs/${encodeURIComponent(configId)}/reconcile`, undefined, {
+      params,
+      timeout: API_LONG_TIMEOUT_MS,
+    })
     return data
   },
 
@@ -86,8 +89,11 @@ export const connectorApi = {
     return openapiRequest({ path: '/api/v1/connectors/runs', method: 'post', body: payload })
   },
 
-  async listRuns(params?: { skip?: number; limit?: number; dataset_id?: string }): Promise<ConnectorRunListResponse> {
-    return openapiRequest({ path: '/api/v1/connectors/runs', method: 'get', query: params })
+  async listRuns(
+    params?: { skip?: number; limit?: number; dataset_id?: string },
+    options: ApiRequestOptions = {},
+  ): Promise<ConnectorRunListResponse> {
+    return openapiRequest({ path: '/api/v1/connectors/runs', method: 'get', query: params, signal: options.signal })
   },
 
   async getRun(runId: string): Promise<ConnectorRunOut> {
@@ -131,32 +137,38 @@ export const ingestionRunApi = {
     status?: string
     kind?: string
   }): Promise<IngestionRunListResponse> {
-    const { data } = await apiClient.get('/ingestion/runs', { params })
+    const { data } = await apiClient.get<IngestionRunListResponse>('/ingestion/runs', { params })
     return data
   },
 
   async getRun(runId: string): Promise<IngestionRunOut> {
-    const { data } = await apiClient.get(`/ingestion/runs/${runId}`)
+    const { data } = await apiClient.get<IngestionRunOut>(`/ingestion/runs/${encodeURIComponent(runId)}`)
     return data
   },
 
   async compareRuns(runId: string, otherRunId: string): Promise<IngestionRunCompareResponse> {
-    const { data } = await apiClient.get(`/ingestion/runs/${runId}/compare/${otherRunId}`)
+    const { data } = await apiClient.get<IngestionRunCompareResponse>(
+      `/ingestion/runs/${encodeURIComponent(runId)}/compare/${encodeURIComponent(otherRunId)}`,
+    )
     return data
   },
 
   async replayRun(runId: string): Promise<IngestionRunOut> {
-    const { data } = await apiClient.post(`/ingestion/runs/${runId}/replay`)
+    const { data } = await apiClient.post<IngestionRunOut>(`/ingestion/runs/${encodeURIComponent(runId)}/replay`)
     return data
   },
 
   async exportRunJson(runId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/ingestion/runs/${runId}/export`, { responseType: 'blob' })
+    const { data } = await apiClient.get<Blob>(`/ingestion/runs/${encodeURIComponent(runId)}/export`, {
+      responseType: 'blob',
+    })
     return data
   },
 
   async exportRunHtml(runId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/ingestion/runs/${runId}/export-html`, { responseType: 'blob' })
+    const { data } = await apiClient.get<Blob>(`/ingestion/runs/${encodeURIComponent(runId)}/export-html`, {
+      responseType: 'blob',
+    })
     return data
   },
 }

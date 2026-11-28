@@ -9,16 +9,16 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-database_module = ModuleType("app.core.database")
+database_module = ModuleType("app.infrastructure.database.connection")
 database_module.SessionLocal = lambda: None
-document_module = ModuleType("app.models.document")
+document_module = ModuleType("app.models.documents.records")
 document_module.Document = type("Document", (), {})
 document_module.DocumentChunk = type("DocumentChunk", (), {})
-bundle_module = ModuleType("app.services.regression_case_bundle")
+bundle_module = ModuleType("app.services.evaluation.case_bundle")
 bundle_module.REGRESSION_CASE_BUNDLE_SCHEMA_V1 = "mimirq.regression.case_bundle.v1"
-sys.modules.setdefault("app.core.database", database_module)
-sys.modules.setdefault("app.models.document", document_module)
-sys.modules.setdefault("app.services.regression_case_bundle", bundle_module)
+sys.modules.setdefault("app.infrastructure.database.connection", database_module)
+sys.modules.setdefault("app.models.documents.records", document_module)
+sys.modules.setdefault("app.services.evaluation.case_bundle", bundle_module)
 
 
 def _load_pack_module():

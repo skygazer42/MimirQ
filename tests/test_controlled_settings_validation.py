@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core import config as config_module
-from app.core.config import Settings
+from app.infrastructure import config as config_module
+from app.infrastructure.config import Settings
 
 
 @pytest.mark.parametrize(

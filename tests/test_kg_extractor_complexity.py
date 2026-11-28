@@ -1,22 +1,20 @@
-
 import asyncio
-import datetime as dt
 import sys
 import uuid
 from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
-from starlette import status as starlette_status
-
-if not hasattr(dt, "UTC"):
-    dt.UTC = dt.timezone.utc
-if not hasattr(starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
-    starlette_status.HTTP_413_CONTENT_TOO_LARGE = starlette_status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
-if not hasattr(starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
-    starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = starlette_status.HTTP_422_UNPROCESSABLE_ENTITY
 
 from app.rag.kg.extraction import extractor as extractor_module
+
+
+class _FakeLLMClient:
+    def __init__(self):
+        self.closed = False
+
+    async def aclose(self):
+        self.closed = True
 
 
 class _FakeQuery:
@@ -103,7 +101,7 @@ class _IndexerFactory:
     def upsert(self, *, tenant_id: object, records: list[object], options: object) -> SimpleNamespace:
         self.records = list(records)
         events = [
-            SimpleNamespace(id=f"event-{idx}", chunk_id=record.chunk_id, document_id=record.document_id)
+            SimpleNamespace(id=f"event-{idx}", chunk_id=record.chunk_id, document_id=record.document_id, extra_data={})
             for idx, record in enumerate(self.records, start=1)
         ]
         return SimpleNamespace(event_result=SimpleNamespace(events=events, entities=[]))
@@ -203,7 +201,6 @@ def _make_extract_state(
         budget_stats_by_doc={},
         budget_skipped_chunk_ids=set(budget_skipped_chunk_ids or set()),
         processor=object(),
-        embedder=_FakeEmbedder(),
         backend_selection=SimpleNamespace(backend="llm", processor=object(), fallback_reason=None),
         backend_reason=None,
         prompt_template_content=None,
@@ -299,10 +296,10 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
 
     session = _FakeSession()
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "Indexer", _IndexerFactory)
     monkeypatch.setattr(extractor_module, "RelationRepository", _NoOpRelationRepository)
-    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
+    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(_FakeLLMClient()))
 
     writeback: dict[str, object] = {}
     metrics: list[dict[str, object]] = []
@@ -338,13 +335,13 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
     processor = _RetryProcessor()
     monkeypatch.setattr(
         extractor_module,
-        "resolve_extraction_backend",
-        lambda **_kwargs: SimpleNamespace(backend="llm", processor=processor, fallback_reason=None),
+        "EventProcessor",
+        lambda **_kwargs: processor,
     )
     monkeypatch.setattr(
-        extractor_module.EventExtractor,
+        extractor_module,
         "_writeback_document_metadata",
-        lambda self, **kwargs: writeback.update(kwargs),
+        lambda **kwargs: writeback.update(kwargs),
     )
     monkeypatch.setattr(extractor_module, "log_metrics", lambda payload: metrics.append(dict(payload)))
 
@@ -354,7 +351,9 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
         _make_chunk("chunk-2", document_id="doc-1", chunk_index=1, content="second"),
     ]
 
-    events = await extractor_module.EventExtractor().extract(_make_config(), chunks=chunks)
+    events = await extractor_module.EventExtractor().extract(
+        _make_config(chunk_ids=[chunk.id for chunk in chunks]), chunks=chunks
+    )
 
     assert [event.chunk_id for event in events] == ["chunk-1", "chunk-2"]
     assert [call["chunk_id"] for call in processor.calls].count("chunk-1") == 2
@@ -369,6 +368,89 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_extract_indexes_event_evidence_only_from_its_target_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_extract_defaults(monkeypatch, KG_EXTRACT_CONTEXT_WINDOW_CHUNKS=1)
+    prefix = "旧规则中，承包商账号最长启用 60 天。\n"
+    chunk = _make_chunk(
+        "chunk-target", document_id="doc-1", chunk_index=1, content=prefix + "承包商账号最长启用  30 天。"
+    )
+    neighbor = _make_chunk("chunk-neighbor", document_id="doc-1", chunk_index=2, content="设备维护窗口为 60 分钟。")
+
+    class _EventClient(_FakeLLMClient):
+        async def chat_with_schema(self, messages, **_kwargs):
+            if not messages[-1].content.startswith("[Target p2]"):
+                return {"events": []}
+            return {
+                "events": [
+                    {
+                        "title": "账号启用期限",
+                        "summary": "承包商账号最长启用 30 天。",
+                        "evidence_quote": "承包商账号最长启用 30 天。",
+                        "entities": [{"name": "承包商账号", "type": "Concept", "evidence_quote": "承包商账号"}],
+                    },
+                    {
+                        "title": "维护时间",
+                        "summary": neighbor.content,
+                        "evidence_quote": neighbor.content,
+                        "entities": [
+                            {
+                                "name": "设备维护窗口",
+                                "type": "Concept",
+                                "evidence_quote": neighbor.content,
+                                "source_span": {"source": "context", "start_char": 0, "end_char": 6},
+                            }
+                        ],
+                    },
+                    {"title": "旧格式", "summary": "未提供事件引用。"},
+                ],
+            }
+
+    monkeypatch.setattr(extractor_module, "SessionLocal", _FakeSession)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
+    monkeypatch.setattr(extractor_module, "Indexer", _IndexerFactory)
+    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(_EventClient()))
+
+    await extractor_module.EventExtractor().extract(
+        _make_config(chunk_ids=[chunk.id, neighbor.id]), chunks=[chunk, neighbor]
+    )
+
+    records = {record.title: record for record in _IndexerFactory.last_instance.records}
+    grounded = records["账号启用期限"].references
+    assert grounded["evidence_start_char"] == len(prefix)
+    assert grounded["evidence_end_char"] == len(chunk.content)
+    assert grounded["evidence_quote"] == chunk.content[len(prefix) :]
+    assert grounded["start_char"] == chunk.start_char
+    [entity] = records["账号启用期限"].entities
+    assert entity.evidence_start_char == len(prefix)
+    assert entity.evidence_quote == chunk.content[entity.evidence_start_char : entity.evidence_end_char]
+    assert "evidence_quote" not in records["维护时间"].references
+    [ungrounded_entity] = records["维护时间"].entities
+    assert ungrounded_entity.evidence_quote is None
+    assert ungrounded_entity.evidence_start_char is None
+    assert "evidence_quote" not in records["旧格式"].references
+
+
+@pytest.mark.asyncio
+async def test_heuristic_extraction_indexes_event_evidence_without_a_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_extract_defaults(monkeypatch)
+    fact = "运维系统在账号锁定后等待  30 分钟再解锁。"
+    prefix = "# 运维规则\n- "
+    chunk = _make_chunk("chunk-1", document_id="doc-1", chunk_index=0, content=prefix + fact)
+    monkeypatch.setattr(extractor_module, "SessionLocal", _FakeSession)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
+    monkeypatch.setattr(extractor_module, "Indexer", _IndexerFactory)
+
+    await extractor_module.EventExtractor().extract(
+        _make_config(chunk_ids=[chunk.id], extraction_backend="heuristic"), chunks=[chunk]
+    )
+
+    [record] = _IndexerFactory.last_instance.records
+    assert record.references["evidence_quote"] == fact
+    assert record.references["evidence_start_char"] == len(prefix)
+    assert record.references["evidence_end_char"] == len(chunk.content)
+
+
+@pytest.mark.asyncio
 async def test_extract_raises_when_every_attempted_chunk_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_extract_defaults(
         monkeypatch,
@@ -378,8 +460,8 @@ async def test_extract_raises_when_every_attempted_chunk_fails(monkeypatch: pyte
 
     session = _FakeSession()
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
-    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
+    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(_FakeLLMClient()))
 
     class _FailingProcessor:
         async def extract_from_sections(
@@ -394,14 +476,14 @@ async def test_extract_raises_when_every_attempted_chunk_fails(monkeypatch: pyte
 
     monkeypatch.setattr(
         extractor_module,
-        "resolve_extraction_backend",
-        lambda **_kwargs: SimpleNamespace(backend="llm", processor=_FailingProcessor(), fallback_reason=None),
+        "EventProcessor",
+        lambda **_kwargs: _FailingProcessor(),
     )
 
     chunk = _make_chunk("chunk-fail", document_id="doc-fail", chunk_index=0, content="failing chunk")
 
     with pytest.raises(RuntimeError, match=r"KG extraction failed for all attempted chunks \(1\); boom:chunk-fail"):
-        await extractor_module.EventExtractor().extract(_make_config(), chunks=[chunk])
+        await extractor_module.EventExtractor().extract(_make_config(chunk_ids=[chunk.id]), chunks=[chunk])
 
     assert session.rollbacks >= 1
     assert session.closed is True
@@ -416,8 +498,8 @@ async def test_extract_timeout_does_not_return_existing_events_without_replace(
     existing_event = SimpleNamespace(chunk_id="chunk-timeout")
     session = _FakeSession(query_rows=[existing_event])
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
-    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
+    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(_FakeLLMClient()))
 
     class _SlowProcessor:
         async def extract_from_sections(
@@ -434,14 +516,14 @@ async def test_extract_timeout_does_not_return_existing_events_without_replace(
 
     monkeypatch.setattr(
         extractor_module,
-        "resolve_extraction_backend",
-        lambda **_kwargs: SimpleNamespace(backend="llm", processor=_SlowProcessor(), fallback_reason=None),
+        "EventProcessor",
+        lambda **_kwargs: _SlowProcessor(),
     )
     writeback: dict[str, object] = {}
     monkeypatch.setattr(
-        extractor_module.EventExtractor,
+        extractor_module,
         "_writeback_document_metadata",
-        lambda self, **kwargs: writeback.update(kwargs),
+        lambda **kwargs: writeback.update(kwargs),
     )
     monkeypatch.setattr(extractor_module, "log_metrics", lambda _payload: None)
 
@@ -451,14 +533,12 @@ async def test_extract_timeout_does_not_return_existing_events_without_replace(
         chunk_index=0,
         content="slow chunk",
     )
-    events = await extractor_module.EventExtractor().extract(
-        _make_config(replace_existing=False),
-        chunks=[chunk],
-    )
-
-    assert events == []
-    assert writeback["kept_events"] == []
-    assert writeback["failed_chunk_ids"] == {"chunk-timeout"}
+    with pytest.raises(RuntimeError, match="KG extraction failed for all attempted chunks"):
+        await extractor_module.EventExtractor().extract(
+            _make_config(replace_existing=False, chunk_ids=[chunk.id]), chunks=[chunk]
+        )
+    assert writeback == {}
+    assert session.rollbacks >= 1 and session.closed is True
 
 
 @pytest.mark.asyncio
@@ -471,11 +551,11 @@ async def test_extract_relation_verifier_fails_open_to_original_relations(monkey
 
     session = _FakeSession()
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "Indexer", _RelationIndexer)
     monkeypatch.setattr(extractor_module, "RelationRepository", _NoOpRelationRepository)
     monkeypatch.setattr(extractor_module, "KgRelation", _FakeRelation)
-    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
+    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(_FakeLLMClient()))
     monkeypatch.setitem(
         sys.modules,
         "app.rag.kg.ontology",
@@ -536,26 +616,26 @@ async def test_extract_relation_verifier_fails_open_to_original_relations(monkey
             candidates: list[object],
             max_keep: int,
         ) -> dict[str, object]:
-            return {"kept": []}
+            raise RuntimeError("relation verification unavailable")
 
     monkeypatch.setattr(
         extractor_module,
-        "resolve_extraction_backend",
-        lambda **_kwargs: SimpleNamespace(backend="llm", processor=_EventProcessor(), fallback_reason=None),
+        "EventProcessor",
+        lambda **_kwargs: _EventProcessor(),
     )
     monkeypatch.setattr(extractor_module, "RelationProcessor", _FakeRelationProcessor)
     monkeypatch.setattr(extractor_module, "RelationVerifier", _FakeRelationVerifier)
     monkeypatch.setattr(extractor_module, "log_metrics", lambda payload: None)
     monkeypatch.setattr(
-        extractor_module.EventExtractor,
+        extractor_module,
         "_writeback_document_metadata",
-        lambda self, **kwargs: None,
+        lambda **kwargs: None,
     )
 
     chunk = _make_chunk("chunk-rel", document_id="doc-rel", chunk_index=0, content="Alice works for Acme.")
 
     events = await extractor_module.EventExtractor().extract(
-        _make_config(extract_relations=True),
+        _make_config(extract_relations=True, chunk_ids=[chunk.id]),
         chunks=[chunk],
     )
 
@@ -571,7 +651,11 @@ async def test_extract_relation_verifier_fails_open_to_original_relations(monkey
 class _RelationIndexer(_IndexerFactory):
     def upsert(self, *, tenant_id: object, records: list[object], options: object) -> SimpleNamespace:
         self.records = list(records)
-        events = [SimpleNamespace(id="event-1", chunk_id=records[0].chunk_id, document_id=records[0].document_id)]
+        events = [
+            SimpleNamespace(
+                id="event-1", chunk_id=records[0].chunk_id, document_id=records[0].document_id, extra_data={}
+            )
+        ]
         entities = [
             SimpleNamespace(id="entity-alice", normalized_name="alice", type="Person"),
             SimpleNamespace(id="entity-acme", normalized_name="acme", type="Organization"),
@@ -646,7 +730,7 @@ async def test_relation_post_index_pass_replaces_processed_and_budget_skipped_ch
         result=SimpleNamespace(entities=[SimpleNamespace(id="entity-alice", normalized_name="alice", type="Person")]),
         cleanup_chunk_ids=["chunk-keep"],
         llm_client=object(),
-        alias_diag=extractor_module.EventExtractor._new_alias_diag(),
+        alias_diag=extractor_module._new_alias_diag(),
         alias_stats_by_doc={},
         llm_aliases_by_chunk={},
         relation_verify_enabled=False,
@@ -654,7 +738,7 @@ async def test_relation_post_index_pass_replaces_processed_and_budget_skipped_ch
         evidence_required=False,
     )
 
-    stats = await extractor_module.EventExtractor()._run_relation_post_index_pass(context)
+    stats = await extractor_module._run_relation_post_index_pass(context)
 
     repo = _TrackingRelationRepository.last_instance
     assert stats == {
@@ -711,6 +795,7 @@ async def test_skill_post_index_pass_links_upserted_skills_to_new_events(
         return [SimpleNamespace(id="skill-1", normalized_name="python automation", type="Skill")]
 
     monkeypatch.setattr(extractor_module, "SkillProcessor", _FakeSkillProcessor)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "KgEventEntity", _FakeEventEntity)
     monkeypatch.setattr(indexer, "upsert_entities", _upsert_entities)
 
@@ -727,7 +812,7 @@ async def test_skill_post_index_pass_links_upserted_skills_to_new_events(
         new_events=[SimpleNamespace(id="event-1", chunk_id=chunk_id, document_id=document_id)],
     )
 
-    stats = await extractor_module.EventExtractor()._run_skill_post_index_pass(context)
+    stats = await extractor_module._run_skill_post_index_pass(context)
 
     skill_links = [row for row in session.added if isinstance(row, _FakeEventEntity)]
     assert stats["total_raw"] == 1

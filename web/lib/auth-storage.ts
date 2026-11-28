@@ -14,6 +14,8 @@ const AUTH_SYNC_CHANNEL_NAME = 'mimirq:auth-sync'
 const AUTH_SYNC_CLEAR_TYPE = 'session-cleared'
 
 export const AUTH_SCOPE_CHANGED_EVENT = 'mimirq:auth-scope-changed'
+// Explicit session replacement/clear; token rotation stays in the current session.
+export const AUTH_SESSION_CHANGED_EVENT = 'mimirq:auth-session-changed'
 const AUTH_SCOPE_STORAGE_KEYS = new Set([USER_ID_KEY, TENANT_ID_KEY])
 
 type AuthSyncMessage = {
@@ -26,6 +28,7 @@ const AUTH_SYNC_SOURCE = `tab:${Math.random().toString(36).slice(2, 10)}`
 let authSyncChannel: BroadcastChannel | null = null
 let authSyncChannelInitialized = false
 let lastHandledAuthSyncMessageId: string | null = null
+let authSessionRevision = 0
 
 function getEnvTenantId(): string | null {
   return process.env.NEXT_PUBLIC_TENANT_ID || null
@@ -51,22 +54,13 @@ function hasStoredAccessToken(): boolean {
   return Boolean(readStoredAccessToken())
 }
 
-function getAuthScopeTenantId(): string | null {
-  if (!hasStoredAccessToken()) return getEnvTenantId()
-  return readClientStorage(TENANT_ID_KEY) || getEnvTenantId()
-}
-
-function getAuthScopeUserId(): string | null {
-  if (!hasStoredAccessToken()) return null
-  return readClientStorage(USER_ID_KEY)
-}
-
 function buildAuthCacheScope(tenantId: string | null, userId: string | null): string {
   return `${encodeURIComponent(tenantId || 'default')}:${encodeURIComponent(userId || 'anonymous')}`
 }
 
 function notifyAuthScopeChanged(previousScope?: string, force = false) {
   if (!force && previousScope !== undefined && previousScope === getAuthCacheScope()) return
+  authSessionRevision += 1
   removeClientStorage(DOCUMENT_VIEW_STORAGE_KEY)
   globalThis.window?.dispatchEvent(new Event(AUTH_SCOPE_CHANGED_EVENT))
 }
@@ -82,9 +76,7 @@ function isAuthSyncMessage(value: unknown): value is AuthSyncMessage {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<AuthSyncMessage>
   return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.source === 'string' &&
-    candidate.type === AUTH_SYNC_CLEAR_TYPE
+    typeof candidate.id === 'string' && typeof candidate.source === 'string' && candidate.type === AUTH_SYNC_CLEAR_TYPE
   )
 }
 
@@ -93,6 +85,7 @@ function handleRemoteSessionClear() {
   const previousScope = getAuthCacheScope()
   removeStoredAccessToken()
   notifyAuthScopeChanged(previousScope, true)
+  globalThis.window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
 }
 
 function handleAuthSyncMessage(message: AuthSyncMessage) {
@@ -166,7 +159,7 @@ globalThis.window?.addEventListener('storage', (event) => {
   }
   if (event.key === TENANT_ID_KEY) {
     notifyAuthScopeChanged(
-      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId())
+      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId()),
     )
     return
   }
@@ -206,7 +199,26 @@ export function getStoredUserId(): string | null {
 }
 
 export function getAuthCacheScope(): string {
-  return buildAuthCacheScope(getAuthScopeTenantId(), getAuthScopeUserId())
+  return buildAuthCacheScope(getTenantId(), getStoredUserId())
+}
+
+export function getAuthSessionRevision(): number {
+  return authSessionRevision
+}
+
+/** Stable primitive identity; ordinary token rotation keeps the same session. */
+export function getAuthSessionKey(): string {
+  return [getAuthSessionRevision(), getAuthCacheScope()].join(':')
+}
+
+/** Browser subscription; React reads the server snapshot without subscribing. */
+export function subscribeAuthSession(onStoreChange: () => void): () => void {
+  window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, onStoreChange)
+  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange)
+  return () => {
+    window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, onStoreChange)
+    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange)
+  }
 }
 
 export function getStoredUser(): UserProfile | null {
@@ -222,6 +234,8 @@ export function getStoredUser(): UserProfile | null {
 
 export function setAuthSession(params: { token: AuthToken; user: UserProfile }) {
   if (globalThis.window === undefined) return
+  // An explicit login replaces pending request ownership even when its user/token is reused.
+  authSessionRevision += 1
   const { token, user } = params
   const previousScope = getAuthCacheScope()
   const previousUserId = readClientStorage(USER_ID_KEY)
@@ -234,6 +248,7 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
   const expiresAt = Date.now() + token.expires_in * 1000
   persistTokenValue(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
   notifyAuthScopeChanged(previousScope)
+  globalThis.window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
 }
 
 export function setAccessToken(token: AuthToken) {
@@ -253,11 +268,13 @@ export function setStoredUser(user: UserProfile) {
 
 export function clearAuthSession() {
   if (globalThis.window === undefined) return
+  authSessionRevision += 1
   const previousScope = getAuthCacheScope()
   removeStoredAccessToken()
   removeClientStorage(USER_KEY)
   removeClientStorage(USER_ID_KEY)
   removeClientStorage(TENANT_ID_KEY)
   notifyAuthScopeChanged(previousScope)
+  globalThis.window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
   broadcastSessionCleared()
 }

@@ -61,6 +61,7 @@ package-lock.json
 .serena/
 .shared/
 .worktrees/
+.frontend-structure/
 
 # OS
 .DS_Store
@@ -79,6 +80,7 @@ runs/perf/
 runs/parser_checks/
 runs/queryset_health/
 runs/smoke/
+runs/evidence_capsules/
 .playwright-mcp/
 .playwright-cli/
 chunk-preview-*.png
@@ -86,10 +88,11 @@ graph-snapshots-*.png
 web/coverage/
 web/test-results/
 web/playwright-report/
-app/deepdoc/resources/models/
+app/parsing/resources/models/
 web/.next/
 web/.next_build/
 web/.next_dev_tmp/
+web/.next*/
 web/public/monaco/
 web/public/pdfjs/
 web/openapi.json
@@ -109,6 +112,9 @@ docker/.env.*
 # Retrieval index caches (generated artifacts; keep out of git)
 data/sparse_indexes/
 data/colbert_indexes/
+# Generated bootstrap credentials are local secrets.
+/data/initial-admin.json
+/data/.initial-admin.json.*.tmp
 web/.next_3101/
 
 # Local generated analysis/training artifacts

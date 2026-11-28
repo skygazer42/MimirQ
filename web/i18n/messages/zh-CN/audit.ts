@@ -1,5 +1,5 @@
 const auditMessages = {
-AuditPage: {
+  AuditPage: {
     title: '审计日志',
     description: '关键操作留痕',
     strip: {
@@ -20,7 +20,7 @@ AuditPage: {
     },
     filters: {
       action: '动作',
-      actionPlaceholder: '选择后端审计日志中的动作',
+      actionPlaceholder: '选择操作类型',
       actorId: '操作者',
       actorIdPlaceholder: '选择操作者',
       requestId: '请求 ID',
@@ -73,7 +73,7 @@ AuditPage: {
       description: '当前筛选条件下没有找到任何审计日志。',
     },
     alerts: {
-      unableToLoad: '无法加载审计日志。请确认你是管理员，并且后端已更新到包含 /api/v1/audit 的版本。',
+      unableToLoad: '无法加载审计日志，请确认你有查看权限。',
     },
     toasts: {
       copySuccess: '已复制详情 JSON',

@@ -4,8 +4,9 @@ import pytest
 from fastapi import HTTPException
 from lxml import etree
 
-from app.core.config import Settings
-from app.services import saml_replay_service, saml_service
+from app.infrastructure.config import Settings
+from app.services.identity import saml as saml_service
+from app.services.identity import saml_replay as saml_replay_service
 
 
 def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,7 +174,7 @@ def test_saml_conditions_require_expiration() -> None:
     )
 
     with pytest.raises(HTTPException, match="expiration") as excinfo:
-        saml_service._validate_conditions(root, assertion, provider, None)
+        saml_service._validate_conditions(root, assertion, provider)
 
     assert excinfo.value.status_code == 401
 
@@ -186,7 +187,7 @@ def test_saml_replay_ttl_covers_effective_expiration_and_clock_skew(monkeypatch:
     )
     monkeypatch.setattr(saml_service.settings, "SAML_ALLOWED_CLOCK_SKEW_SEC", 60)
 
-    replay_ttl_sec = saml_service._validate_conditions(root, assertion, provider, None)
+    replay_ttl_sec = saml_service._validate_conditions(root, assertion, provider)
 
     assert 148 <= replay_ttl_sec <= 151
 
@@ -206,7 +207,7 @@ def test_saml_conditions_reject_assertion_for_caller_supplied_acs_url() -> None:
     subject_confirmation.set("Recipient", caller_acs_url)
 
     with pytest.raises(HTTPException, match="destination") as excinfo:
-        saml_service._validate_conditions(root, assertion, provider, caller_acs_url)
+        saml_service._validate_conditions(root, assertion, provider)
 
     assert excinfo.value.status_code == 401
 

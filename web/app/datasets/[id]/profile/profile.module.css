@@ -1,0 +1,181 @@
+.content {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.primaryAction {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.primaryAction:hover {
+  background: hsl(var(--accent) / 0.9);
+}
+.guide {
+  min-height: 320px;
+  margin-top: 24px;
+  border-radius: 12px;
+  background: hsl(var(--card));
+}
+.loading {
+  padding: 24px 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin: 20px 0 4px;
+  border-block: 1px solid hsl(var(--border));
+  padding: 16px 0;
+}
+.metrics > div {
+  min-width: 0;
+  padding: 0 18px;
+}
+.metrics dt {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 20px;
+}
+.metrics dd {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  line-height: 32px;
+  white-space: nowrap;
+}
+.metrics small {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+}
+.segmentedTabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  height: auto;
+  gap: 24px;
+  margin: 20px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+.segmentedTabs > button {
+  min-height: 36px;
+  flex-shrink: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+.segmentedTabs > button[data-state='active'] {
+  border-bottom-color: hsl(var(--foreground));
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: none;
+}
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-bottom: 24px;
+}
+.chartPanel {
+  min-width: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0;
+  padding: 18px;
+  background: transparent;
+  box-shadow: none;
+}
+.chartEmpty {
+  padding: 12px 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 22px;
+}
+.distributionEmpty {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 18px;
+}
+.distributionEmpty h2 {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.distributionEmpty p {
+  margin-top: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 22px;
+}
+.distributionEmpty ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 20px;
+  margin-top: 20px;
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 16px;
+  font-size: 13px;
+  line-height: 22px;
+}
+.historyActions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 14px 0;
+}
+.historyPanel {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.scanTable {
+  border: 0;
+  border-radius: 0;
+}
+.scanTable > table {
+  min-width: 680px;
+}
+.historyComparison {
+  margin-top: 24px;
+  border-top: 1px solid hsl(var(--border));
+  padding: 18px 0;
+}
+@media (max-width: 1180px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .metrics > div {
+    padding: 12px;
+  }
+  .metrics dd {
+    font-size: 20px;
+  }
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chartPanel {
+    padding: 14px;
+  }
+  .segmentedTabs > button {
+    min-height: 44px;
+    padding: 0 10px;
+  }
+}

@@ -2,11 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { getClientStorage } from '@/lib/client-storage'
-import {
-  AUTH_SCOPE_CHANGED_EVENT,
-  DOCUMENT_VIEW_STORAGE_KEY,
-  getAuthCacheScope,
-} from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, DOCUMENT_VIEW_STORAGE_KEY, getAuthCacheScope } from '@/lib/auth-storage'
 import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 import { sanitizeDocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 
@@ -23,7 +19,7 @@ export type DocumentViewSourceContext = {
   chunkIndex?: number | null
   pageNumber?: number | null
 }
-export type DocumentViewResumeTarget = {
+type DocumentViewResumeTarget = {
   documentId: string
   chunkId?: string | null
   highlightRange?: HighlightRange | null
@@ -41,7 +37,7 @@ export type DocumentViewLayout = {
   textScrollTop?: number
 }
 
-interface DocumentViewState {
+type DocumentViewState = {
   authScope: string
   isOpen: boolean
   documentId: string | null
@@ -61,7 +57,7 @@ interface DocumentViewState {
       previewAnchor?: Partial<DocumentPreviewAnchor> | null
       activeTab?: DocumentViewTab
       sourceContext?: DocumentViewSourceContext | null
-    }
+    },
   ) => void
   closeDocument: () => void
   reopenLastDocument: () => void
@@ -73,6 +69,8 @@ interface DocumentViewState {
 }
 
 const DEFAULT_ACTIVE_TAB: DocumentViewTab = 'preview'
+export const MIN_DOCUMENT_VIEWER_PANEL_WIDTH = 360
+export const MAX_DOCUMENT_VIEWER_PANEL_WIDTH = 1800
 const MAX_SOURCE_CONTEXT_TEXT_CHARS = 20_000
 const VALID_TABS = new Set<string>(['preview', 'text', 'chunks'])
 const VALID_TEXT_MODES = new Set<string>(['cleaned', 'original'])
@@ -83,9 +81,14 @@ const noopStorage = {
   removeItem: (_name: string) => {},
 }
 
-function normalizeDocumentId(documentId: string | null | undefined): string | null {
-  const normalized = String(documentId || '').trim()
-  return normalized || null
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeId(id: unknown): string | null {
+  if (typeof id !== 'string') return null
+  const normalized = id.trim()
+  return normalized ? normalized : null
 }
 
 function sanitizeScrollTop(value: unknown): number | undefined {
@@ -96,30 +99,32 @@ function sanitizeScrollTop(value: unknown): number | undefined {
 function sanitizePanelWidthPx(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
   const width = Math.round(value)
-  return width >= 360 && width <= 1800 ? width : undefined
+  return width >= MIN_DOCUMENT_VIEWER_PANEL_WIDTH && width <= MAX_DOCUMENT_VIEWER_PANEL_WIDTH ? width : undefined
 }
 
-function sanitizeHighlightRange(range: Partial<HighlightRange> | HighlightRange | null | undefined): HighlightRange | null {
-  const startRaw = range?.start
-  const endRaw = range?.end
-  const start = typeof startRaw === 'number' && Number.isFinite(startRaw) ? Math.trunc(startRaw) : null
-  const end = typeof endRaw === 'number' && Number.isFinite(endRaw) ? Math.trunc(endRaw) : null
-  return start != null && end != null && end > start ? ({ start, end } satisfies HighlightRange) : null
+function sanitizeHighlightRange(range: unknown): HighlightRange | null {
+  if (!isRecord(range)) return null
+  const start = range.start
+  const end = range.end
+  return typeof start === 'number' &&
+    Number.isInteger(start) &&
+    start >= 0 &&
+    typeof end === 'number' &&
+    Number.isInteger(end) &&
+    end > start
+    ? { start, end }
+    : null
 }
 
-function normalizeChunkId(chunkId: string | null | undefined): string | null {
-  const normalized = String(chunkId || '').trim()
-  return normalized || null
-}
-
-function normalizeOptionalText(value: string | null | undefined, maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS): string | null {
-  const normalized = String(value || '').trim()
+function normalizeOptionalText(value: unknown, maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
   if (!normalized) return null
   return normalized.length > maxChars ? normalized.slice(0, maxChars) : normalized
 }
 
-function normalizeOptionalNumber(value: number | null | undefined): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : null
+function readOptionalInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) ? value : null
 }
 
 function isDocumentViewTab(tab: unknown): tab is DocumentViewTab {
@@ -130,60 +135,61 @@ function sanitizeDocumentViewTab(tab: unknown): DocumentViewTab | undefined {
   return isDocumentViewTab(tab) ? tab : undefined
 }
 
-function sanitizeSourceContext(sourceContext: DocumentViewSourceContext | null | undefined): DocumentViewSourceContext | null {
-  if (sourceContext?.kind !== 'chat-citation') return null
+function sanitizeSourceContext(
+  sourceContext: unknown,
+  activeDocumentId: string | null,
+): DocumentViewSourceContext | null {
+  if (!isRecord(sourceContext) || sourceContext.kind !== 'chat-citation') return null
 
-  const messageId = String(sourceContext.messageId || '').trim()
-  const documentId = normalizeDocumentId(sourceContext.documentId)
-  if (!messageId || !documentId) return null
+  const messageId = normalizeId(sourceContext.messageId)
+  const documentId = normalizeId(sourceContext.documentId)
+  if (messageId === null || documentId === null || documentId !== activeDocumentId) return null
 
   return {
     kind: 'chat-citation',
     messageId,
     documentId,
-    chunkId: normalizeChunkId(sourceContext.chunkId),
+    chunkId: normalizeId(sourceContext.chunkId),
     documentName: normalizeOptionalText(sourceContext.documentName, 300),
-    chunkContent: normalizeOptionalText(sourceContext.chunkContent),
-    chunkIndex: normalizeOptionalNumber(sourceContext.chunkIndex),
-    pageNumber: normalizeOptionalNumber(sourceContext.pageNumber),
+    chunkContent:
+      typeof sourceContext.chunkContent === 'string'
+        ? sourceContext.chunkContent.slice(0, MAX_SOURCE_CONTEXT_TEXT_CHARS)
+        : null,
+    chunkIndex: readOptionalInteger(sourceContext.chunkIndex),
+    pageNumber: readOptionalInteger(sourceContext.pageNumber),
   }
 }
 
 function buildResumeTarget(
-  rawDocumentId: string | null | undefined,
+  documentId: string | null,
   activeTab: DocumentViewTab,
-  rawChunkId?: string | null,
-  range?: Partial<HighlightRange> | HighlightRange | null,
-  previewAnchor?: Partial<DocumentPreviewAnchor> | DocumentPreviewAnchor | null,
-  sourceContext?: DocumentViewSourceContext | null
+  chunkId: string | null,
+  highlightRange: HighlightRange | null,
+  previewAnchor: DocumentPreviewAnchor | null,
+  sourceContext: DocumentViewSourceContext | null,
 ): DocumentViewResumeTarget | null {
-  const documentId = normalizeDocumentId(rawDocumentId)
-  if (!documentId) return null
+  if (documentId === null) return null
 
-  const chunkId = normalizeChunkId(rawChunkId)
-  const highlightRange = sanitizeHighlightRange(range)
-  const sanitizedPreviewAnchor = sanitizeDocumentPreviewAnchor(previewAnchor)
-  const sanitizedSourceContext = sanitizeSourceContext(sourceContext)
   return {
     documentId,
     chunkId,
     highlightRange,
-    previewAnchor: sanitizedPreviewAnchor,
+    previewAnchor,
     activeTab,
-    ...(sanitizedSourceContext ? { sourceContext: sanitizedSourceContext } : {}),
+    ...(sourceContext ? { sourceContext } : {}),
   }
 }
 
-function sanitizeResumeTarget(target: DocumentViewResumeTarget | null | undefined): DocumentViewResumeTarget | null {
-  if (!target) return null
+function sanitizeResumeTarget(target: unknown): DocumentViewResumeTarget | null {
+  if (!isRecord(target)) return null
 
-  const documentId = normalizeDocumentId(target.documentId)
+  const documentId = normalizeId(target.documentId)
   if (!documentId) return null
-  const sourceContext = sanitizeSourceContext(target.sourceContext)
+  const sourceContext = sanitizeSourceContext(target.sourceContext, documentId)
 
   return {
     documentId,
-    chunkId: normalizeChunkId(target.chunkId),
+    chunkId: normalizeId(target.chunkId),
     highlightRange: sanitizeHighlightRange(target.highlightRange),
     previewAnchor: sanitizeDocumentPreviewAnchor(target.previewAnchor),
     activeTab: sanitizeDocumentViewTab(target.activeTab),
@@ -191,14 +197,17 @@ function sanitizeResumeTarget(target: DocumentViewResumeTarget | null | undefine
   }
 }
 
-function sanitizeDocumentLayoutPatch(patch: Partial<DocumentViewLayout>): Partial<DocumentViewLayout> {
+function sanitizeDocumentLayoutPatch(patch: unknown): Partial<DocumentViewLayout> {
   const next: Partial<DocumentViewLayout> = {}
+  if (!isRecord(patch)) return next
 
-  if (patch.activeTab && VALID_TABS.has(patch.activeTab)) next.activeTab = patch.activeTab
+  if (isDocumentViewTab(patch.activeTab)) next.activeTab = patch.activeTab
   if (typeof patch.isExpanded === 'boolean') next.isExpanded = patch.isExpanded
   const panelWidthPx = sanitizePanelWidthPx(patch.panelWidthPx)
   if (panelWidthPx !== undefined) next.panelWidthPx = panelWidthPx
-  if (patch.textMode && VALID_TEXT_MODES.has(patch.textMode)) next.textMode = patch.textMode
+  if (typeof patch.textMode === 'string' && VALID_TEXT_MODES.has(patch.textMode)) {
+    next.textMode = patch.textMode as DocumentTextMode
+  }
 
   const chunksScrollTop = sanitizeScrollTop(patch.chunksScrollTop)
   if (chunksScrollTop !== undefined) next.chunksScrollTop = chunksScrollTop
@@ -209,27 +218,64 @@ function sanitizeDocumentLayoutPatch(patch: Partial<DocumentViewLayout>): Partia
   return next
 }
 
-function mergeDocumentLayout(
-  current: DocumentViewLayout | undefined,
-  patch: Partial<DocumentViewLayout>
-): DocumentViewLayout | null {
+function mergeDocumentLayout(current: DocumentViewLayout | undefined, patch: unknown): DocumentViewLayout | null {
   const sanitizedPatch = sanitizeDocumentLayoutPatch(patch)
   const next = current ? { ...current, ...sanitizedPatch } : { ...sanitizedPatch }
 
   return Object.keys(next).length > 0 ? next : null
 }
 
-function persistActiveTabForDocument(
+function restoreDocumentLayouts(value: unknown): Record<string, DocumentViewLayout> {
+  if (!isRecord(value)) return {}
+
+  const entries: Array<[string, DocumentViewLayout]> = []
+  for (const [key, rawLayout] of Object.entries(value)) {
+    const id = normalizeId(key)
+    const layout = mergeDocumentLayout(undefined, rawLayout)
+    if (id !== null && layout !== null) entries.push([id, layout])
+  }
+  return Object.fromEntries(entries)
+}
+
+function mergePersistedDocumentView(persisted: unknown, current: DocumentViewState): DocumentViewState {
+  const authScope = getAuthCacheScope()
+  if (!isRecord(persisted) || persisted.authScope !== authScope) return current
+
+  const documentId = normalizeId(persisted.documentId)
+  return {
+    ...current,
+    authScope,
+    isOpen: persisted.isOpen === true && documentId !== null,
+    documentId,
+    highlightChunkId: normalizeId(persisted.highlightChunkId),
+    highlightRange: sanitizeHighlightRange(persisted.highlightRange),
+    previewAnchor: sanitizeDocumentPreviewAnchor(persisted.previewAnchor),
+    sourceContext: sanitizeSourceContext(persisted.sourceContext, documentId),
+    activeTab: sanitizeDocumentViewTab(persisted.activeTab) ?? DEFAULT_ACTIVE_TAB,
+    documentLayouts: restoreDocumentLayouts(persisted.documentLayouts),
+    lastOpenedTarget: sanitizeResumeTarget(persisted.lastOpenedTarget),
+  }
+}
+
+function readDocumentLayout(
+  documentLayouts: Record<string, DocumentViewLayout>,
+  documentId: string,
+): DocumentViewLayout | undefined {
+  return Object.hasOwn(documentLayouts, documentId) ? documentLayouts[documentId] : undefined
+}
+
+function patchDocumentLayouts(
   documentId: string | null,
   documentLayouts: Record<string, DocumentViewLayout>,
-  activeTab: DocumentViewTab
+  patch: Partial<DocumentViewLayout>,
 ) {
-  if (!documentId) return documentLayouts
+  if (documentId === null) return documentLayouts
+
+  const layout = mergeDocumentLayout(readDocumentLayout(documentLayouts, documentId), patch)
+  if (layout !== null) return { ...documentLayouts, [documentId]: layout }
 
   const nextLayouts = { ...documentLayouts }
-  const nextLayout = mergeDocumentLayout(nextLayouts[documentId], { activeTab })
-  if (nextLayout) nextLayouts[documentId] = nextLayout
-  else delete nextLayouts[documentId]
+  delete nextLayouts[documentId]
   return nextLayouts
 }
 
@@ -249,34 +295,36 @@ export const useDocumentView = create<DocumentViewState>()(
 
       openDocument: (rawDocumentId, chunkId, range, options) =>
         set((state) => {
-          const documentId = normalizeDocumentId(rawDocumentId)
+          const documentId = normalizeId(rawDocumentId)
           if (!documentId) return state
 
+          const highlightChunkId = normalizeId(chunkId)
           const highlightRange = sanitizeHighlightRange(range)
           const previewAnchor = sanitizeDocumentPreviewAnchor(options?.previewAnchor)
-          const sourceContext = sanitizeSourceContext(options?.sourceContext)
+          const sourceContext = sanitizeSourceContext(options?.sourceContext, documentId)
           const preferredActiveTab = sanitizeDocumentViewTab(options?.activeTab)
-          const savedLayout = state.documentLayouts[documentId]
-          const activeTab =
-            preferredActiveTab || (chunkId || highlightRange ? 'text' : savedLayout?.activeTab || DEFAULT_ACTIVE_TAB)
+          const savedLayout = readDocumentLayout(state.documentLayouts, documentId)
+          let activeTab = savedLayout?.activeTab ?? DEFAULT_ACTIVE_TAB
+          if (preferredActiveTab !== undefined) activeTab = preferredActiveTab
+          else if (highlightChunkId !== null || highlightRange !== null) activeTab = 'text'
           const lastOpenedTarget = buildResumeTarget(
             documentId,
             activeTab,
-            chunkId || null,
+            highlightChunkId,
             highlightRange,
             previewAnchor,
-            sourceContext
+            sourceContext,
           )
 
           return {
             isOpen: true,
             documentId,
-            highlightChunkId: chunkId || null,
+            highlightChunkId,
             highlightRange,
             previewAnchor,
             sourceContext,
             activeTab,
-            documentLayouts: persistActiveTabForDocument(documentId, state.documentLayouts, activeTab),
+            documentLayouts: patchDocumentLayouts(documentId, state.documentLayouts, { activeTab }),
             lastOpenedTarget,
           }
         }),
@@ -293,26 +341,21 @@ export const useDocumentView = create<DocumentViewState>()(
 
       reopenLastDocument: () =>
         set((state) => {
-          const lastOpenedTarget = sanitizeResumeTarget(state.lastOpenedTarget)
+          const lastOpenedTarget = state.lastOpenedTarget
           if (!lastOpenedTarget) return state
 
-          const savedLayout = state.documentLayouts[lastOpenedTarget.documentId]
-          const activeTab =
-            lastOpenedTarget.activeTab || savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
+          const savedLayout = readDocumentLayout(state.documentLayouts, lastOpenedTarget.documentId)
+          const activeTab = lastOpenedTarget.activeTab ?? savedLayout?.activeTab ?? DEFAULT_ACTIVE_TAB
 
           return {
             isOpen: true,
             documentId: lastOpenedTarget.documentId,
-            highlightChunkId: lastOpenedTarget.chunkId || null,
-            highlightRange: lastOpenedTarget.highlightRange || null,
-            previewAnchor: lastOpenedTarget.previewAnchor || null,
-            sourceContext: lastOpenedTarget.sourceContext || null,
+            highlightChunkId: lastOpenedTarget.chunkId ?? null,
+            highlightRange: lastOpenedTarget.highlightRange ?? null,
+            previewAnchor: lastOpenedTarget.previewAnchor ?? null,
+            sourceContext: lastOpenedTarget.sourceContext ?? null,
             activeTab,
-            documentLayouts: persistActiveTabForDocument(
-              lastOpenedTarget.documentId,
-              state.documentLayouts,
-              activeTab
-            ),
+            documentLayouts: patchDocumentLayouts(lastOpenedTarget.documentId, state.documentLayouts, { activeTab }),
             lastOpenedTarget: {
               ...lastOpenedTarget,
               activeTab,
@@ -321,33 +364,47 @@ export const useDocumentView = create<DocumentViewState>()(
         }),
 
       setHighlightChunk: (chunkId) =>
-        set((state) => ({
-          highlightChunkId: chunkId,
-          highlightRange: null,
-          lastOpenedTarget:
-            buildResumeTarget(state.documentId, state.activeTab, chunkId, null, state.previewAnchor, state.sourceContext) ||
-            state.lastOpenedTarget,
-        })),
+        set((state) => {
+          const highlightChunkId = normalizeId(chunkId)
+          const previewAnchor =
+            highlightChunkId !== null && highlightChunkId === state.highlightChunkId ? state.previewAnchor : null
+          return {
+            highlightChunkId,
+            highlightRange: null,
+            previewAnchor,
+            lastOpenedTarget:
+              buildResumeTarget(
+                state.documentId,
+                state.activeTab,
+                highlightChunkId,
+                null,
+                previewAnchor,
+                state.sourceContext,
+              ) ?? state.lastOpenedTarget,
+          }
+        }),
 
       setHighlightRange: (range) =>
-        set((state) => ({
-          highlightRange: sanitizeHighlightRange(range),
-          lastOpenedTarget:
-            buildResumeTarget(
-              state.documentId,
-              state.activeTab,
-              state.highlightChunkId,
-              range,
-              state.previewAnchor,
-              state.sourceContext
-            ) ||
-            state.lastOpenedTarget,
-        })),
+        set((state) => {
+          const highlightRange = sanitizeHighlightRange(range)
+          return {
+            highlightRange,
+            lastOpenedTarget:
+              buildResumeTarget(
+                state.documentId,
+                state.activeTab,
+                state.highlightChunkId,
+                highlightRange,
+                state.previewAnchor,
+                state.sourceContext,
+              ) ?? state.lastOpenedTarget,
+          }
+        }),
 
       setActiveTab: (tab) =>
         set((state) => ({
           activeTab: tab,
-          documentLayouts: persistActiveTabForDocument(state.documentId, state.documentLayouts, tab),
+          documentLayouts: patchDocumentLayouts(state.documentId, state.documentLayouts, { activeTab: tab }),
           lastOpenedTarget:
             buildResumeTarget(
               state.documentId,
@@ -355,28 +412,22 @@ export const useDocumentView = create<DocumentViewState>()(
               state.highlightChunkId,
               state.highlightRange,
               state.previewAnchor,
-              state.sourceContext
-            ) ||
-            state.lastOpenedTarget,
+              state.sourceContext,
+            ) ?? state.lastOpenedTarget,
         })),
 
       getDocumentLayout: (documentId) => {
-        const id = normalizeDocumentId(documentId)
+        const id = normalizeId(documentId)
         if (!id) return null
-        return get().documentLayouts[id] || null
+        return readDocumentLayout(get().documentLayouts, id) ?? null
       },
 
       setDocumentLayout: (documentId, patch) =>
         set((state) => {
-          const id = normalizeDocumentId(documentId)
+          const id = normalizeId(documentId)
           if (!id) return state
 
-          const nextLayouts = { ...state.documentLayouts }
-          const nextLayout = mergeDocumentLayout(nextLayouts[id], patch)
-          if (nextLayout) nextLayouts[id] = nextLayout
-          else delete nextLayouts[id]
-
-          return { documentLayouts: nextLayouts }
+          return { documentLayouts: patchDocumentLayouts(id, state.documentLayouts, patch) }
         }),
     }),
     {
@@ -394,12 +445,9 @@ export const useDocumentView = create<DocumentViewState>()(
         documentLayouts: state.documentLayouts,
         lastOpenedTarget: state.lastOpenedTarget,
       }),
-      merge: (persisted, current) => {
-        const saved = persisted as Partial<DocumentViewState>
-        return saved.authScope === getAuthCacheScope() ? { ...current, ...saved } : current
-      },
-    }
-  )
+      merge: mergePersistedDocumentView,
+    },
+  ),
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {

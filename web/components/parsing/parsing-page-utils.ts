@@ -1,51 +1,62 @@
-'use client'
+import type { ParsingContentResponse } from '@/lib/api/parsing'
 
-import type { FileStatus } from '@/components/ui/file-queue-item'
+import type { FileStatus, ParsedFile, ParseRun, ParsingStatistics } from './parsing-types'
 
-import type { ParsedFile } from './parsing-types'
-
-export type LibraryStatusBadge = {
-  label: string
-  cls: string
+export function getActiveParsingRun(file: ParsedFile): ParseRun | undefined {
+  if (file.activeRunId === undefined) return file.runs?.at(-1)
+  return file.runs?.find((run) => run.id === file.activeRunId)
 }
 
-type ParsingWorkbenchTranslationGetter = (key: string) => string
-
-export function countMarkdownHeadings(markdown: string) {
-  const md = String(markdown || '').trim()
-  if (!md) return 0
-  return (md.match(/^#{1,6}\s+\S+/gm) || []).length
+export function buildParsingStatistics(
+  markdown: string,
+  blockCount: number,
+  reported?: ParsingContentResponse['stats'],
+): ParsingStatistics {
+  return {
+    charCount: markdown.length,
+    lineCount: markdown.split('\n').length,
+    headingCount: countMarkdownHeadings(markdown),
+    pageCount: reported?.page_count,
+    tableCount: reported?.table_count,
+    imageCount: reported?.image_count,
+    blockCount,
+  }
 }
 
-export function bumpParsingProgress(prev: ParsedFile[], fileId: string): ParsedFile[] {
-  return prev.map((file) =>
+export function getParsingRunStatistics(run: ParseRun): ParsingStatistics {
+  return run.stats === undefined ? buildParsingStatistics(run.cleanedMarkdown, run.blocks.length) : run.stats
+}
+
+export function normalizeParsingBackendCandidate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const candidate = value.trim()
+  return candidate.length === 0 ? undefined : candidate
+}
+
+export function readParsingDurationSec(value: unknown): number | undefined {
+  if (typeof value !== 'number' && typeof value !== 'string') return undefined
+  if (typeof value === 'string' && value.trim() === '') return undefined
+  const durationSec = Number(value)
+  return Number.isFinite(durationSec) ? durationSec : undefined
+}
+
+function countMarkdownHeadings(markdown: string) {
+  const headings = markdown.trim().match(/^#{1,6}\s+\S+/gm)
+  return headings === null ? 0 : headings.length
+}
+
+export function bumpParsingProgress(files: ParsedFile[], fileId: string): ParsedFile[] {
+  return files.map((file) =>
     file.id === fileId && file.status === 'parsing'
-      ? { ...file, progress: Math.min((file.progress || 0) + 5, 90) }
-      : file
+      ? { ...file, progress: Math.min((file.progress ?? 0) + 5, 90) }
+      : file,
   )
 }
 
 export function mapBackendStatusToLibraryStatus(status?: string): FileStatus {
-  const normalized = (status || '').toLowerCase()
+  const normalized = status?.toLowerCase()
   if (normalized === 'processing') return 'parsing'
   if (normalized === 'completed') return 'parsed'
   if (normalized === 'failed' || normalized === 'cancelled') return 'error'
   return 'pending'
-}
-
-export function getLibraryStatusBadge(
-  t: ParsingWorkbenchTranslationGetter,
-  status: FileStatus = 'pending'
-): LibraryStatusBadge {
-  switch (status) {
-    case 'parsed':
-      return { label: t('libraryStatus.parsed'), cls: 'bg-success/10 text-success dark:text-emerald-300 border-success/20' }
-    case 'parsing':
-      return { label: t('libraryStatus.parsing'), cls: 'bg-info/10 text-info border-info/20' }
-    case 'error':
-      return { label: t('libraryStatus.error'), cls: 'bg-destructive/10 text-destructive dark:text-red-300 border-destructive/20' }
-    case 'pending':
-    default:
-      return { label: t('libraryStatus.pending'), cls: 'bg-warning/10 text-warning dark:text-amber-300 border-warning/20' }
-  }
 }

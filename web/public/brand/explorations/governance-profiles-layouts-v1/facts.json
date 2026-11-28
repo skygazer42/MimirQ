@@ -1,0 +1,641 @@
+{
+  "source": "app/services/governance_profiles.py::get_builtin_governance_profiles",
+  "selectedKey": "builtin:pdf_text",
+  "profiles": [
+    {
+      "key": "builtin:kb_default",
+      "name": "知识库默认（保守）",
+      "description": "适用于大多数 Markdown/纯文本：去目录/噪声、合并软换行、去重页眉页脚。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_max_blank_lines": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:html_web",
+      "name": "网页 HTML（去样板/去导航）",
+      "description": "适用于网页抓取/复制：启用样板移除、URL 规范化、去追踪参；可配 XPath 提取正文。",
+      "payload": {
+        "input_formats": [
+          "html",
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": false,
+          "governance_remove_common_lines": false,
+          "governance_remove_boilerplate": true,
+          "governance_remove_images": "decorative",
+          "governance_rule_packs": [
+            "web_navigation",
+            "web_cookie_banners"
+          ],
+          "governance_normalize_urls": true,
+          "governance_normalize_urls_strip_tracking": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_drop_duplicate_paragraphs_min_chars": 40,
+          "governance_drop_duplicate_paragraphs_max_chars": 1200
+        },
+        "regex_rules": []
+      }
+    },
+    {
+      "key": "builtin:pdf_text",
+      "name": "PDF 文本版（修复断行/页眉页脚/表格）",
+      "description": "适用于可复制文本的 PDF：合并软换行、去重页眉页脚、表格规范化。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_normalize_tables": true,
+          "governance_max_blank_lines": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:policy_manual_pdf",
+      "name": "制度/手册 PDF（条款结构友好）",
+      "description": "适用于制度/手册类 PDF：修复断行、去重页眉页脚/重复段落，尽量保留正文结构。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_drop_duplicate_paragraphs_min_chars": 40,
+          "governance_drop_duplicate_paragraphs_max_chars": 1200,
+          "governance_normalize_tables": true,
+          "governance_max_blank_lines": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:pdf_scanned_ocr",
+      "name": "PDF 扫描/OCR（更强容错）",
+      "description": "适用于扫描件/OCR：开启解析兜底与更保守的噪声过滤（避免把正文删掉）。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_noise_ratio_threshold": 0.12,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "parse_fallback_enabled": true,
+          "parse_fallback_min_content_chars": 160,
+          "parse_fallback_max_retries": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:legal_compliance",
+      "name": "合规脱敏（PII/密钥）",
+      "description": "适用于可能包含邮箱/电话/Token 的文档：启用 PII 匿名化与密钥脱敏。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_pii_anonymize": true,
+          "governance_pii_mode": "mask",
+          "governance_pii_mask": "[REDACTED]",
+          "governance_secrets_redact": true,
+          "governance_secrets_mode": "mask",
+          "governance_secrets_mask": "[SECRET]"
+        }
+      }
+    },
+    {
+      "key": "builtin:wiki_longform",
+      "name": "长文/Wiki（去重+参考文献）",
+      "description": "适用于 Wiki/手册：去重重复段落、裁剪末尾 References（保守）。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_trim_references": true
+        }
+      }
+    },
+    {
+      "key": "builtin:code_repo",
+      "name": "代码仓库（保留格式 + secrets 脱敏）",
+      "description": "适用于代码/配置/README：保留换行与缩进，避免误删；可选去掉代码块行号与 secrets 脱敏。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": false,
+          "governance_remove_noise_lines": false,
+          "governance_unwrap_lines": false,
+          "governance_remove_common_lines": true,
+          "governance_common_lines_min_docs": 8,
+          "governance_common_lines_min_ratio": 0.75,
+          "governance_strip_code_line_numbers": true,
+          "governance_secrets_redact": true,
+          "governance_secrets_mode": "mask",
+          "governance_secrets_mask": "[SECRET]",
+          "governance_max_blank_lines": 2
+        }
+      }
+    },
+    {
+      "key": "builtin:structured_data",
+      "name": "结构化数据（CSV/JSON/日志型）",
+      "description": "适用于 CSV/JSON/日志等行式数据：保留行边界，轻量去噪；避免过度合并断行。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": false,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": false,
+          "governance_remove_common_lines": false,
+          "governance_max_blank_lines": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:chat_exports",
+      "name": "聊天记录导出（Slack/Teams）",
+      "description": "适用于 Slack/Teams 等聊天导出：去导出头尾/系统提示，保留消息行边界。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": false,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": false,
+          "governance_remove_common_lines": false,
+          "governance_remove_boilerplate": true,
+          "governance_rule_packs": [
+            "chat_export_noise"
+          ],
+          "governance_max_blank_lines": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:metadata_enrich",
+      "name": "元数据增强（frontmatter/语言/关键词）",
+      "description": "适用于需要检索增强的文档：提取/剥离 frontmatter、语言检测、关键词抽取（best-effort）。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_extract_frontmatter": true,
+          "governance_strip_frontmatter": true,
+          "governance_detect_language": true,
+          "governance_language_min_chars": 200,
+          "governance_extract_keywords": true,
+          "governance_keywords_provider": "auto",
+          "governance_keywords_top_k": 12,
+          "governance_keywords_max_chars": 60000
+        }
+      }
+    },
+    {
+      "key": "builtin:quality_gate_quarantine",
+      "name": "质量门禁（低密度/大纲-only → 隔离）",
+      "description": "适用于批量入库：对疑似无正文/低信息密度文档触发过滤，并进入隔离队列以便人工复核。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_outline_only": true,
+          "governance_drop_outline_min_content_chars": 200,
+          "governance_drop_outline_max_heading_ratio": 0.9,
+          "governance_drop_low_density": true,
+          "governance_drop_low_density_threshold": 0.12,
+          "governance_quarantine_on_drop": true,
+          "parse_fallback_enabled": true,
+          "parse_fallback_min_content_chars": 120,
+          "parse_fallback_max_retries": 1
+        }
+      }
+    },
+    {
+      "key": "builtin:pii_secrets_quarantine",
+      "name": "PII/Secrets 合规门禁（命中即隔离）",
+      "description": "适用于企业合规场景：启用 PII/Secrets 掩码，并在命中超过阈值时进入隔离队列以便人工复核。",
+      "payload": {
+        "input_formats": [
+          "markdown",
+          "html"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_pii_anonymize": true,
+          "governance_pii_mode": "mask",
+          "governance_pii_mask": "[REDACTED]",
+          "governance_pii_max_hits": 0,
+          "governance_secrets_redact": true,
+          "governance_secrets_mode": "mask",
+          "governance_secrets_mask": "[SECRET]",
+          "governance_secrets_max_hits": 0,
+          "governance_quarantine_on_drop": true
+        }
+      }
+    },
+    {
+      "key": "builtin:html_xpath_main",
+      "name": "网页 XPath 定位正文（默认 //main）",
+      "description": "适用于结构稳定的网站：优先用 XPath 抽正文（默认 //main，未命中则回退到可读性提取）。",
+      "payload": {
+        "input_formats": [
+          "html",
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": false,
+          "governance_remove_common_lines": false,
+          "governance_remove_boilerplate": true,
+          "governance_remove_images": "decorative",
+          "governance_normalize_urls": true,
+          "governance_normalize_urls_strip_tracking": true,
+          "governance_html_xpath": "//main"
+        }
+      }
+    },
+    {
+      "key": "builtin:cn_a_share_annual_report",
+      "name": "A 股年报 PDF（表格+口径）",
+      "description": "适用于 A 股上市公司年报/季报 PDF：保留表格结构、去重复页眉页脚、剥离董事会承诺/披露免责声明等噪声。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_drop_duplicate_paragraphs_min_chars": 30,
+          "governance_normalize_tables": true,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "cn_finance_report_artifacts",
+            "pdf_header_footer_cn",
+            "pdf_watermark"
+          ],
+          "parse_fallback_enabled": true
+        }
+      }
+    },
+    {
+      "key": "builtin:cn_prospectus",
+      "name": "A 股招股书（目录裁剪+风险因素去重）",
+      "description": "适用于招股说明书/募集说明书：去目录、去重复风险因素段、保留法律披露承诺。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 2,
+          "governance_drop_duplicate_paragraphs_min_chars": 60,
+          "governance_normalize_tables": true,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "cn_finance_report_artifacts",
+            "pdf_header_footer_cn"
+          ]
+        }
+      }
+    },
+    {
+      "key": "builtin:bank_compliance_report",
+      "name": "银行/金融机构合规报告（强 PII）",
+      "description": "适用于银行/券商/保险合规报告：继承 legal_compliance 做 PII/密钥脱敏，叠加财报披露噪声移除与表格规范化。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_pii_anonymize": true,
+          "governance_pii_mode": "mask",
+          "governance_pii_mask": "[REDACTED]",
+          "governance_secrets_redact": true,
+          "governance_secrets_mode": "mask",
+          "governance_secrets_mask": "[SECRET]",
+          "governance_normalize_tables": true,
+          "governance_remove_common_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_rule_packs": [
+            "cn_finance_report_artifacts",
+            "pdf_watermark"
+          ]
+        },
+        "extends": "builtin:legal_compliance"
+      }
+    },
+    {
+      "key": "builtin:insurance_policy_pdf",
+      "name": "保险合同 PDF（条款结构友好）",
+      "description": "适用于保险条款/合同 PDF：修复断行、保留条款序号与附录，规范化表格，避免裁剪正文末尾。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_normalize_tables": true,
+          "governance_trim_references": false,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "pdf_watermark",
+            "pdf_header_footer_cn"
+          ]
+        }
+      }
+    },
+    {
+      "key": "builtin:medical_emr",
+      "name": "电子病历（强 PHI 脱敏）",
+      "description": "适用于医院电子病历/检查报告/处方：继承 legal_compliance 做 PII 脱敏，叠加医疗表头噪声移除。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_pii_anonymize": true,
+          "governance_pii_mode": "mask",
+          "governance_pii_mask": "[REDACTED]",
+          "governance_secrets_redact": true,
+          "governance_secrets_mode": "mask",
+          "governance_secrets_mask": "[SECRET]",
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "cn_medical_record_artifacts",
+            "pdf_header_footer_cn"
+          ]
+        },
+        "extends": "builtin:legal_compliance"
+      }
+    },
+    {
+      "key": "builtin:government_redhead",
+      "name": "政府红头公文（保留章节）",
+      "description": "适用于党政机关红头公文/通知/批复：保留章节编号和正文目录，清理抄送/印发/签发块。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": false,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "cn_gov_redhead_artifacts",
+            "pdf_header_footer_cn",
+            "pdf_watermark"
+          ]
+        }
+      }
+    },
+    {
+      "key": "builtin:china_law_regulation",
+      "name": "中国法规条例（条/款/项结构）",
+      "description": "适用于中国法律法规/行政条例/部门规章：继承 policy_manual_pdf，保留附则与条款编号，强化重复段落去除。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_normalize_tables": true,
+          "governance_trim_references": false,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "pdf_header_footer_cn",
+            "pdf_watermark"
+          ]
+        },
+        "extends": "builtin:policy_manual_pdf"
+      }
+    },
+    {
+      "key": "builtin:court_judgment",
+      "name": "法院判决书（裁判文书脱敏）",
+      "description": "适用于裁判文书网/法院判决书：继承 legal_compliance 做当事人 PII 脱敏，叠加签发/印发块清理与重复段去除。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_pii_anonymize": true,
+          "governance_pii_mode": "mask",
+          "governance_pii_mask": "[REDACTED]",
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "cn_gov_redhead_artifacts",
+            "pdf_header_footer_cn"
+          ]
+        },
+        "extends": "builtin:legal_compliance"
+      }
+    },
+    {
+      "key": "builtin:confluence_enterprise",
+      "name": "Confluence 企业导出（强化）",
+      "description": "适用于企业级 Confluence 导出：继承 wiki_longform，叠加 Confluence/Jira 噪声、导航栏、邮件签名清理。",
+      "payload": {
+        "input_formats": [
+          "markdown",
+          "html"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_remove_boilerplate": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_drop_duplicate_paragraphs_min_occurrences": 3,
+          "governance_normalize_urls": true,
+          "governance_normalize_urls_strip_tracking": true,
+          "governance_rule_packs": [
+            "confluence_jira_noise",
+            "web_navigation",
+            "email_disclaimer"
+          ]
+        },
+        "extends": "builtin:wiki_longform"
+      }
+    },
+    {
+      "key": "builtin:sharepoint_o365",
+      "name": "SharePoint / Office 365 导出",
+      "description": "适用于 SharePoint/OneDrive/Office 365 导出文档：继承 wiki_longform，叠加样板移除、装饰图剥离、URL 规范化。",
+      "payload": {
+        "input_formats": [
+          "markdown",
+          "html"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_remove_boilerplate": true,
+          "governance_remove_images": "decorative",
+          "governance_normalize_urls": true,
+          "governance_normalize_urls_strip_tracking": true,
+          "governance_rule_packs": [
+            "web_navigation",
+            "email_disclaimer",
+            "markdown_export_noise"
+          ]
+        },
+        "extends": "builtin:wiki_longform"
+      }
+    },
+    {
+      "key": "builtin:notion_database",
+      "name": "Notion 数据库 + 文档导出",
+      "description": "适用于 Notion markdown 导出（含 database properties）：继承 wiki_longform，规范化属性表格并合并断行。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_normalize_tables": true,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "notion_export_noise",
+            "markdown_export_noise"
+          ]
+        },
+        "extends": "builtin:wiki_longform"
+      }
+    },
+    {
+      "key": "builtin:feishu_lark_doc",
+      "name": "飞书 / Lark 知识库",
+      "description": "适用于飞书/Lark 知识库导出：继承 wiki_longform，叠加飞书特有噪声（导出标识/最后编辑/协作者）清理。",
+      "payload": {
+        "input_formats": [
+          "markdown"
+        ],
+        "pipeline_patch": {
+          "governance_enabled": true,
+          "governance_remove_toc_lines": true,
+          "governance_remove_noise_lines": true,
+          "governance_unwrap_lines": true,
+          "governance_remove_common_lines": true,
+          "governance_drop_duplicate_paragraphs": true,
+          "governance_normalize_urls": true,
+          "governance_max_blank_lines": 1,
+          "governance_rule_packs": [
+            "feishu_lark_noise",
+            "web_navigation"
+          ]
+        },
+        "extends": "builtin:wiki_longform"
+      }
+    }
+  ],
+  "sample": {
+    "filename": "设备维护手册.md",
+    "before": "设备维护手册  第 1 页\n\n目录\n1. 日常维护 ........ 2\n\n设备运行前，应检查电源连接、\n紧固件和防护装置。\n\n\n检查项目 | 要求\n---|---\n运行状态 | 检查振动和噪声\n\n设备维护手册  第 2 页",
+    "after": "设备运行前，应检查电源连接、紧固件和防护装置。\n\n| 检查项目 | 要求 |\n| --- | --- |\n| 运行状态 | 检查振动和噪声 |"
+  }
+}

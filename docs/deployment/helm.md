@@ -1,4 +1,4 @@
-# Helm / Kubernetes 部署指南（MimirQ）
+# Helm / Kubernetes 部署指南（Ragvia）
 
 本指南提供一个 **最小可用** 的 Helm Chart，用于在 Kubernetes 中部署：
 
@@ -22,12 +22,17 @@ Chart 目录：`deploy/helm/mimirq`
 - 你已准备好（或计划自建）以下依赖：
   - Postgres（必需）
   - Redis（建议：用于任务队列/缓存）
-  - 向量库（Milvus / Chroma 等，取决于 `VECTOR_BACKEND`）
+  - 向量库（Milvus，取决于 `VECTOR_BACKEND`）
   - MinIO（可选：图片/文档对象存储，取决于 `MINIO_ENABLED` / `MINIO_DOCUMENTS_ENABLED`）
 
 后端就绪探针（readiness）使用：
 
 - `GET /api/v1/health/ready`（依赖可用且外部管理的数据库位于当前镜像 Alembic head 时返回 200，否则 503）
+
+启用任务队列时，外部 Redis 必须配置 `maxmemory-policy noeviction`，并为队列预留内存。
+本 Chart 不安装或配置 Redis，`secretEnv.REDIS_URL` 仅选择连接地址，不能修改服务器淘汰策略。
+不要让 `allkeys-lru` 等缓存策略淘汰 ARQ 的任务正文、队列或锁；需要 LRU 缓存时应使用另一个 Redis 实例，
+不能仅换同一实例的逻辑数据库。内存耗尽时入队会明确失败，应释放缓存或扩容后重试。
 
 ---
 
@@ -185,6 +190,10 @@ worker:
 persistence:
   uploads:
     enabled: true
+    # 填写集群中支持 ReadWriteMany 的 StorageClass。
+    storageClassName: "<your-rwx-storage-class>"
+    accessModes:
+      - ReadWriteMany
     size: 50Gi
 
 migrations:
@@ -199,8 +208,9 @@ migrations:
   - `ENV=production`
   - `DB_CREATE_ALL_ON_STARTUP=false`
   - `DB_RUNTIME_MIGRATIONS_ENABLED=false`
-  - 不使用 `VECTOR_BACKEND=faiss/chroma`
-  - 若未启用 `MINIO_ENABLED=true` 且 `MINIO_DOCUMENTS_ENABLED=true`，则 `persistence.uploads.accessModes` 必须包含 `ReadWriteMany`
+  - Chroma 与 FAISS 后端已退出，单副本和多副本均不得选择
+  - API / worker 共用启用的 uploads PVC 时，`persistence.uploads.accessModes` 必须包含 `ReadWriteMany`，即使启用了 MinIO；每种服务各 1 个副本也会形成两个挂载消费者
+  - 关闭 uploads PVC 时，多个消费者必须都启用 `MINIO_ENABLED=true` 且 `MINIO_DOCUMENTS_ENABLED=true`，让文档通过对象存储共享
 - `migrations.enabled=true` 只支持配合 `existingSecretName` 使用；pre-install hook 早于 chart 管理的 Secret 创建，不能安全依赖内置 Secret。
 - API 在 `DB_CREATE_ALL_ON_STARTUP=false` 且 `DB_RUNTIME_MIGRATIONS_ENABLED=false` 时会校验 `alembic_version`；迁移 Job 未执行或版本落后时 readiness 会保持 503，不会让 schema 不兼容的 Pod 接流量。
 
@@ -354,6 +364,7 @@ cronjobs:
 - Cron schedule 由 K8s 控制面解释（通常是 UTC）；请结合你的时区调整。
 - Job 输出会体现在审计日志中；结合 `/api/v1/observability/periodic-jobs/freshness` 可做 “新鲜度” 监控。
 - 完整示例文件：`deploy/helm/mimirq/examples/values-periodic-audits.yaml`
+- `nightlyAblations.execute=true` 会同步读取每次评测的最终状态；输出的 `executed` 包含 `status`。任一次失败或仍未完成时，命令输出 `ok=false` 并以非零退出码结束，供 CronJob 告警使用；dry-run 和正常跳过不算失败。
 
 ## 5) 安装 / 升级
 
@@ -370,8 +381,8 @@ make helm-lint
 
 - 必须设置 `existingSecretName`
 - 必须把 `DB_CREATE_ALL_ON_STARTUP` / `DB_RUNTIME_MIGRATIONS_ENABLED` 关闭
-- 多副本场景下不得使用本地 `faiss/chroma`
-- 多副本 + 本地文档存储时，uploads PVC 必须声明 `ReadWriteMany`
+- Chroma 与 FAISS 后端已退出，不再提供本地持久向量库部署
+- 多个 API / worker 挂载同一个 uploads PVC 时必须声明 `ReadWriteMany`，并选择支持它的 StorageClass；该检查也覆盖 HPA 最大副本数和每种服务各 1 个副本。仅单个消费者可显式使用 `ReadWriteOnce`
 
 ```bash
 helm upgrade --install mimirq deploy/helm/mimirq \

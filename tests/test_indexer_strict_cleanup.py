@@ -6,32 +6,31 @@ import pytest
 
 
 def test_delete_chunk_indexes_strict_propagates_backend_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import indexer
-
-    def _fail_scoped_delete(*_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-        raise RuntimeError("vector backend unavailable")
+    from app.rag.ingestion.indexing import indexer
 
     class _VectorStore:
         def delete_by_document_id(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-            return None
+            raise RuntimeError("vector backend unavailable")
 
-    monkeypatch.setattr(indexer.Indexer, "_delete_dataset_scoped_chunk_vectors", _fail_scoped_delete)
+    monkeypatch.setattr(indexer.Indexer, "_delete_dataset_scoped_chunk_vectors", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(indexer.Indexer, "_touch_chunk_retrieval_scope", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(indexer, "get_vector_store", lambda: _VectorStore())
     monkeypatch.setattr(
-        type(indexer.hybrid_retriever),
-        "remove_document_from_bm25_index",
-        lambda *_a, **_k: None,
+        indexer,
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None),
     )
     service = object.__new__(indexer.Indexer)
+    service._db = SimpleNamespace(flush=lambda: None)
 
     with pytest.raises(RuntimeError, match="Document index cleanup failed"):
         service.delete_chunk_indexes(tenant_id=uuid4(), document_id=uuid4(), strict=True)
 
 
-def test_delete_chunk_indexes_ignores_invalid_dataset_scoped_embedding_cleanup(
+def test_delete_chunk_indexes_preserves_invalid_dataset_embedding_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
+    from app.rag.ingestion.indexing import indexer
 
     def _invalid_runtime(*_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
         raise ValueError("dataset-scoped embedding_defaults require VECTOR_BACKEND=milvus")
@@ -43,20 +42,22 @@ def test_delete_chunk_indexes_ignores_invalid_dataset_scoped_embedding_cleanup(
     monkeypatch.setattr(indexer.Indexer, "_embedding_runtime_for_document", _invalid_runtime)
     monkeypatch.setattr(indexer, "get_vector_store", lambda: _VectorStore())
     monkeypatch.setattr(
-        type(indexer.hybrid_retriever),
-        "remove_document_from_bm25_index",
-        lambda *_a, **_k: None,
+        indexer,
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None),
     )
     service = object.__new__(indexer.Indexer)
 
-    service.delete_chunk_indexes(tenant_id=uuid4(), document_id=uuid4(), strict=True)
+    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus")
+    with pytest.raises(ValueError, match="dataset-scoped embedding_defaults"):
+        service.delete_chunk_indexes(tenant_id=uuid4(), document_id=uuid4(), strict=True)
 
 
 def test_delete_chunk_indexes_strict_deletes_plausible_scoped_collection_for_ambiguous_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.ingestion.indexing import indexer
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -74,11 +75,13 @@ def test_delete_chunk_indexes_strict_deletes_plausible_scoped_collection_for_amb
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [({"embedding_space_hash": "space-default"},)]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([(None, "space-default")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(indexer, "get_milvus_adapter", lambda name: _Adapter(name))
     monkeypatch.setattr(
@@ -115,9 +118,9 @@ def test_delete_chunk_indexes_strict_deletes_plausible_scoped_collection_for_amb
         ),
     )
     monkeypatch.setattr(
-        type(indexer.hybrid_retriever),
-        "remove_document_from_bm25_index",
-        lambda *_a, **_k: None,
+        indexer,
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None),
     )
     service = object.__new__(indexer.Indexer)
     service._db = SimpleNamespace(
@@ -137,23 +140,20 @@ def test_delete_chunk_indexes_strict_deletes_plausible_scoped_collection_for_amb
 def test_delete_chunk_indexes_invalidates_scope_after_partial_backend_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-
-    def _fail_scoped_delete(*_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-        raise RuntimeError("vector backend unavailable")
+    from app.rag.ingestion.indexing import indexer
 
     class _VectorStore:
         def delete_by_document_id(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-            return None
+            raise RuntimeError("vector backend unavailable")
 
     flushed: list[bool] = []
     touched: list[tuple] = []
-    monkeypatch.setattr(indexer.Indexer, "_delete_dataset_scoped_chunk_vectors", _fail_scoped_delete)
+    monkeypatch.setattr(indexer.Indexer, "_delete_dataset_scoped_chunk_vectors", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(indexer, "get_vector_store", lambda: _VectorStore())
     monkeypatch.setattr(
-        type(indexer.hybrid_retriever),
-        "remove_document_from_bm25_index",
-        lambda *_a, **_k: None,
+        indexer,
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None),
     )
     monkeypatch.setattr(
         indexer.Indexer,
@@ -172,7 +172,7 @@ def test_delete_chunk_indexes_invalidates_scope_after_partial_backend_failure(
 
 
 def test_touch_chunk_retrieval_scope_updates_document_and_dataset_timestamps() -> None:
-    from app.services import indexer
+    from app.rag.ingestion.indexing import indexer
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -208,7 +208,7 @@ def test_touch_chunk_retrieval_scope_updates_document_and_dataset_timestamps() -
 
 
 def test_persist_document_chunks_touches_retrieval_scope_before_commit() -> None:
-    from app.services import indexer
+    from app.rag.ingestion.indexing import indexer
     from app.types.indexing import ChunkInput
 
     events: list[str] = []
@@ -232,15 +232,17 @@ def test_persist_document_chunks_touches_retrieval_scope_before_commit() -> None
         tenant_id=uuid4(),
         dataset_id=uuid4(),
         chunks=[ChunkInput(content="content", metadata={})],
+        vector_ids=[None],
+        chunk_ids=[uuid4()],
     )
 
     assert events == ["add", "touch", "flush", "commit"]
 
 
 def test_non_milvus_delete_skips_legacy_dataset_embedding_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import indexer
+    from app.rag.ingestion.indexing import indexer
 
-    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(
         indexer.Indexer,
         "_embedding_runtime_for_document",
@@ -254,8 +256,8 @@ def test_non_milvus_delete_skips_legacy_dataset_embedding_config(monkeypatch: py
 def test_delete_dataset_scoped_chunk_vectors_uses_persisted_chunk_space_on_runtime_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.ingestion.indexing import indexer
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -274,11 +276,13 @@ def test_delete_dataset_scoped_chunk_vectors_uses_persisted_chunk_space_on_runti
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [({"embedding_space_hash": "space-a"},)]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([(None, "space-a")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(indexer, "get_milvus_adapter", lambda name: _Adapter(name))
     monkeypatch.setattr(
@@ -315,11 +319,11 @@ def test_delete_dataset_scoped_chunk_vectors_uses_persisted_chunk_space_on_runti
     assert deleted == ["documents_emb_space_a"]
 
 
-def test_delete_dataset_scoped_chunk_vectors_prefers_persisted_collection_identity(
+def test_delete_dataset_scoped_chunk_vectors_uses_persisted_and_current_collections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.ingestion.indexing import indexer
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -334,19 +338,13 @@ def test_delete_dataset_scoped_chunk_vectors_prefers_persisted_collection_identi
             assert tenant_id == test_tenant_id
             deleted.append(self.collection_name)
 
-    class _Row:
-        def __init__(self, metadata: dict[str, object]) -> None:
-            self._mapping = {"metadata": metadata}
-
-        def __getitem__(self, key):  # noqa: ANN001
-            return self._mapping[key]
-
     class _Query:
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [_Row({"dataset_scoped": True, "vector_collection_name": "documents_emb_oldbase_space_a"})]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([("documents_emb_oldbase_space_a", "space-a")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
@@ -370,14 +368,14 @@ def test_delete_dataset_scoped_chunk_vectors_prefers_persisted_collection_identi
 
     service._delete_dataset_scoped_chunk_vectors(tenant_id=tenant_id, document_id=document_id)
 
-    assert deleted == ["documents_emb_oldbase_space_a"]
+    assert deleted == ["documents_emb_oldbase_space_a", "documents_emb_space_b"]
 
 
 def test_delete_dataset_scoped_chunk_vectors_deletes_ambiguous_default_space_from_plausible_scoped_collection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.ingestion.indexing import indexer
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -396,11 +394,13 @@ def test_delete_dataset_scoped_chunk_vectors_deletes_ambiguous_default_space_fro
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [({"embedding_space_hash": "space-default"},)]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([(None, "space-default")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(indexer, "get_milvus_adapter", lambda name: _Adapter(name))
     monkeypatch.setattr(
@@ -440,8 +440,8 @@ def test_delete_dataset_scoped_chunk_vectors_deletes_ambiguous_default_space_fro
 def test_upsert_document_chunk_vector_uses_dataset_scoped_collection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.ingestion.indexing import indexer
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -468,16 +468,18 @@ def test_upsert_document_chunk_vector_uses_dataset_scoped_collection(
         indexer,
         "get_milvus_adapter",
         lambda name: SimpleNamespace(
-            add_vectors=lambda items, embeddings, batch_size, upsert: writes.append(
-                {
-                    "collection": name,
-                    "items": items,
-                    "embeddings": embeddings,
-                    "batch_size": batch_size,
-                    "upsert": upsert,
-                }
+            add_vectors=lambda items, embeddings, batch_size, upsert: (
+                writes.append(
+                    {
+                        "collection": name,
+                        "items": items,
+                        "embeddings": embeddings,
+                        "batch_size": batch_size,
+                        "upsert": upsert,
+                    }
+                )
+                or ["vector-1"]
             )
-            or ["vector-1"]
         ),
     )
     monkeypatch.setattr(
@@ -535,7 +537,7 @@ def test_upsert_document_chunk_vector_uses_dataset_scoped_collection(
 def test_upsert_document_chunk_vector_does_not_fall_back_on_runtime_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
+    from app.rag.ingestion.indexing import indexer
 
     class _FailingDB:
         def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN201
@@ -564,7 +566,7 @@ def test_upsert_document_chunk_vector_does_not_fall_back_on_runtime_lookup_failu
 def test_delete_document_chunk_vectors_cleans_scoped_and_default_collections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
+    from app.rag.ingestion.indexing import indexer
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -580,9 +582,7 @@ def test_delete_document_chunk_vectors_cleans_scoped_and_default_collections(
         indexer,
         "get_vector_store",
         lambda: SimpleNamespace(
-            delete_by_document_id_and_filter=lambda **kwargs: deletes.append(
-                {"store": "default", **kwargs}
-            )
+            delete_by_document_id_and_filter=lambda **kwargs: deletes.append({"store": "default", **kwargs})
         ),
     )
 

@@ -8,23 +8,23 @@ import pytest
 
 
 def test_get_reranker_rejects_unknown_provider() -> None:
-    from app.rag.reranker.factory import get_reranker
+    from app.rag.retrieval.reranking.factory import get_reranker
 
     with pytest.raises(ValueError, match="Unknown reranker provider: 'typo-provider'"):
         get_reranker("typo-provider")
 
 
 def test_get_reranker_disabled_alias_still_uses_existing_unknown_error_contract() -> None:
-    from app.rag.reranker.factory import get_reranker
+    from app.rag.retrieval.reranking.factory import get_reranker
 
     with pytest.raises(ValueError, match="Unknown reranker provider: 'none'"):
         get_reranker("none")
 
 
 def test_pc_reranker_is_local_parent_child_implementation() -> None:
-    from app.rag.reranker.factory import get_reranker
-    from app.rag.reranker.parent_child import ParentChildReranker
-    from app.rag.reranker.types import RerankCandidate
+    from app.rag.retrieval.reranking.factory import get_reranker
+    from app.rag.retrieval.reranking.parent_child import ParentChildReranker
+    from app.rag.retrieval.reranking.types import RerankCandidate
 
     reranker = get_reranker("pc")
     result = reranker.rerank(
@@ -43,8 +43,6 @@ def test_pc_reranker_is_local_parent_child_implementation() -> None:
 @pytest.mark.parametrize(
     ("provider", "kwargs", "expected"),
     [
-        ("cross-encoder", {}, {"provider": "cross_encoder", "tier": "prod"}),
-        ("sentence-transformers", {}, {"provider": "cross_encoder", "tier": "prod"}),
         ("pc", {}, {"provider": "pc", "tier": "prod"}),
         ("aliyun", {}, {"provider": "aliyun", "tier": "experimental"}),
         ("off", {}, {"provider": "none", "tier": "disabled"}),
@@ -55,30 +53,33 @@ def test_describe_reranker_provider_preserves_existing_alias_contracts(
     kwargs: dict[str, object],
     expected: dict[str, object],
 ) -> None:
-    from app.rag.reranker.factory import describe_reranker_provider
+    from app.rag.retrieval.reranking.providers import describe_reranker_provider
 
     assert describe_reranker_provider(provider, **kwargs) == expected
 
 
-def test_describe_reranker_provider_keeps_colbert_default_mode_contract(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.rag.reranker.factory import describe_reranker_provider
+def test_describe_reranker_provider_reports_colbert_as_retired() -> None:
+    from app.rag.retrieval.reranking.providers import describe_reranker_provider
 
-    monkeypatch.setattr(
-        "app.rag.reranker.capabilities.settings.COLBERT_RERANK_PROVIDER", "deterministic", raising=False
-    )
     assert describe_reranker_provider("late_interaction") == {
         "provider": "colbert",
-        "tier": "offline_only",
-        "mode": "deterministic",
+        "tier": "retired",
     }
+
+
+@pytest.mark.parametrize("provider", ["colbert", "late_interaction", "ltr", "xgboost_ltr"])
+def test_reranker_factory_rejects_retired_offline_providers(provider: str) -> None:
+    from app.infrastructure.model_policy import RetiredModelProviderError
+    from app.rag.retrieval.reranking.factory import get_reranker
+
+    with pytest.raises(RetiredModelProviderError, match="has been retired from the API"):
+        get_reranker(provider)
 
 
 def test_get_reranker_passes_explicit_openai_timeout_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.reranker import factory, openai
+    from app.rag.retrieval.reranking import api, factory
 
     captured: dict[str, object] = {}
 
@@ -100,7 +101,7 @@ def test_get_reranker_passes_explicit_openai_timeout_once(
                 kwargs=kwargs,
             )
 
-    monkeypatch.setattr(openai, "OpenAIReranker", FakeOpenAIReranker)
+    monkeypatch.setattr(api, "OpenAIReranker", FakeOpenAIReranker)
     factory._api_reranker_cache.clear()
 
     reranker = factory.get_reranker(
@@ -120,7 +121,7 @@ def test_get_reranker_passes_explicit_openai_timeout_once(
 def test_get_reranker_imports_only_requested_provider_on_demand(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.reranker import factory
+    from app.rag.retrieval.reranking import factory
 
     calls: list[tuple[str, str]] = []
 
@@ -130,7 +131,7 @@ def test_get_reranker_imports_only_requested_provider_on_demand(
 
     def _load_attr(module_name: str, attr_name: str) -> object:
         calls.append((module_name, attr_name))
-        if (module_name, attr_name) == ("app.rag.reranker.openai", "OpenAIReranker"):
+        if (module_name, attr_name) == ("app.rag.retrieval.reranking.api", "OpenAIReranker"):
             return FakeOpenAIReranker
         raise AssertionError(f"unexpected import target: {(module_name, attr_name)!r}")
 
@@ -145,14 +146,14 @@ def test_get_reranker_imports_only_requested_provider_on_demand(
     )
 
     assert isinstance(reranker, FakeOpenAIReranker)
-    assert calls == [("app.rag.reranker.openai", "OpenAIReranker")]
+    assert calls == [("app.rag.retrieval.reranking.api", "OpenAIReranker")]
 
 
 @pytest.mark.parametrize(
     ("provider", "module_name", "class_name"),
     [
-        ("openai", "app.rag.reranker.openai", "OpenAIReranker"),
-        ("dashscope", "app.rag.reranker.dashscope", "DashScopeReranker"),
+        ("openai", "app.rag.retrieval.reranking.api", "OpenAIReranker"),
+        ("dashscope", "app.rag.retrieval.reranking.api", "DashScopeReranker"),
     ],
 )
 def test_api_reranker_cache_keys_include_all_initialization_parameters_without_plaintext(
@@ -161,7 +162,7 @@ def test_api_reranker_cache_keys_include_all_initialization_parameters_without_p
     module_name: str,
     class_name: str,
 ) -> None:
-    from app.rag.reranker import factory
+    from app.rag.retrieval.reranking import factory
 
     class FakeReranker:
         def __init__(self, **kwargs: object) -> None:
@@ -219,7 +220,7 @@ def test_api_reranker_cache_keys_include_all_initialization_parameters_without_p
 
 
 def test_reranker_capability_discovery_reports_aliases_without_importing_providers() -> None:
-    from app.rag.reranker.capabilities import get_reranker_capabilities, list_reranker_capabilities
+    from app.rag.retrieval.reranking.providers import get_reranker_capabilities, list_reranker_capabilities
 
     capability = get_reranker_capabilities("aliyun")
     families = {item["resolved_provider"]: item for item in list_reranker_capabilities()}
@@ -228,7 +229,7 @@ def test_reranker_capability_discovery_reports_aliases_without_importing_provide
     assert capability["resolved_provider"] == "dashscope"
     assert capability["aliases"] == ["dashscope", "aliyun"]
     assert capability["category"] == "api"
-    assert "app.rag.reranker.dashscope" in capability["lazy_modules"]
+    assert "app.rag.retrieval.reranking.api" in capability["lazy_modules"]
     assert families["parent_child"]["aliases"] == ["parent_child", "pc"]
 
 
@@ -240,23 +241,21 @@ import json
 import sys
 
 provider_modules = [
-    "app.rag.reranker.openai",
-    "app.rag.reranker.dashscope",
-    "app.rag.reranker.cross_encoder",
-    "app.rag.reranker.colbert",
-    "app.rag.reranker.ltr",
-    "app.rag.reranker.long_context_rerank",
-    "app.rag.reranker.local_bge_v2_m3",
-    "app.rag.reranker.parent_child",
-    "app.rag.reranker.hybrid",
-    "app.rag.reranker.kg",
-    "app.rag.reranker.llm_based",
-    "app.rag.reranker.mmr",
+    'app.rag.retrieval.reranking.api',
+    'app.rag.retrieval.reranking.api',
+    'app.rag.retrieval.reranking.colbert',
+    'app.rag.retrieval.reranking.ltr',
+    'app.rag.retrieval.reranking.long_context',
+    'app.rag.retrieval.reranking.parent_child',
+    'app.rag.retrieval.reranking.weighted',
+    'app.rag.retrieval.reranking.kg',
+    'app.rag.retrieval.reranking.llm',
+    'app.rag.retrieval.reranking.mmr',
 ]
 for name in provider_modules:
     sys.modules.pop(name, None)
-importlib.import_module("app.rag.reranker.factory")
-from app.rag.reranker.capabilities import list_reranker_capabilities
+importlib.import_module('app.rag.retrieval.reranking.factory')
+from app.rag.retrieval.reranking.providers import list_reranker_capabilities
 list_reranker_capabilities()
 print(json.dumps([name for name in provider_modules if name in sys.modules]))
 """
@@ -269,17 +268,3 @@ print(json.dumps([name for name in provider_modules if name in sys.modules]))
     )
 
     assert json.loads(proc.stdout.strip()) == []
-
-
-def test_get_rag_reranker_preserves_legacy_default_and_pc_alias(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.rag.reranker import factory
-
-    calls: list[str] = []
-
-    monkeypatch.setattr(factory, "get_reranker", lambda provider: calls.append(provider) or provider, raising=True)
-
-    assert factory.get_rag_reranker() == "llm"
-    assert factory.get_rag_reranker("pc") == "parent_child"
-    assert calls == ["llm", "parent_child"]

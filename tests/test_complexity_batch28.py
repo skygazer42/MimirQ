@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,14 +9,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
-from app.core.database import Base
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
-from app.models.document import Document, DocumentChunk, DocumentParsedContent, DocumentPermission
-from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
-from app.models.tenant import Tenant, TenantMember
-from app.models.tenant_group import TenantGroup, TenantGroupMember
-from app.services import chat_tag_service, dataset_precheck_service, document_qa_service
-from app.services.document_access import get_allowed_document_id_sets, list_accessible_document_ids
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.infrastructure.database.connection import Base
+from app.models.datasets.access import DatasetGroupPermission, DatasetPermission
+from app.models.datasets.records import Dataset
+from app.models.documents.access import DocumentGroupPermission, DocumentPermission
+from app.models.documents.records import Document, DocumentChunk, DocumentParsedContent
+from app.models.identity.workspaces import Tenant, TenantGroup, TenantGroupMember, TenantMember
+from app.services.datasets.precheck import results as dataset_precheck_service
+from app.services.documents import qa as document_qa_service
+from app.services.documents.read_scope import get_allowed_document_id_sets, list_accessible_document_ids
+from app.services.tables import chat_context as chat_tag_service
 
 
 @compiles(JSONB, "sqlite")
@@ -124,8 +126,8 @@ def test_generate_and_index_document_qa_replaces_active_qa_chunks_and_updates_me
         def add_documents(
             self,
             records: list[dict[str, object]],
-            _document_id: UUID,
-            _tenant_id: UUID,
+            document_id: UUID,
+            tenant_id: UUID,
         ) -> list[str]:
             return [f"vec-{index}" for index, _ in enumerate(records)]
 
@@ -135,8 +137,8 @@ def test_generate_and_index_document_qa_replaces_active_qa_chunks_and_updates_me
     monkeypatch.setattr(document_qa_service, "get_vector_store", lambda: _VectorStore(), raising=True)
     monkeypatch.setattr(
         document_qa_service,
-        "hybrid_retriever",
-        SimpleNamespace(remove_from_bm25_index_by_metadata_filter=lambda **_kwargs: None),
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None),
         raising=True,
     )
     monkeypatch.setattr(
@@ -472,6 +474,14 @@ def test_chat_tag_context_docs_match_quoted_source_keys_and_row_source_metadata(
             "columns": ["policy_name", "__row_pk_hash"],
             "rows": [["Revenue", "pk-1"]],
             "truncated": False,
+            "planner_execution_mismatch": {
+                "expected_sql_fingerprint": None,
+                "actual_sql_fingerprint": None,
+                "expected_tables": [],
+                "actual_tables": [],
+                "mismatch": False,
+                "reasons": [],
+            },
         }
 
     monkeypatch.setattr(chat_tag_service, "run_table_query", _run_table_query, raising=True)

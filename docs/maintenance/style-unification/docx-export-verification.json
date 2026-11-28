@@ -1,0 +1,106 @@
+{
+  "schema": "ragvia.docx_export_owner_verification.v1",
+  "date": "2026-11-15",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "scope": {
+    "old_sources": [
+      "app/parsing/output/__init__.py",
+      "app/parsing/output/docx_writer.py"
+    ],
+    "actual_owner": "app/services/documents/docx_export.py",
+    "consumer": "app/api/v1/documents/content.py",
+    "retired_python": 2,
+    "new_python": 1,
+    "render_functions_before": 3,
+    "render_functions_after": 1,
+    "current_app_files": 1323,
+    "current_app_python": 1171
+  },
+  "behavior": {
+    "real_in_memory_DOCX_endpoint_comparisons": 18,
+    "complete_ZIP_member_matches": 17,
+    "same_invalid_XML_failure": 1,
+    "same_empty_content_404": 3,
+    "permission_loader_arguments_equal": true,
+    "endpoint_signature_equal": true,
+    "non_export_endpoint_statements_AST_equal": true,
+    "download_headers_media_type_status_equal": true,
+    "raw_filename_title_duplicate_matching_preserved": true,
+    "unused_highlight_and_generic_blocks_surface_retired": true,
+    "memory_output_buffer_closed_explicitly": true
+  },
+  "checks": {
+    "scoped_Ruff_and_format_passed": true,
+    "scoped_AST311_compile_passed": true,
+    "complete_cold_OpenAPI_equal_to_latest_models_baseline": true,
+    "OpenAPI_paths": 358,
+    "OpenAPI_schemas": 671,
+    "pytest_run": false,
+    "frozen_test_files": 610,
+    "test_hashes_unchanged": true,
+    "current_app_ledger_hashes_closed": true,
+    "git_diff_check_exit": 0,
+    "notes_format_count": 242,
+    "notes_format_exit": 0,
+    "notes_archive_exit": 0,
+    "notes_tree_exit": 1,
+    "unchanged_historical_missing_links": 10
+  },
+  "review": {
+    "independent_bounded_review": true,
+    "open_findings": 0
+  },
+  "current_ledgers": {
+    "status_counts": {
+      "adjusted": 1001,
+      "conforms": 170,
+      "preserved": 152
+    },
+    "nonapp_coverage_history_preserved": 3998,
+    "csv_sha256": {
+      "app-review.csv": "1fa407cc2efd2c31a9536f79294f37f520aae666a378a757cc8985b852f0f4ba",
+      "api-v1-review.csv": "03a7ca49e9b5ecec11fa88e4394ddd732205e9e56568c2f4264d02f40b7d46d8",
+      "layout-review.csv": "0a7ecea4c84172c19ea212f610556023ed1798b466e476b314cc52d6dbc65275",
+      "coverage.csv": "0a5d86413c39e8971656f0f9d0c8e862228423a804123ea0a856ff304ccab73f"
+    }
+  },
+  "source_tree_sha256": "8a27089a2790cbd79347b92acf6fed8660b1d753edeaa4a3dddbf100c5a016f1",
+  "git": {
+    "original_staged_paths": [
+      "app/third_party/__init__.py",
+      "app/third_party/integrated_pipeline/__init__.py",
+      "app/third_party/integrated_pipeline/bridge.py",
+      "app/third_party/integrated_pipeline/chunkers/__init__.py",
+      "app/third_party/integrated_pipeline/chunkers/book.py",
+      "app/third_party/integrated_pipeline/chunkers/email.py",
+      "app/third_party/integrated_pipeline/chunkers/laws.py",
+      "app/third_party/integrated_pipeline/chunkers/naive.py",
+      "app/third_party/integrated_pipeline/common/__init__.py",
+      "app/third_party/integrated_pipeline/common/constants.py",
+      "app/third_party/integrated_pipeline/common/file_utils.py",
+      "app/third_party/integrated_pipeline/common/token_utils.py",
+      "app/third_party/integrated_pipeline/nlp/__init__.py",
+      "app/third_party/integrated_pipeline/nlp/rag_tokenizer.py",
+      "app/third_party/integrated_pipeline/stubs/__init__.py",
+      "app/third_party/integrated_pipeline/stubs/file_utils.py",
+      "app/third_party/integrated_pipeline/stubs/llm_service.py"
+    ],
+    "index_records_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "existing_staging_unchanged": true,
+    "new_staging_performed": false,
+    "committed": false,
+    "pushed": false
+  },
+  "limits": [
+    "The comparison uses actual DOCX rendering and selected download endpoint functions with a substituted record loader; it does not execute authorization SQL or real HTTP",
+    "ZIP member bytes are compared, excluding archive-container timestamps",
+    "No repository test execution or frozen private-import migration",
+    "Old package source files are retired; existing cache folders were not deleted"
+  ],
+  "local_evidence_sha256": {
+    "codex-docx-export-opening-20261115.json": "7abb466c257f53cd403e715d5b2fdf85884ef761eeae98d5b4b6d3ea19534c2c",
+    "codex-docx-export-proof-20261115.json": "4d081f7564f8380f3342314c27e5322e3ffd2f7027856cd1c7bbb805d43ad714",
+    "codex-docx-export-review-20261115.json": "2b47ae1fbad94559bec046ed8079e9d7fdd935f362d47c1d0042195675bea7c9",
+    "codex-docx-export-ledgers-20261115.json": "7593ce2c0e6620b8166bd5e7266b9a66ed3e294b85076b43e0526369da454e0a"
+  }
+}

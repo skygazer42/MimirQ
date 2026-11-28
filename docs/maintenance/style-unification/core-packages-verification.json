@@ -1,0 +1,211 @@
+{
+  "schema": "ragvia.core_packages_verification.v1",
+  "date": "2026-11-15",
+  "branch": "feat/ragvia-ui",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "scope": {
+    "core_name_retained": true,
+    "opening_core_python": 36,
+    "core_root_python": [
+      "__init__.py",
+      "config.py",
+      "config_validation.py",
+      "env.py",
+      "exceptions.py",
+      "hashing.py",
+      "metadata_filters.py",
+      "model_policy.py",
+      "tokens.py"
+    ],
+    "core_domains": [
+      "database",
+      "http",
+      "observability",
+      "redis",
+      "runtime",
+      "regex",
+      "security"
+    ],
+    "current_core_python": 43,
+    "moved_modules": 26,
+    "docstring_only_package_markers": 7,
+    "retired_constants_module": "app/core/constants.py",
+    "retired_unused_constant_classes": [
+      "Timeouts",
+      "FileTypes",
+      "DocumentStatus",
+      "PDFBackends",
+      "RetrievalModes",
+      "ProxyEnvKeys",
+      "ChunkLimits",
+      "PaginationLimits"
+    ],
+    "preserved_symbols": {
+      "DEFAULT_OPENAI_API_BASE": [
+        "app.core.http.openai",
+        "DEFAULT_OPENAI_API_BASE"
+      ],
+      "NON_CRITICAL_EXCEPTION_LOG_MESSAGE": [
+        "app.core.observability.logging",
+        "NON_CRITICAL_EXCEPTION_LOG_MESSAGE"
+      ],
+      "UserRoles": [
+        "app.core.security.roles",
+        "UserRoles"
+      ],
+      "EmbeddingProviders": [
+        "app.core.model_policy",
+        "EmbeddingProviders"
+      ],
+      "MilvusConfig": [
+        "app.storage.vector.milvus",
+        "MilvusConfig"
+      ]
+    },
+    "current_app_python": 1179,
+    "current_resources": 152,
+    "current_API_v1_python": 102
+  },
+  "moves": {
+    "app/core/database.py": "app/core/database/connection.py",
+    "app/core/migrations.py": "app/core/database/migrations.py",
+    "app/core/http_client.py": "app/core/http/client.py",
+    "app/core/http_env.py": "app/core/http/environment.py",
+    "app/core/openai_compat.py": "app/core/http/openai.py",
+    "app/core/logging.py": "app/core/observability/logging.py",
+    "app/core/metrics.py": "app/core/observability/metrics.py",
+    "app/core/otel.py": "app/core/observability/opentelemetry.py",
+    "app/core/sentry.py": "app/core/observability/sentry.py",
+    "app/core/health_checks.py": "app/core/observability/health.py",
+    "app/core/build_info.py": "app/core/observability/build_info.py",
+    "app/core/redis_client.py": "app/core/redis/client.py",
+    "app/core/redis_lease.py": "app/core/redis/leases.py",
+    "app/core/async_bridge.py": "app/core/runtime/async_bridge.py",
+    "app/core/optional_deps.py": "app/core/runtime/dependencies.py",
+    "app/core/request_state.py": "app/core/runtime/request_state.py",
+    "app/core/stream_events.py": "app/core/runtime/stream_events.py",
+    "app/core/rate_limit.py": "app/core/runtime/rate_limit.py",
+    "app/core/regex_validation.py": "app/core/regex/validation.py",
+    "app/core/regex_runtime.py": "app/core/regex/execution.py",
+    "app/core/passwords.py": "app/core/security/passwords.py",
+    "app/core/jwt_tokens.py": "app/core/security/jwt_tokens.py",
+    "app/core/jwt_inspect.py": "app/core/security/jwt_inspect.py",
+    "app/core/secrets.py": "app/core/security/secrets.py",
+    "app/core/pii_redaction.py": "app/core/security/pii.py",
+    "app/core/secure_random.py": "app/core/security/random.py"
+  },
+  "proof": {
+    "changed_or_moved_sources": 298,
+    "expected_nonimport_AST_equal": true,
+    "business_AST_equal_after_declared_import_dynamic_name_logger_and_health_root_transforms": true,
+    "Settings_class_AST_equal": true,
+    "constant_definitions_AST_equal": [
+      {
+        "symbol": "DEFAULT_OPENAI_API_BASE",
+        "owner": "app.core.http.openai",
+        "AST_identical": true
+      },
+      {
+        "symbol": "NON_CRITICAL_EXCEPTION_LOG_MESSAGE",
+        "owner": "app.core.observability.logging",
+        "AST_identical": true
+      },
+      {
+        "symbol": "UserRoles",
+        "owner": "app.core.security.roles",
+        "AST_identical": true
+      },
+      {
+        "symbol": "EmbeddingProviders",
+        "owner": "app.core.model_policy",
+        "AST_identical": true
+      },
+      {
+        "symbol": "MilvusConfig",
+        "owner": "app.storage.vector.milvus",
+        "AST_identical": true
+      }
+    ],
+    "health_repository_root_before": "E:\\MimirQ",
+    "health_repository_root_after": "E:\\MimirQ",
+    "preserved_logger_calls": 1,
+    "new_package_initialization_logic": false
+  },
+  "checks": {
+    "app_AST311_compile": 1179,
+    "production_import_sources": 1340,
+    "missing_imports": 0,
+    "owned_Ruff_and_format_sources": 1172,
+    "owned_Ruff_and_format_passed": true,
+    "changed_script_callers": 21,
+    "changed_script_Ruff_and_format_passed": true,
+    "derived_sources_preserved": 7,
+    "derived_FI_passed": true,
+    "derived_original_full_rule_diagnostics": 13,
+    "derived_current_full_rule_diagnostics": 13,
+    "derived_new_diagnostics": 0,
+    "full_cold_OpenAPI_equal": true,
+    "OpenAPI_paths": 358,
+    "OpenAPI_schemas": 671,
+    "OpenAPI_canonical_sha256": "721b11d381dca811c87db81af3e91136b63135ded87095531794a79e643955fe",
+    "ORM_53_table_and_mapper_DDL_indexes_defaults_relationships_equal_to_prior_verified_snapshot": true,
+    "frozen_tests": 610,
+    "changed_tests": 0,
+    "pytest_run": false,
+    "resources_byte_identical": 152,
+    "git_diff_check_exit": 0,
+    "ignored_app_sources": [],
+    "notes_format_verified": 238,
+    "notes_format_exit": 0,
+    "notes_archive_exit": 0,
+    "notes_tree_exit": 1,
+    "unchanged_historical_missing_links": 10
+  },
+  "independent_review": {
+    "preflight": "Unused constant classes, active consumers, lightweight imports and package names",
+    "final": "Global module state, logger identity, path roots, optional dependencies, dynamic imports and active CI/config references",
+    "new_findings": 0
+  },
+  "current_ledgers": {
+    "app_files": 1331,
+    "status_counts": {
+      "adjusted": 986,
+      "conforms": 186,
+      "preserved": 159
+    },
+    "API_v1_rows": 102,
+    "original_layout_rows": 1167,
+    "nonapp_coverage_records_byte_preserved": 3998,
+    "sha256": {
+      "app-review.csv": "96372893b28909611689f0bba6a3764e88c3c957152677321fff6a21a6ccc9aa",
+      "api-v1-review.csv": "5180508474e11d061e2fa296f531d3fbd23ee384f0fae0a17c255ae1ded0e81b",
+      "layout-review.csv": "3e180a55637fb748377538f5a52747cc5eb11e214cd7841a2e3471227bd6b2aa",
+      "coverage.csv": "20bf2681e64508ae96aa0abaa0140ebf1253c97111dedbd763f5318f63d8b9b6"
+    }
+  },
+  "source_tree_sha256": "87471c011c446bbf7fde57e2bfea3e3fff4e9a3a1804e4c8dd06bb7033c18aea",
+  "git": {
+    "staged": false,
+    "committed": false,
+    "pushed": false
+  },
+  "limits": [
+    "No Python tests or frozen-test import migration",
+    "Cold import/OpenAPI and ORM mapping/DDL compilation do not execute HTTP requests, DB operations, workers, model services or application lifecycle",
+    "Seven derived files keep 13 existing full-rule diagnostics under explicit provenance preservation",
+    "Historical layout and API package manifests describe their earlier worktrees; this is the current source fingerprint"
+  ],
+  "local_evidence_sha256": {
+    "codex-core-packages-opening-20261115.json": "e40eb602dba78cadf960f92d20a9bb7240e326f8fda8a901ca41e8db39a43ee9",
+    "codex-core-packages-expected-20261115.json": "8c0519345e900c72bafddddf3a52519cbc4a1af611a1a0b61c4ec91aba98fc3d",
+    "codex-core-packages-static-20261115.json": "7e4c918c1948e63d07dac7c31e216aedef2a7b71b84bec0276587e51a0998ef6",
+    "codex-core-packages-runtime-20261115.json": "aebae5fe722e5e2bfbd09f3472278e1ef48d14657f0f686c400c42871d2b936e",
+    "codex-core-packages-lint-20261115.json": "9688541e4120599fc26ff4b45ce1fb311be65dd114e91a602959721873e17339",
+    "codex-core-packages-caller-checks-20261115.json": "55a0bc5b43b4e3587ea200156cf5f23db0d9f59433e8d543db2f728aeda0a525",
+    "codex-core-packages-ledgers-20261115.json": "c37ecfc38af13e4707f7ba5e27dbfc7ee9c24833b7c83bb48ba241a0030e6da0",
+    "codex-core-packages-independent-preflight-20261115.json": "58e85f2661b8b0859a7a693d499fcd912c368267eef1c30af22776e2967860ac",
+    "codex-core-packages-independent-review-20261115.json": "354931a12354f64ec2585338a690ee95a33455d837a81d73001ef8af6c2026e5",
+    "codex-core-packages-doc-references-20261115.json": "93e5b77122453c7e0ba04fc0088374928da0646d2e7c601e556572ab7cab0335",
+    "codex-core-packages-final-extra-20261115.json": "1907986dedd639ac83c840aa197850f699660fc7ff48c77af8c6b90f4ce67b5f"
+  }
+}

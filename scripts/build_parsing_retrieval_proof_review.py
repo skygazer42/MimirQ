@@ -121,8 +121,6 @@ def build_review_markdown(
     lines.append("")
     if checks:
         for item in checks:
-            if not isinstance(item, dict):
-                continue
             lines.append(
                 f"- `{item.get('metric')}`: value=`{item.get('value')}` "
                 f"min=`{item.get('min')}` passed=`{item.get('passed')}`"

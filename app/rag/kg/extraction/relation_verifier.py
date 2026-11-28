@@ -7,28 +7,14 @@ This is an optional second LLM pass designed to:
 - ensure each relation has an evidence quote
 """
 
-
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from app.rag.kg.extraction.evidence import clamp_confidence
 from app.rag.kg.extraction.relation_processor import normalize_predicate
-from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
-
-logger = get_logger("kg.extract.relation_verify")
-
-
-def _clamp01(value: object, *, default: float) -> float:
-    try:
-        f = float(value)  # type: ignore[arg-type]
-    except Exception:
-        return float(default)
-    if math.isnan(f):
-        return float(default)
-    return max(0.0, min(1.0, float(f)))
 
 
 @dataclass(frozen=True)
@@ -41,77 +27,78 @@ class RelationCandidate:
     evidence_quote: str | None = None
 
 
+def _candidate_lines(candidates: Sequence[RelationCandidate]) -> list[str]:
+    lines: list[str] = []
+    for candidate in candidates:
+        rid = candidate.rid.strip()
+        subject_id = candidate.subject_id.strip()
+        object_id = candidate.object_id.strip()
+        if not rid or not subject_id or not object_id:
+            continue
+        predicate = candidate.predicate.strip() or "unknown"
+        evidence = candidate.evidence_quote.strip() if candidate.evidence_quote is not None else None
+        line = f"{rid}: {subject_id} -[{predicate}]-> {object_id}"
+        if evidence:
+            line += f" | evidence: {evidence[:160]}"
+        lines.append(line)
+    return lines
+
+
+def _response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": ["kept"],
+        "properties": {
+            "kept": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "rid": {"type": "string"},
+                        "predicate": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "evidence_quote": {"type": "string"},
+                    },
+                    "required": ["rid"],
+                },
+            }
+        },
+    }
+
+
+def _normalize_kept_item(
+    item: dict[str, Any], *, valid_rids: set[str], seen: set[str], allowed_predicates: set[str]
+) -> dict[str, Any] | None:
+    rid = item.get("rid")
+    if not isinstance(rid, str):
+        raise ValueError("Verified relation ID must be a string")
+    rid = rid.strip()
+    if not rid or rid not in valid_rids:
+        raise ValueError("Verified relation ID is outside the candidate set")
+    if rid in seen:
+        return None
+    pred_in = item.get("predicate")
+    evq = item.get("evidence_quote")
+    if any(value is not None and not isinstance(value, str) for value in (pred_in, evq)):
+        raise ValueError("Verified predicate and evidence must be text or null")
+    pred = normalize_predicate(pred_in) if pred_in is not None else "unknown"
+    if allowed_predicates and pred not in allowed_predicates:
+        return None
+
+    evq = (evq.strip() or None) if evq is not None else None
+    seen.add(rid)
+    return {
+        "rid": rid,
+        "predicate": pred,
+        "confidence": clamp_confidence(item.get("confidence"), default=0.7),
+        "evidence_quote": evq[:300] if evq else None,
+    }
+
+
 class RelationVerifier:
     def __init__(self, llm_client: BaseLLMClient, *, allowed_predicates: Sequence[str] | None = None):
         self.llm_client = llm_client
-        allow = [normalize_predicate(p) for p in (allowed_predicates or []) if str(p or "").strip()]
-        self.allowed_predicates = set(allow)
-
-    @staticmethod
-    def _candidate_lines(candidates: Sequence[RelationCandidate]) -> list[str]:
-        lines: list[str] = []
-        for candidate in candidates:
-            rid = str(candidate.rid).strip()
-            subj = str(candidate.subject_id).strip()
-            obj = str(candidate.object_id).strip()
-            pred = str(candidate.predicate or "").strip() or "unknown"
-            evq = str(candidate.evidence_quote or "").strip()
-            if not rid or not subj or not obj:
-                continue
-            if evq:
-                lines.append(f"{rid}: {subj} -[{pred}]-> {obj} | evidence: {evq[:160]}")
-            else:
-                lines.append(f"{rid}: {subj} -[{pred}]-> {obj}")
-        return lines
-
-    @staticmethod
-    def _response_schema() -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "kept": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "rid": {"type": "string"},
-                            "predicate": {"type": "string"},
-                            "confidence": {"type": "number"},
-                            "evidence_quote": {"type": "string"},
-                        },
-                        "required": ["rid"],
-                    },
-                }
-            },
-        }
-
-    @staticmethod
-    def _normalize_kept_item(
-        item: dict[str, Any],
-        *,
-        valid_rids: set[str],
-        seen: set[str],
-        allowed_predicates: set[str],
-    ) -> dict[str, Any] | None:
-        rid = str(item.get("rid") or "").strip()
-        if not rid or rid not in valid_rids or rid in seen:
-            return None
-        seen.add(rid)
-
-        pred_in = str(item.get("predicate") or "").strip()
-        pred = normalize_predicate(pred_in) if pred_in else ""
-        if not pred:
-            pred = "unknown"
-        if allowed_predicates and pred not in allowed_predicates:
-            return None
-
-        evq = str(item.get("evidence_quote") or "").strip() or None
-        return {
-            "rid": rid,
-            "predicate": pred,
-            "confidence": _clamp01(item.get("confidence"), default=0.7),
-            "evidence_quote": evq[:300] if evq else None,
-        }
+        self.allowed_predicates = {normalize_predicate(p) for p in (allowed_predicates or []) if p.strip()}
 
     async def _verify_candidates_with_llm(
         self,
@@ -141,17 +128,15 @@ class RelationVerifier:
             f"{clean_text}\n"
         )
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
-        try:
-            raw = await self.llm_client.chat_with_schema(
-                messages,
-                response_schema=self._response_schema(),
-                temperature=0.2,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Relation verify failed; returning no-op: %s", str(exc)[:200])
-            return []
-        kept_raw = raw.get("kept") if isinstance(raw, dict) else None
-        return kept_raw if isinstance(kept_raw, list) else []
+        raw = await self.llm_client.chat_with_schema(
+            messages,
+            response_schema=_response_schema(),
+            temperature=0.2,
+        )
+        kept_raw = raw.get("kept")
+        if not isinstance(kept_raw, list):
+            raise ValueError("Relation verification response requires a kept array")
+        return kept_raw
 
     async def verify(
         self,
@@ -160,41 +145,29 @@ class RelationVerifier:
         candidates: Sequence[RelationCandidate],
         max_keep: int = 20,
     ) -> dict[str, Any]:
-        clean_text = (text or "").strip()
-        if not clean_text:
+        clean_text = text.strip()
+        if not clean_text or max_keep <= 0:
             return {"kept": []}
 
-        cand_list = [c for c in (candidates or []) if str(getattr(c, "rid", "") or "").strip()]
-        if not cand_list:
-            return {"kept": []}
-
-        lim = max(0, int(max_keep or 0))
-        if lim <= 0:
-            return {"kept": []}
-
-        lines = self._candidate_lines(cand_list)
+        lines = _candidate_lines(candidates)
         if not lines:
             return {"kept": []}
 
-        allowlist = sorted(self.allowed_predicates) if self.allowed_predicates else []
-        allow_hint = ", ".join(allowlist[:200]) if allowlist else ""
+        valid_rids = {candidate.rid.strip() for candidate in candidates}
+        allow_hint = ", ".join(sorted(self.allowed_predicates)[:200])
         kept_raw = await self._verify_candidates_with_llm(
             clean_text=clean_text,
             lines=lines,
-            lim=lim,
+            lim=max_keep,
             allow_hint=allow_hint,
         )
-        if not kept_raw:
-            return {"kept": []}
-
-        valid_rids = {str(c.rid).strip() for c in cand_list}
 
         out: list[dict[str, Any]] = []
         seen: set[str] = set()
         for item in kept_raw:
             if not isinstance(item, dict):
-                continue
-            normalized = self._normalize_kept_item(
+                raise ValueError("Verified relations must be objects")
+            normalized = _normalize_kept_item(
                 item,
                 valid_rids=valid_rids,
                 seen=seen,
@@ -203,7 +176,7 @@ class RelationVerifier:
             if normalized is None:
                 continue
             out.append(normalized)
-            if len(out) >= lim:
+            if len(out) >= max_keep:
                 break
 
         return {"kept": out}

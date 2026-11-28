@@ -1,0 +1,43 @@
+{
+  "dataset": "设备资料库",
+  "folder": "设备与运维",
+  "selectedId": "g01",
+  "files": [
+    {"id":"g01","name":"设备维护手册.pdf","kind":"pdf","pages":18,"size":"2.4 MB","status":"review","score":78,"issues":4,"source":"解析工作区","time":"14:32","category":"技术文档"},
+    {"id":"g02","name":"安全操作规范.pdf","kind":"pdf","pages":12,"size":"1.6 MB","status":"pending","score":null,"issues":null,"source":"解析工作区","time":"14:28","category":"—"},
+    {"id":"g03","name":"设备点检记录.xlsx","kind":"xlsx","pages":3,"size":"186 KB","status":"done","score":94,"issues":0,"source":"知识库","time":"14:25","category":"技术文档"},
+    {"id":"g04","name":"检修作业规程.docx","kind":"docx","pages":8,"size":"420 KB","status":"pending","score":null,"issues":null,"source":"解析工作区","time":"14:22","category":"—"},
+    {"id":"g05","name":"产品使用说明.pdf","kind":"pdf","pages":24,"size":"3.1 MB","status":"running","score":null,"issues":null,"source":"解析工作区","time":"14:20","category":"—","progress":62},
+    {"id":"g06","name":"新员工培训手册.docx","kind":"docx","pages":15,"size":"760 KB","status":"done","score":96,"issues":0,"source":"知识库","time":"14:18","category":"人事文档"},
+    {"id":"g07","name":"采购合同范本.docx","kind":"docx","pages":6,"size":"328 KB","status":"review","score":65,"issues":6,"source":"知识库","time":"14:15","category":"法律文档"},
+    {"id":"g08","name":"设备参数汇总.xlsx","kind":"xlsx","pages":4,"size":"245 KB","status":"done","score":92,"issues":0,"source":"知识库","time":"14:12","category":"技术文档"},
+    {"id":"g09","name":"常见问题.md","kind":"md","pages":null,"size":"32 KB","status":"done","score":98,"issues":0,"source":"解析工作区","time":"14:10","category":"产品文档"},
+    {"id":"g10","name":"供应商资料.pdf","kind":"pdf","pages":10,"size":"1.1 MB","status":"pending","score":null,"issues":null,"source":"知识库","time":"14:08","category":"—"},
+    {"id":"g11","name":"设备巡检说明.txt","kind":"txt","pages":null,"size":"48 KB","status":"pending","score":null,"issues":null,"source":"解析工作区","time":"14:05","category":"—"},
+    {"id":"g12","name":"运营流程手册.pdf","kind":"pdf","pages":16,"size":"2.2 MB","status":"done","score":90,"issues":0,"source":"知识库","time":"14:02","category":"商业文档"}
+  ],
+  "issues": [
+    {"id":"duplicate","title":"重复段落","count":2,"unit":"处","tone":"warning","location":"第 3 页 · 维护说明","description":"两段维护说明与前文重复，建议保留第一次出现的内容。","action":"移除重复段落","icon":"copy"},
+    {"id":"blank","title":"连续空行","count":6,"unit":"处","tone":"info","location":"第 2、3、7 页","description":"正文之间存在连续空行，建议保留一行作为段落分隔。","action":"合并连续空行","icon":"align-left"},
+    {"id":"email","title":"邮箱地址","count":1,"unit":"处","tone":"risk","location":"第 3 页 · 维护联系信息","description":"联系信息包含邮箱地址，可在入库前进行脱敏。","action":"脱敏邮箱地址","icon":"mail"},
+    {"id":"phone","title":"电话号码","count":1,"unit":"处","tone":"risk","location":"第 3 页 · 维护联系信息","description":"联系信息包含电话号码，可在入库前进行脱敏。","action":"脱敏电话号码","icon":"phone"}
+  ],
+  "detail": {
+    "title":"3. 维护与保养",
+    "subtitle":"3.1 日常检查",
+    "characters":8642,
+    "previewCharacters":8398,
+    "profile":"通用文档清洗",
+    "paragraphs":["设备运行前，应检查电源连接、紧固件和防护装置。确认各部件处于正常状态后，方可进行操作。","巡检时记录设备温度、运行声音和压力变化。发现异常时，应停止运行，核实原因并完成处理记录。"],
+    "duplicate":"设备运行前，应检查电源连接、紧固件和防护装置。确认各部件处于正常状态后，方可进行操作。",
+    "tableTitle":"表 3-1 日常维护项目",
+    "columns":["检查项目","维护周期","处理要求"],
+    "rows":[["外观与紧固件","每日","检查松动与破损"],["润滑与密封","每周","补充润滑并检查渗漏"],["电气连接","每月","断电后检查接线"],["安全防护装置","每季度","执行联锁功能测试"]],
+    "nextHeading":"3.2 定期维护",
+    "after":"定期维护应由具备相应资质的人员执行。更换部件后，先完成空载测试，再逐步恢复正常运行。",
+    "contact":"维护联系：service@example.com · 13800000000",
+    "maskedContact":"维护联系：[邮箱已脱敏] · [电话已脱敏]",
+    "note":"维护前请切断电源，确认设备完全停止后再开展作业。",
+    "tags":["维护保养","操作规程"]
+  }
+}

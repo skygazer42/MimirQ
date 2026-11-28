@@ -1,0 +1,16 @@
+@media (max-width: 639px) {
+  .summary.summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 0;
+  }
+  .summary.summary dt {
+    font-size: 11px;
+    line-height: 18px;
+  }
+  .summary.summary dd {
+    margin-top: 3px;
+    font-size: 16px;
+    line-height: 24px;
+  }
+}

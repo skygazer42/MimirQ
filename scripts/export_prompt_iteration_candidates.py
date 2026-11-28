@@ -1,7 +1,5 @@
-
 import argparse
 import json
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -28,37 +26,30 @@ def _suggested_action(group_key: str) -> str:
 
 
 def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    negative_rows = [
-        row for row in (feedback_rows or [])
-        if isinstance(row, dict) and int(row.get("rating") or 0) <= 2
-    ]
-    counts: Counter[str] = Counter(_group_key(row) for row in negative_rows)
+    negative_rows = [row for row in feedback_rows if int(row.get("rating") or 0) <= 2]
+    rows_by_group: dict[str, list[dict[str, Any]]] = {}
+    for row in negative_rows:
+        rows_by_group.setdefault(_group_key(row), []).append(row)
+
     groups: list[dict[str, Any]] = []
-    for group_key, count in counts.most_common():
+    for group_key, group_rows in sorted(rows_by_group.items(), key=lambda item: len(item[1]), reverse=True):
         samples = []
-        for row in negative_rows:
-            if _group_key(row) != group_key:
-                continue
-            message = row.get("message") if isinstance(row.get("message"), dict) else {}
-            metadata = message.get("message_metadata") if isinstance(message.get("message_metadata"), dict) else {}
-            rag_snapshot = row.get("extra") if isinstance(row.get("extra"), dict) else {}
+        for row in group_rows[:3]:
+            message = row.get("message")
+            metadata = message.get("message_metadata") if isinstance(message, dict) else None
+            extra = row.get("extra")
+            rag_config = extra.get("rag_config_snapshot") if isinstance(extra, dict) else None
             samples.append(
                 {
                     "reason": str(row.get("reason") or "").strip(),
-                    "rewritten_query": str(metadata.get("rewritten_query") or "").strip() or None,
-                    "retrieval_mode": (
-                        str((rag_snapshot.get("rag_config_snapshot") or {}).get("retrieval_mode") or "").strip() or None
-                        if isinstance(rag_snapshot.get("rag_config_snapshot"), dict)
-                        else None
-                    ),
+                    "rewritten_query": metadata.get("rewritten_query") if isinstance(metadata, dict) else None,
+                    "retrieval_mode": rag_config.get("retrieval_mode") if isinstance(rag_config, dict) else None,
                 }
             )
-            if len(samples) >= 3:
-                break
         groups.append(
             {
                 "group_key": group_key,
-                "count": int(count),
+                "count": len(group_rows),
                 "suggested_prompt_action": _suggested_action(group_key),
                 "samples": samples,
             }
@@ -67,8 +58,8 @@ def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -
     return {
         "schema": "mimirq.prompt_iteration_candidates.v1",
         "summary": {
-            "negative_feedback_count": int(len(negative_rows)),
-            "groups_count": int(len(groups)),
+            "negative_feedback_count": len(negative_rows),
+            "groups_count": len(groups),
         },
         "groups": groups,
     }

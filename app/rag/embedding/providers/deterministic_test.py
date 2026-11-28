@@ -3,8 +3,9 @@
 import hashlib
 import re
 import unicodedata
+from typing import Unpack
 
-from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
 
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
 _MODEL_NAME = "mimirq-deterministic-test-v1"
@@ -13,11 +14,15 @@ _MODEL_NAME = "mimirq-deterministic-test-v1"
 class DeterministicTestEmbedding(BaseEmbeddingModel):
     """Stable lexical hashing vectors; not intended for production retrieval quality."""
 
-    def __init__(self, **kwargs):  # noqa: ANN003
-        kwargs["model"] = str(kwargs.get("model") or _MODEL_NAME)
-        kwargs["dimension"] = int(kwargs.get("dimension") or 256)
+    dimension: int
+
+    def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
+        if kwargs.get("model") is None:
+            kwargs["model"] = _MODEL_NAME
+        if kwargs.get("dimension") is None:
+            kwargs["dimension"] = 256
         super().__init__(**kwargs)
-        if not 16 <= int(self.dimension or 0) <= 4096:
+        if not 16 <= self.dimension <= 4096:
             raise ValueError("deterministic_test embedding dimension must be between 16 and 4096")
 
     def _add_feature(self, vector: list[float], feature: str, weight: float) -> None:
@@ -30,8 +35,8 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
         vector[bucket] += sign * weight
 
     def _encode_one(self, text: str) -> list[float]:
-        normalized = unicodedata.normalize("NFKC", str(text or "")).casefold()[:4096]
-        vector = [0.0] * int(self.dimension or 256)
+        normalized = unicodedata.normalize("NFKC", text).casefold()[:4096]
+        vector = [0.0] * self.dimension
         features = 0
 
         for token in _WORD_RE.findall(normalized):
@@ -40,8 +45,8 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
 
         compact = "".join(character for character in normalized if not character.isspace())
         for width, weight in ((2, 0.35), (3, 0.5)):
-            for index in range(max(0, len(compact) - width + 1)):
-                self._add_feature(vector, f"char:{width}:{compact[index:index + width]}", weight)
+            for index in range(len(compact) - width + 1):
+                self._add_feature(vector, f"char:{width}:{compact[index : index + width]}", weight)
                 features += 1
 
         if features == 0:
@@ -49,7 +54,7 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
         return vector
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
-        texts = [message] if isinstance(message, str) else list(message or [])
+        texts = [message] if isinstance(message, str) else message
         return [self._encode_one(text) for text in texts]
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:

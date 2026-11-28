@@ -12,7 +12,6 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import dify_3way_benchmark as bench  # noqa: E402
+from scripts.dify_3way_benchmark import _write_json  # noqa: E402
 from scripts.evaluate_mixed_rag_quality import (  # noqa: E402
+    _text,
+    _utc_now_text,
     build_markdown_report,
     evaluate_mixed_rag_quality,
 )
@@ -32,14 +34,6 @@ DEFAULT_MIMIRQ_BASE_URL = "http://127.0.0.1:8001"
 DEFAULT_LLM_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_LLM_MODEL = "Qwen3-30B-A3B-Instruct-2507-FP16"
 SYSTEM_NAME = "mimirq_local_3model"
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _sha256_file(path: Path) -> str:
@@ -166,11 +160,6 @@ def _call_case(
     item["generation_latency_ms"] = round((time.perf_counter() - generation_started) * 1000, 2)
     item["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
     return item
-
-
-def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _load_existing_items(path: Path) -> list[dict[str, Any]]:

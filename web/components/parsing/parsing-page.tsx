@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import type { ChangeEvent as ReactChangeEvent } from 'react'
+import { toast } from 'sonner'
 
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParsingEditorActions } from '@/components/parsing/use-parsing-editor-actions'
@@ -9,8 +11,8 @@ import { useParsingPageState } from '@/components/parsing/use-parsing-page-state
 import { useParsingQueueActions } from '@/components/parsing/use-parsing-queue-actions'
 import { useParsingRunActions } from '@/components/parsing/use-parsing-run-actions'
 import { useParsingViewState } from '@/components/parsing/use-parsing-view-state'
+import { formatApiError } from '@/lib/api-errors'
 
-import { bumpParsingProgress, countMarkdownHeadings, mapBackendStatusToLibraryStatus } from './parsing-page-utils'
 import { ParsingWorkbenchShell } from './parsing-workbench-shell'
 import type { ParsedFile } from './parsing-types'
 
@@ -19,8 +21,8 @@ export default function ParsingPage() {
   const [selectedGovernanceFileIds, setSelectedGovernanceFileIds] = useState<Set<string>>(() => new Set())
   const pageState = useParsingPageState({ files, setFiles })
 
-  const addParsedFile = useParsedFiles((state) => state.addParsedFile)
   const upsertParsedFile = useParsedFiles((state) => state.upsertParsedFile)
+  const replaceParsedFile = useParsedFiles((state) => state.replaceParsedFile)
   const setParsedFiles = useParsedFiles((state) => state.setParsedFiles)
   const libraryFiles = useParsedFiles((state) => state.files)
   const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
@@ -31,39 +33,39 @@ export default function ParsingPage() {
   const createFolder = useParsedFiles((state) => state.createFolder)
   const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
   const isLibraryLoaded = useParsedFiles((state) => state.isLoaded)
+  const libraryLoadError = useParsedFiles((state) => state.loadError)
   const consumeUploadTargetFolderId = pageState.consumeUploadTargetFolderId
 
   const {
     addFiles,
     handleRebindFileSelect,
-    mountLibraryFileToQueue,
-    removeLibraryCaches,
     requestRebindForLibraryFile,
     requestUploadFolder,
     requestUploadToFolder,
     restoreLibraryFileFromCache,
   } = useParsingLibraryActions({
     activeFolderId,
-    countMarkdownHeadings,
+    activeFileId: pageState.activeFileId,
+    activeLibraryFileId: pageState.activeLibraryFileId,
     createFolder,
     fileInputRef: pageState.fileInputRef,
     filesRef: pageState.filesRef,
     folderInputRef: pageState.folderInputRef,
-    folders,
+    isLibraryLoaded,
     libraryFiles,
-    mapBackendStatusToLibraryStatus,
     parserBackend: pageState.parserBackend,
     selectedDatasetId: pageState.selectedDatasetId,
     rebindInputRef: pageState.rebindInputRef,
     rebindTargetRef: pageState.rebindTargetRef,
+    removeParsedFile,
     setActiveBlockId: pageState.setActiveBlockId,
     setActiveFileId: pageState.setActiveFileId,
     setActiveFolderId,
     setActiveLibraryFileId: pageState.setActiveLibraryFileId,
-    setActiveLibrarySourceStatus: pageState.setActiveLibrarySourceStatus,
     setAutoParseFileId: pageState.setAutoParseFileId,
     setFiles,
     setHoveredBlockId: pageState.setHoveredBlockId,
+    setIsQueueRehydrating: pageState.setIsQueueRehydrating,
     setRightPanelMode: pageState.setRightPanelMode,
     updateParsedFile,
     uploadTargetFolderIdRef: pageState.uploadTargetFolderIdRef,
@@ -74,78 +76,77 @@ export default function ParsingPage() {
     activeFileId: pageState.activeFileId,
     activeFolderId,
     activeLibraryFileId: pageState.activeLibraryFileId,
-    didSyncLibraryFromServerRef: pageState.didSyncLibraryFromServerRef,
     files,
     folders,
+    isEditing: pageState.isEditing,
     isLibraryLoaded,
     libraryFiles,
-    mapBackendStatusToLibraryStatus,
-    mountLibraryFileToQueue,
-    rehydratedFolderIdsRef: pageState.rehydratedFolderIdsRef,
     selectedDatasetId: pageState.selectedDatasetId,
     setActiveFileId: pageState.setActiveFileId,
-    setActiveLibrarySourceStatus: pageState.setActiveLibrarySourceStatus,
-    setIsQueueRehydrating: pageState.setIsQueueRehydrating,
+    setActiveLibraryFileId: pageState.setActiveLibraryFileId,
     setParsedFiles,
     updateParsedFile,
   })
 
   const handleFileSelect = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
       const targetFolderId = consumeUploadTargetFolderId()
-
-      const selectedFiles = event.target.files ? Array.from(event.target.files) : []
-      if (selectedFiles.length > 0) {
-        await addFiles(selectedFiles, targetFolderId || undefined)
+      const input = event.currentTarget
+      if (input.files === null || input.files.length === 0) return
+      const selectedFiles = Array.from(input.files)
+      input.value = ''
+      try {
+        await addFiles(selectedFiles, targetFolderId ?? undefined)
+      } catch (error) {
+        toast.error(formatApiError(error, '添加文件失败'))
       }
-
-      event.target.value = ''
     },
-    [addFiles, consumeUploadTargetFolderId]
+    [addFiles, consumeUploadTargetFolderId],
   )
 
-  const toggleGovernanceFileSelection = useCallback((fileId: string) => {
-    setSelectedGovernanceFileIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(fileId)) {
-        next.delete(fileId)
-      } else {
-        next.add(fileId)
-      }
-      return next
-    })
-  }, [])
+  const toggleGovernanceFileSelection = useCallback(
+    (fileId: string) => {
+      const queueFile = pageState.filesRef.current.find((file) => file.id === fileId)
+      const selectionId = queueFile?.libraryId ?? fileId
+      setSelectedGovernanceFileIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(selectionId)) {
+          next.delete(selectionId)
+        } else {
+          next.add(selectionId)
+        }
+        return next
+      })
+    },
+    [pageState.filesRef],
+  )
 
   const queueActions = useParsingQueueActions({
-    activeFileId: pageState.activeFileId,
-    activeLibraryFileId: pageState.activeLibraryFileId,
     cancelParse: pageState.cancelParse,
-    files,
-    libraryFiles,
+    filesRef: pageState.filesRef,
     moveFolder,
-    removeLibraryCaches,
     removeParsedFile,
+    setSelectedGovernanceFileIds,
     setActiveFileId: pageState.setActiveFileId,
     setActiveLibraryFileId: pageState.setActiveLibraryFileId,
-    setDragOverFolderId: pageState.setDragOverFolderId,
     setFiles,
     updateParsedFile,
   })
 
   const runActions = useParsingRunActions({
+    restoreLibraryFileFromCache,
+    replaceParsedFile,
+    removeParsedFile,
+    setActiveLibraryFileId: pageState.setActiveLibraryFileId,
+    setSelectedGovernanceFileIds,
     activeFile: viewState.activeFile,
     autoParseFileId: pageState.autoParseFileId,
-    bumpParsingProgress,
     cancelParse: pageState.cancelParse,
-    countMarkdownHeadings,
-    fileIdSetRef: pageState.fileIdSetRef,
     filesRef: pageState.filesRef,
     imageCaptionEnabled: pageState.imageCaptionEnabled,
     imageOcrEnabled: pageState.imageOcrEnabled,
-    mapBackendStatusToLibraryStatus,
     parseControllersRef: pageState.parseControllersRef,
     parseProgressIntervalsRef: pageState.parseProgressIntervalsRef,
-    parserBackend: pageState.parserBackend,
     setActiveBlockId: pageState.setActiveBlockId,
     setAutoParseFileId: pageState.setAutoParseFileId,
     setFiles,
@@ -158,20 +159,20 @@ export default function ParsingPage() {
   })
 
   const editorActions = useParsingEditorActions({
+    filesRef: pageState.filesRef,
     activeBlockId: pageState.activeBlockId,
     activeBlocksWithPositions: viewState.activeBlocksWithPositions,
     activeFile: viewState.activeFile,
     activeMarkdown: viewState.activeMarkdown,
     activeRun: viewState.activeRun,
-    addParsedFile,
-    countMarkdownHeadings,
     editSession: pageState.editSession,
     editedContent: pageState.editedContent,
-    files,
+    currentFolderId: viewState.currentFolderId,
+    selectedDatasetId: pageState.selectedDatasetId,
+    queueFiles: viewState.queueFiles,
     libraryFiles,
     selectedGovernanceFileIds,
     setActiveBlockId: pageState.setActiveBlockId,
-    setCopied: pageState.setCopied,
     setEditSession: pageState.setEditSession,
     setEditedContent: pageState.setEditedContent,
     setFiles,
@@ -191,21 +192,32 @@ export default function ParsingPage() {
       activeFolderId={activeFolderId}
       activeLibraryFile={viewState.activeLibraryFile}
       activeLibraryFileId={pageState.activeLibraryFileId}
-      activeLibrarySourceStatus={pageState.activeLibrarySourceStatus}
+      activeLibrarySourceStatus={viewState.activeLibrarySourceStatus}
+      activeLibrarySourceError={viewState.activeLibrarySourceError}
+      isLibrarySourceChecking={viewState.isLibrarySourceChecking}
+      retryLibrarySource={viewState.retryLibrarySource}
       activeMarkdown={viewState.activeMarkdown}
+      activeLibraryContentError={viewState.activeLibraryContentError}
+      isLibraryContentLoading={viewState.isLibraryContentLoading}
+      hasLibraryContent={viewState.hasLibraryContent}
+      retryLibraryContent={viewState.retryLibraryContent}
       availableDatasets={viewState.availableDatasets}
+      datasetsError={viewState.datasetsError}
+      librarySyncError={viewState.librarySyncError}
+      isLibrarySyncing={viewState.isLibrarySyncing}
+      retryLibrarySync={viewState.retryLibrarySync}
       activeElements={viewState.activeElements}
       activePdfQuality={viewState.activePdfQuality}
       activeQualityGate={viewState.activeQualityGate}
       activeRun={viewState.activeRun}
-      copied={pageState.copied}
+      isRunUnavailable={viewState.isRunUnavailable}
+      copied={editorActions.copied}
       copyMarkdown={editorActions.copyMarkdown}
       currentFolderId={viewState.currentFolderId}
-      dragOverFolderId={pageState.dragOverFolderId}
       downloadMarkdown={editorActions.downloadMarkdown}
       editedContent={pageState.editedContent}
       fileInputRef={pageState.fileInputRef}
-      files={files}
+      files={viewState.queueFiles}
       folderInputRef={pageState.folderInputRef}
       folderPathById={viewState.folderPathById}
       folders={folders}
@@ -213,8 +225,7 @@ export default function ParsingPage() {
       handleDeleteFolder={queueActions.handleDeleteFolder}
       handleFileDragStart={queueActions.handleFileDragStart}
       handleFileSelect={handleFileSelect}
-      handleFolderDragLeave={queueActions.handleFolderDragLeave}
-      handleFolderDragOver={queueActions.handleFolderDragOver}
+      addFiles={addFiles}
       handleFolderDrop={queueActions.handleFolderDrop}
       handleRebindFileSelect={handleRebindFileSelect}
       handleSaveEdit={editorActions.handleSaveEdit}
@@ -226,10 +237,12 @@ export default function ParsingPage() {
       imageOcrEnabled={pageState.imageOcrEnabled}
       inspectorOpen={pageState.inspectorOpen}
       isEditing={pageState.isEditing}
+      isSubmittingGovernance={editorActions.isSubmittingGovernance}
       isLibraryLoaded={isLibraryLoaded}
+      libraryLoadError={libraryLoadError}
+      retryLibraryLoad={() => void useParsedFiles.persist.rehydrate()}
       isPdf={viewState.isPdf}
       isQueueRehydrating={pageState.isQueueRehydrating}
-      isSidebarCollapsed={pageState.isSidebarCollapsed}
       libraryFiles={libraryFiles}
       moveFileToFolder={queueActions.moveFileToFolder}
       parseAllPending={runActions.parseAllPending}
@@ -254,7 +267,6 @@ export default function ParsingPage() {
       setImageCaptionEnabled={pageState.setImageCaptionEnabled}
       setImageOcrEnabled={pageState.setImageOcrEnabled}
       setInspectorOpen={pageState.setInspectorOpen}
-      setIsSidebarCollapsed={pageState.setIsSidebarCollapsed}
       setParserBackend={pageState.setParserBackend}
       setPdfPreviewResetToken={pageState.setPdfPreviewResetToken}
       setPreviewMode={pageState.setPreviewMode}
@@ -264,9 +276,11 @@ export default function ParsingPage() {
       setVlmCorrectionEnabled={pageState.setVlmCorrectionEnabled}
       selectedGovernanceFileIds={selectedGovernanceFileIds}
       selectedDatasetId={pageState.selectedDatasetId}
+      startKnowledgeParsing={runActions.startKnowledgeParsing}
       onSubmitSelectedToGovernance={editorActions.handleSubmitSelectedToGovernance}
       onToggleGovernanceFileSelection={toggleGovernanceFileSelection}
       onDatasetScopeChange={(datasetId) => {
+        setSelectedGovernanceFileIds(new Set())
         pageState.setSelectedDatasetId(datasetId)
         pageState.setActiveFileId(null)
         pageState.setActiveLibraryFileId(null)
@@ -274,7 +288,6 @@ export default function ParsingPage() {
       }}
       tocEnabled={viewState.tocEnabled}
       updateParsedFile={updateParsedFile}
-      visibleLibraryOnlyFiles={viewState.visibleLibraryOnlyFiles}
       visibleQueueFiles={viewState.visibleQueueFiles}
       vlmCorrectionEnabled={pageState.vlmCorrectionEnabled}
     />

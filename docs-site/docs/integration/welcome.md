@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 集成与联调总览
 
-本分区从 **「如何把 MimirQ 接进你的环境」** 出发，与 Frontend / Backend / Ops 文档互补：那边讲页面与实现细节，这里讲 **业务结果、推荐路径与契约入口**。
+本分区从 **「如何把 Ragvia 接进你的环境」** 出发，与 Frontend / Backend / Ops 文档互补：那边讲页面与实现细节，这里讲 **业务结果、推荐路径与契约入口**。
 
 ## 集成架构总览
 
@@ -69,7 +69,7 @@ sequenceDiagram
 
 ### 契约层：字段、权限、覆盖是否一致？
 
-- **人机可读契约**：[API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) | [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- **人机可读契约**：[API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md) | [前后端排障](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)
 - **全量 Schema / 试调用**：[OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
 - **前端路由 - 后端路径矩阵**：[前后端矩阵（生成）](./generated/fe-be-matrix)
 
@@ -88,7 +88,7 @@ sequenceDiagram
 ## 认证流程概览
 
 :::info 认证方式
-MimirQ 支持三种认证方式，按优先级选择：
+Ragvia 支持三种认证方式，按优先级选择：
 
 1. **JWT Bearer Token** -- `Authorization: Bearer <token>`，适用于前端与 OAuth 集成
 2. **API Key** -- `X-API-Key: <key>`，适用于服务间调用与自动化脚本
@@ -106,8 +106,8 @@ MimirQ 支持三种认证方式，按优先级选择：
 | 类型 | 链接 |
 | --- | --- |
 | Redoc | [skygazer42.github.io/MimirQ](https://skygazer42.github.io/MimirQ/) |
-| 场景化 API 顺序 | [workflows.md](https://github.com/skygazer42/MimirQ/blob/main/docs/api/workflows.md) |
-| 契约与排障 | [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) | [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md) |
+| 场景化 API 顺序 | [workflows.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/api/workflows.md) |
+| 契约与排障 | [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md) | [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md) |
 | 后端手册 | [后端总览](../backend/welcome) |
 | 前端手册 | [前端总览](../frontend/welcome) |
 | 运维手册 | [运维总览](../ops/welcome) |

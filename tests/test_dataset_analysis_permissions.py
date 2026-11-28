@@ -4,6 +4,8 @@ from uuid import uuid4
 
 import starlette.status as _status
 
+import app.services.datasets.analysis as dataset_analysis_service
+
 if not hasattr(_dt, "UTC"):
     _dt.UTC = _dt.timezone.utc
 if not hasattr(_status, "HTTP_413_CONTENT_TOO_LARGE"):
@@ -15,11 +17,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import dataset_analysis as dataset_analysis_api
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.datasets import analysis as dataset_analysis_api
+from app.infrastructure.database.connection import get_db
+from app.infrastructure.exceptions import register_exception_handlers
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str, str]:
@@ -33,69 +34,69 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str, str
     app.dependency_overrides[get_current_account_id] = lambda: "reader-1"
     app.dependency_overrides[get_db] = lambda: object()
 
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_analysis_api.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_summary",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_examples",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_rule_suggestions",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "export_dataset_analysis_json",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "export_dataset_analysis_jsonl",
         lambda **_k: '{"ok":true}\n',
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "export_dataset_analysis_html",
         lambda **_k: "<html></html>",
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "writeback_dataset_analysis_glossary_candidates",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "create_dataset_analysis_png_task",
         lambda **_k: {"task_id": "task-1", "status": "pending"},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "get_dataset_analysis_png_task_status",
         lambda **_k: {"task_id": "task-1", "status": "done"},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "get_dataset_analysis_png_result",
         lambda **_k: b"\x89PNG\r\n\x1a\n",
         raising=True,
@@ -127,13 +128,13 @@ def test_dataset_analysis_read_endpoints_require_dataset_readable(
     writable_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_readable",
         lambda _db, dataset, account_id: readable_calls.append((str(dataset.id), account_id)),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_writable",
         lambda _db, dataset, account_id: writable_calls.append((str(dataset.id), account_id)),
         raising=True,
@@ -152,13 +153,13 @@ def test_glossary_writeback_requires_dataset_writable(monkeypatch: pytest.Monkey
     writable_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_readable",
         lambda _db, dataset, account_id: readable_calls.append((str(dataset.id), account_id)),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_writable",
         lambda _db, dataset, account_id: writable_calls.append((str(dataset.id), account_id)),
         raising=True,
@@ -196,7 +197,7 @@ def test_png_task_endpoints_forward_current_account(
     seen: list[str] = []
 
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
     )
 
     def _capture(**kwargs):
@@ -207,7 +208,7 @@ def test_png_task_endpoints_forward_current_account(
             return {"task_id": "task-1", "status": "done"}
         return b"\x89PNG\r\n\x1a\n"
 
-    monkeypatch.setattr(dataset_analysis_api, service_name, _capture, raising=True)
+    monkeypatch.setattr(dataset_analysis_service, service_name, _capture, raising=True)
 
     response = client.request(method, path.format(dataset_id=dataset_id))
 

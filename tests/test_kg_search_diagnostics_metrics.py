@@ -1,6 +1,6 @@
 import pytest
 
-from app.rag.evaluation.kg_search_diagnostics_metrics import compute_kg_hit_metrics
+from app.rag.evaluation.benchmarks.kg_search_diagnostics_metrics import compute_kg_hit_metrics
 
 
 def test_metrics_rank1_hit() -> None:

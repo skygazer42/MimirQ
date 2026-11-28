@@ -1,4 +1,3 @@
-
 import datetime as dt
 from uuid import UUID
 
@@ -12,21 +11,19 @@ if not hasattr(starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
 if not hasattr(starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = starlette_status.HTTP_422_UNPROCESSABLE_ENTITY
 
+from app.rag.ingestion.governance.text import tokenization as tokenization_module
+from app.rag.ingestion.governance.text.tokenization import tokenize_lexical_text
 from app.rag.kg.extraction.extractor import (
     _canonicalize_entities_for_chunk,
     _uniform_sample_indices,
 )
-from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.pipeline_plugins.registry import (
     PipelinePluginEntry,
     _manifest_entries,
     _test_status,
 )
-from app.rag.preprocessing import tokenization as tokenization_module
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
-from app.rag.retrieval.planner import (
-    DatasetRouteHint,
-    plan_dataset_scope,
+from app.rag.retrieval.planning.dataset_routes import DatasetRouteHint, plan_dataset_scope
+from app.rag.retrieval.ranking.policy_rules import (
     retrieval_policy_boost_score,
     retrieval_policy_query_terms,
     retrieval_policy_service_anchor_query_rewrite_terms,
@@ -142,7 +139,6 @@ def test_canonicalize_entities_for_chunk_splits_parenthetical_aliases_and_keeps_
         entities,
         chunk_text="Large Language Model (LLM) systems are often called LLM systems.",
         max_entities=5,
-        parser=EntityValueParser(),
     )
 
     assert result == [
@@ -165,16 +161,15 @@ def test_canonicalize_entities_for_chunk_splits_parenthetical_aliases_and_keeps_
     ]
 
 
-def test_tokenize_for_bm25_expands_ascii_paths_versions_and_numeric_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tokenization_module.settings, "BM25_TOKENIZE_ASCII_EXPAND_ENABLED", True, raising=False)
+def test_tokenize_lexical_text_expands_ascii_paths_versions_and_numeric_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokenization_module.settings, "LEXICAL_TOKENIZE_ASCII_EXPAND_ENABLED", True)
     monkeypatch.setattr(
         tokenization_module.settings,
-        "BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED",
+        "LEXICAL_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED",
         True,
-        raising=False,
     )
 
-    tokens = tokenize_for_bm25("API/v1.2.3 Release_2026 build 1,024")
+    tokens = tokenize_lexical_text("API/v1.2.3 Release_2026 build 1,024")
 
     assert tokens == [
         "api/v1.2.3",

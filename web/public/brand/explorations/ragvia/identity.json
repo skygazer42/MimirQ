@@ -1,0 +1,20 @@
+{
+  "name": "Ragvia",
+  "wordmark": "ragvia",
+  "status": "proposal",
+  "brandStatus": "user-approved",
+  "authLayoutStatus": "proposal",
+  "symbol": "approved converge direction",
+  "palette": [
+    "#20262E",
+    "#B84A2A",
+    "#F6F7F8",
+    "#F09A77"
+  ],
+  "logoViewBox": [
+    306,
+    96
+  ],
+  "typeface": "Manrope 680",
+  "productFilesChanged": false
+}

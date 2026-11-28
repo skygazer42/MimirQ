@@ -1,0 +1,81 @@
+from typing import Any
+
+from app.rag.agents.tools.mcp_client import DocumentToolScope
+from app.rag.agents.tools.mcp_tools import (
+    get_document,
+    get_document_content,
+    get_document_structure,
+    get_page_content,
+    search_documents,
+)
+
+
+async def keyword_search(query: str, *, dataset_id: str, scope: DocumentToolScope, top_k: int = 5) -> dict[str, Any]:
+    return await search_documents(query=query, top_k=top_k, dataset_id=dataset_id, _scope=scope)
+
+
+async def semantic_search(query: str, *, dataset_id: str, scope: DocumentToolScope, top_k: int = 5) -> dict[str, Any]:
+    return await search_documents(query=query, top_k=top_k, dataset_id=dataset_id, _scope=scope)
+
+
+async def chunk_read(
+    *,
+    document_id: str,
+    dataset_id: str,
+    page: int | None = None,
+    scope: DocumentToolScope,
+    max_chars: int = 50_000,
+) -> dict[str, Any]:
+    return await get_document_content(
+        document_id=document_id,
+        page=page,
+        dataset_id=dataset_id,
+        _scope=scope,
+        max_chars=max_chars,
+    )
+
+
+async def document_info(*, document_id: str, dataset_id: str, scope: DocumentToolScope) -> dict[str, Any]:
+    return await get_document(document_id=document_id, dataset_id=dataset_id, _scope=scope)
+
+
+async def document_structure(
+    *,
+    document_id: str,
+    dataset_id: str,
+    scope: DocumentToolScope,
+    max_nodes: int = 200,
+) -> dict[str, Any]:
+    return await get_document_structure(
+        document_id=document_id,
+        dataset_id=dataset_id,
+        _scope=scope,
+        max_nodes=max_nodes,
+    )
+
+
+async def page_content(
+    *,
+    document_id: str,
+    pages: str,
+    dataset_id: str,
+    scope: DocumentToolScope,
+    max_chars: int = 50_000,
+) -> dict[str, Any]:
+    return await get_page_content(
+        document_id=document_id,
+        pages=pages,
+        dataset_id=dataset_id,
+        _scope=scope,
+        max_chars=max_chars,
+    )
+
+
+__all__ = [
+    "keyword_search",
+    "semantic_search",
+    "chunk_read",
+    "document_info",
+    "document_structure",
+    "page_content",
+]

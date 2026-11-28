@@ -7,7 +7,7 @@ Typical use (from repo root):
 Defaults:
 - converts *.txt (you can add more extensions via --ext)
 - keeps relative folder structure under the target directory
-- uses app.parsing.utils.text.read_text_file() for best-effort decoding
+- uses app.rag.ingestion.parsing.utils.text.read_text_file() for best-effort decoding
 """
 
 import argparse
@@ -15,7 +15,7 @@ import os
 import shutil
 from pathlib import Path
 
-from app.parsing.utils.text import read_text_file
+from app.rag.ingestion.parsing.utils.text import read_text_file
 
 
 def _parse_args() -> argparse.Namespace:
@@ -42,7 +42,7 @@ def _is_under(path: Path, root: Path) -> bool:
 
 
 def _prepare_target(target_dir: Path, *, clean_target: bool, dry_run: bool) -> None:
-    if clean_target and target_dir.exists() and target_dir.is_dir():
+    if clean_target and target_dir.is_dir():
         if dry_run:
             print(f"[dry-run] rm -rf {target_dir}")
         else:
@@ -72,6 +72,8 @@ def convert_encoding(
 ) -> int:
     source_dir = source_dir.resolve()
     target_dir = target_dir.resolve()
+    if clean_target and source_dir.is_relative_to(target_dir):
+        raise ValueError("--clean-target cannot delete the source directory or one of its parents")
     _prepare_target(target_dir, clean_target=clean_target, dry_run=dry_run)
 
     converted = 0
@@ -104,13 +106,13 @@ def convert_encoding(
 
 def main() -> int:
     args = _parse_args()
-    exts = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in (args.ext or [])}
+    exts = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in args.ext}
     return convert_encoding(
         source_dir=Path(args.source),
         target_dir=Path(args.target),
         extensions=exts,
-        clean_target=bool(args.clean_target),
-        dry_run=bool(args.dry_run),
+        clean_target=args.clean_target,
+        dry_run=args.dry_run,
     )
 
 

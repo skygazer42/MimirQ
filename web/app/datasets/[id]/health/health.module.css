@@ -1,0 +1,16 @@
+dl.metricsWithNotes {
+  padding-bottom: 12px;
+  border-bottom: 0;
+}
+
+.metricNotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin: 0;
+  padding: 0 0 16px;
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 22px;
+}

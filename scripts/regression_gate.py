@@ -150,9 +150,9 @@ def coerce_case_bundle(obj: Any, *, allow_review_only: bool = False) -> tuple[st
 def _headers(args: argparse.Namespace) -> dict[str, str]:
     h: dict[str, str] = {"Content-Type": "application/json"}
     if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
+        h["X-Tenant-ID"] = args.tenant_id
     if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
+        h["X-User-ID"] = args.user_id
     if args.bearer:
         h["Authorization"] = f"Bearer {args.bearer}"
     return h
@@ -171,8 +171,6 @@ _RUN_OVERRIDE_KEYS: tuple[str, ...] = (
     "query_rewrite_strategy",
     "query_rewrite_temperature",
     "query_rewrite_max_chars",
-    "sparse_retrieval_enabled",
-    "sparse_retrieval_provider",
     "top_k",
     "score_threshold",
     "retrieval_mode",
@@ -292,7 +290,7 @@ def summarize_plugin_golden_source_from_import_response(response: dict[str, Any]
         out["draft_items_total"] = 0
 
     bundle = draft.get("bundle") if isinstance(draft.get("bundle"), dict) else {}
-    items = bundle.get("items") if isinstance(bundle, dict) else []
+    items = bundle.get("items")
     if isinstance(items, list):
         for item in items:
             extra = item.get("extra") if isinstance(item, dict) else None
@@ -328,24 +326,20 @@ def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     for k, v in raw.items():
         metric = str(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            out[metric] = {"min": float(v)}
+            v = {"min": v}
+        if not isinstance(v, dict):
             continue
 
-        if isinstance(v, dict):
-            entry: dict[str, float] = {}
-            if "min" in v:
-                try:
-                    entry["min"] = float(v.get("min"))  # type: ignore[arg-type]
-                except Exception:
-                    pass
-            if "max" in v:
-                try:
-                    entry["max"] = float(v.get("max"))  # type: ignore[arg-type]
-                except Exception:
-                    pass
-            if entry:
-                out[metric] = entry
-            continue
+        entry: dict[str, float] = {}
+        for bound in ("min", "max"):
+            if bound not in v:
+                continue
+            limit = _coerce_float(v[bound])
+            if limit is None:
+                raise ValueError(f"threshold '{metric}.{bound}' must be a finite number")
+            entry[bound] = limit
+        if entry:
+            out[metric] = entry
 
     return out
 
@@ -525,23 +519,13 @@ def _qs_metric_delta(
     )
 
 
-def diff_queryset_health_snapshots(
-    *,
-    baseline: dict[str, Any],
-    current: dict[str, Any],
-    max_hard_case_ids: int = 20,
-) -> dict[str, Any]:
-    """
-    Minimal diff for `mimirq.queryset_health_snapshot.v1` snapshots.
-
-    Kept local to the gate script to avoid importing backend modules in CI runners.
-    """
+def _qs_metric_deltas(*, baseline: dict[str, Any], current: dict[str, Any]) -> dict[str, float]:
     base_metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
     curr_metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
     base_risk = baseline.get("risk") if isinstance(baseline.get("risk"), dict) else {}
     curr_risk = current.get("risk") if isinstance(current.get("risk"), dict) else {}
 
-    metric_deltas = {
+    return {
         "hit_at_k_delta": _qs_metric_delta(
             curr_metrics,
             base_metrics,
@@ -555,9 +539,10 @@ def diff_queryset_health_snapshots(
             key="ndcg_at_k",
             digits=6,
         ),
-        "p95_latency_ms_delta": _qs_delta(
-            _qs_as_float(curr_metrics.get("p95_latency_ms")),
-            _qs_as_float(base_metrics.get("p95_latency_ms")),
+        "p95_latency_ms_delta": _qs_metric_delta(
+            curr_metrics,
+            base_metrics,
+            key="p95_latency_ms",
             digits=3,
         ),
         "miss_rate_delta": _qs_metric_delta(
@@ -574,6 +559,19 @@ def diff_queryset_health_snapshots(
         ),
     }
 
+
+def diff_queryset_health_snapshots(
+    *,
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+    max_hard_case_ids: int = 20,
+) -> dict[str, Any]:
+    """
+    Minimal diff for `mimirq.queryset_health_snapshot.v1` snapshots.
+
+    Kept local to the gate script to avoid importing backend modules in CI runners.
+    """
+    metric_deltas = _qs_metric_deltas(baseline=baseline, current=current)
     base_hash = str(baseline.get("policy_hash") or "").strip()
     curr_hash = str(current.get("policy_hash") or "").strip()
     policy_changed = bool((base_hash or curr_hash) and base_hash != curr_hash)
@@ -635,42 +633,31 @@ def compute_queryset_health_degradation_flags(
     current: dict[str, Any],
     policy: dict[str, float | int],
 ) -> list[str]:
-    base_metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
-    curr_metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
-    base_risk = baseline.get("risk") if isinstance(baseline.get("risk"), dict) else {}
-    curr_risk = current.get("risk") if isinstance(current.get("risk"), dict) else {}
-
-    hit_at_k_delta = _qs_metric_delta(curr_metrics, base_metrics, key="hit_at_k", digits=6)
-    mrr_delta = _qs_metric_delta(curr_metrics, base_metrics, key="mrr", digits=6)
-    ndcg_delta = _qs_metric_delta(curr_metrics, base_metrics, key="ndcg_at_k", digits=6)
-    p95_delta = _qs_metric_delta(
-        curr_metrics,
-        base_metrics,
-        key="p95_latency_ms",
-        digits=3,
-    )
-    miss_rate_delta = _qs_metric_delta(curr_risk, base_risk, key="miss_rate", digits=6)
-    weak_hit_rate_delta = _qs_metric_delta(
-        curr_risk,
-        base_risk,
-        key="weak_hit_rate",
-        digits=6,
+    return _qs_degradation_flags(
+        _qs_metric_deltas(baseline=baseline, current=current),
+        policy,
     )
 
+
+def _qs_degradation_flags(
+    metric_deltas: dict[str, float],
+    policy: dict[str, float | int],
+) -> list[str]:
+    checks = (
+        ("hit_at_k_drop", -metric_deltas["hit_at_k_delta"], "hit_at_k_drop_threshold"),
+        ("mrr_drop", -metric_deltas["mrr_delta"], "mrr_drop_threshold"),
+        ("ndcg_drop", -metric_deltas["ndcg_at_k_delta"], "ndcg_drop_threshold"),
+        ("p95_latency_regression", metric_deltas["p95_latency_ms_delta"], "p95_latency_regression_ms"),
+        ("miss_rate_regression", metric_deltas["miss_rate_delta"], "miss_rate_regression_threshold"),
+        ("weak_hit_rate_regression", metric_deltas["weak_hit_rate_delta"], "weak_hit_rate_regression_threshold"),
+    )
     flags: list[str] = []
-    if hit_at_k_delta <= -float(policy.get("hit_at_k_drop_threshold") or 0.03):
-        flags.append("hit_at_k_drop")
-    if mrr_delta <= -float(policy.get("mrr_drop_threshold") or 0.03):
-        flags.append("mrr_drop")
-    if ndcg_delta <= -float(policy.get("ndcg_drop_threshold") or 0.03):
-        flags.append("ndcg_drop")
-    if p95_delta >= float(policy.get("p95_latency_regression_ms") or 20.0):
-        flags.append("p95_latency_regression")
-    if miss_rate_delta >= float(policy.get("miss_rate_regression_threshold") or 0.05):
-        flags.append("miss_rate_regression")
-    if weak_hit_rate_delta >= float(policy.get("weak_hit_rate_regression_threshold") or 0.08):
-        flags.append("weak_hit_rate_regression")
-
+    for flag, delta, key in checks:
+        limit = policy.get(key)
+        if limit is None:
+            limit = _QUERYSET_HEALTH_DEFAULT_POLICY[key]
+        if delta > 0.0 and delta >= float(limit):
+            flags.append(flag)
     return flags
 
 
@@ -679,7 +666,6 @@ def _citation_channel_hits(citation: dict[str, Any]) -> dict[str, bool]:
         "vector": _coerce_float(citation.get("vector_score")) not in (None, 0.0),
         "bm25": _coerce_float(citation.get("bm25_score")) not in (None, 0.0),
         "lexical": _coerce_float(citation.get("lexical_score")) not in (None, 0.0),
-        "sparse": _coerce_float(citation.get("sparse_score")) not in (None, 0.0),
     }
 
 
@@ -701,7 +687,6 @@ def summarize_channel_attribution(items: list[dict[str, Any]] | None) -> dict[st
         "vector": 0,
         "bm25": 0,
         "lexical": 0,
-        "sparse": 0,
         "multi": 0,
         "citations_with_scores": 0,
         "total_citations": 0,
@@ -760,7 +745,7 @@ def summarize_multihop_diagnostics(items: list[dict[str, Any]] | None) -> dict[s
         return round(float(sum(values)) / float(len(values)), 4)
 
     return {
-        "cases_with_expectation": int(cases_with_expectation),
+        "cases_with_expectation": cases_with_expectation,
         "path_completeness": _mean(path_scores),
         "order_consistency": _mean(order_scores),
         "chain_hit_rate": _mean(hit_flags),
@@ -803,10 +788,10 @@ def build_regression_gate_report(
         "case_source": dict(case_source or {"kind": "case_bundle"}),
         "metrics": list(metrics or []),
         "summary": dict(summary or {}),
-        "retrieval_slices": dict(summary.get("retrieval_slices") or {}) if isinstance(summary, dict) else {},
+        "retrieval_slices": dict(summary.get("retrieval_slices") or {}),
         "failures": [str(msg) for msg in (failures or []) if str(msg or "").strip()],
         "run_status": str(run.get("status") or ""),
-        "error_message": str(run.get("error_message") or "") or None,
+        "error_message": (run.get("error_message")),
         "channel_attribution": summarize_channel_attribution(items),
         "multihop": summarize_multihop_diagnostics(items),
         "run_params": dict(run_payload or {}),
@@ -868,7 +853,6 @@ def _append_channel_attribution_section(lines: list[str], totals: dict[str, Any]
             f"| vector | {int(totals.get('vector') or 0)} |",
             f"| bm25 | {int(totals.get('bm25') or 0)} |",
             f"| lexical | {int(totals.get('lexical') or 0)} |",
-            f"| sparse | {int(totals.get('sparse') or 0)} |",
             f"| multi-channel | {int(totals.get('multi') or 0)} |",
             "",
         ]
@@ -958,18 +942,21 @@ def _threshold_failures_for_value(
     raw_val: Any,
     bounds: dict[str, float],
 ) -> list[str]:
-    try:
-        value = float(raw_val)
-    except Exception:
+    value = _coerce_float(raw_val)
+    if value is None:
         return [f"missing metric '{name}'"]
 
     failures: list[str] = []
-    min_value = bounds.get("min")
-    if min_value is not None and value < float(min_value):
-        failures.append(f"{name}={value:.4f} < min {float(min_value):.4f}")
-    max_value = bounds.get("max")
-    if max_value is not None and value > float(max_value):
-        failures.append(f"{name}={value:.4f} > max {float(max_value):.4f}")
+    for bound in ("min", "max"):
+        if bound not in bounds:
+            continue
+        limit = _coerce_float(bounds[bound])
+        if limit is None:
+            failures.append(f"threshold '{name}.{bound}' must be a finite number")
+        elif bound == "min" and value < limit:
+            failures.append(f"{name}={value:.4f} < min {limit:.4f}")
+        elif bound == "max" and value > limit:
+            failures.append(f"{name}={value:.4f} > max {limit:.4f}")
     return failures
 
 
@@ -1069,7 +1056,7 @@ def _coerce_float(raw: Any) -> float | None:
         v = float(raw)
     except Exception:
         return None
-    if math.isnan(v):
+    if not math.isfinite(v):
         return None
     return v
 
@@ -1172,7 +1159,7 @@ def _generate_metric_thresholds(
         if value is not None:
             out[key] = _as_bounds(
                 key,
-                baseline=float(value),
+                baseline=value,
                 rel_drop=rel_drop,
                 abs_slack=abs_slack,
             )
@@ -1301,7 +1288,7 @@ def generate_thresholds_from_summary(
         "options": {
             "rel_drop": float(rel_drop),
             "abs_slack": float(abs_slack),
-            "min_slice_items": int(min_slice_items),
+            "min_slice_items": min_slice_items,
         },
         "metrics": metrics_out,
         "slices": slices_out,
@@ -1446,16 +1433,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_tristate_flag(
         p,
-        enable_flag="--enable-sparse-retrieval",
-        disable_flag="--disable-sparse-retrieval",
-        dest="sparse_retrieval_enabled",
-        help="sparse retrieval channel",
-    )
-    p.add_argument(
-        "--sparse-retrieval-provider", type=str, default="", help="Override sparse_retrieval_provider (optional)"
-    )
-    _add_tristate_flag(
-        p,
         enable_flag="--enable-query-rewrite",
         disable_flag="--disable-query-rewrite",
         dest="enable_query_rewrite",
@@ -1567,11 +1544,9 @@ _STRING_OVERRIDE_ARGS: dict[str, str] = {
     "retrieval_mode": "retrieval_mode",
     "retrieval_profile": "retrieval_profile",
     "fusion_strategy": "fusion_strategy",
-    "sparse_retrieval_provider": "sparse_retrieval_provider",
     "reranker_provider": "reranker_provider",
 }
 _BOOL_OVERRIDE_ARGS: tuple[str, ...] = (
-    "sparse_retrieval_enabled",
     "enable_query_rewrite",
     "enable_multi_query",
     "enable_reranker",
@@ -1647,14 +1622,14 @@ def normalize_run_overrides(raw: Any) -> dict[str, Any]:
 def _resolve_case_source_inputs(
     args: argparse.Namespace,
 ) -> tuple[str, list[dict[str, Any]], str, dict[str, Any]]:
-    cases_arg = str(args.cases or "").strip()
+    cases_arg = args.cases.strip()
     plugin_golden_ref = str(getattr(args, "plugin_golden_ref", "") or "").strip()
     _require(
         bool(cases_arg) != bool(plugin_golden_ref),
         "set exactly one case source: --cases or --plugin-golden-ref",
     )
     _require(
-        not (plugin_golden_ref and bool(args.skip_import)),
+        not (plugin_golden_ref and args.skip_import),
         "--skip-import cannot be used with --plugin-golden-ref",
     )
 
@@ -1666,7 +1641,7 @@ def _resolve_case_source_inputs(
         cases_path = Path(cases_arg)
         _require(cases_path.exists(), f"cases file not found: {cases_path}")
         try:
-            dataset_id, items = coerce_case_bundle(_load_json(cases_path), allow_review_only=bool(args.skip_import))
+            dataset_id, items = coerce_case_bundle(_load_json(cases_path), allow_review_only=args.skip_import)
         except ValueError as exc:
             _require(False, str(exc))
         _require(len(items) > 0, "cases file contains no items")
@@ -1678,14 +1653,14 @@ def _resolve_case_source_inputs(
             "max_items": int(getattr(args, "plugin_golden_max_items", 500) or 500),
             "max_chunks": int(getattr(args, "plugin_golden_max_chunks", 5000) or 5000),
             "include_unmarked_chunks": bool(getattr(args, "plugin_golden_include_unmarked_chunks", False)),
-            "overwrite": bool(args.overwrite),
+            "overwrite": args.overwrite,
         }
         if plugin_golden_ref
         else {
             "kind": "case_bundle",
             "path": cases_arg,
-            "skip_import": bool(args.skip_import),
-            "overwrite": bool(args.overwrite),
+            "skip_import": args.skip_import,
+            "overwrite": args.overwrite,
         }
     )
     return dataset_id, items, plugin_golden_ref, case_source
@@ -1709,7 +1684,10 @@ def _load_threshold_config(
         raw_th = _load_json(th_path)
         if not isinstance(raw_th, dict):
             _require(False, "thresholds must be a JSON object")
-        thresholds, slice_thresholds = parse_thresholds_config(raw_th)
+        try:
+            thresholds, slice_thresholds = parse_thresholds_config(raw_th)
+        except ValueError as exc:
+            _require(False, str(exc))
         threshold_case_source = normalize_threshold_case_source(raw_th.get("case_source"))
 
         # Optional dataset_id guardrail (helps avoid applying thresholds from another dataset by accident).
@@ -1734,7 +1712,7 @@ def _require_metrics_allowed(
             thresholds=thresholds,
             slice_thresholds=slice_thresholds,
             thresholds_file_provided=bool(args.thresholds),
-            generate_thresholds_out=str(args.generate_thresholds_out or ""),
+            generate_thresholds_out=args.generate_thresholds_out,
         ),
         "metrics list is empty (set --thresholds for gating or --generate-thresholds-out for baseline generation)",
     )
@@ -1763,7 +1741,7 @@ def _import_case_bundle_if_needed(
         f"{base_url}/evaluations/ragas/regression/cases/import",
         json={
             "dataset_id": dataset_id,
-            "overwrite": bool(args.overwrite),
+            "overwrite": args.overwrite,
             "max_items": min(2000, len(items)),
             "items": items,
         },
@@ -1852,7 +1830,7 @@ def _resolve_plugin_golden_case_ids(
         max_items=int(getattr(args, "plugin_golden_max_items", 500) or 500),
         max_chunks=int(getattr(args, "plugin_golden_max_chunks", 5000) or 5000),
         include_unmarked_chunks=bool(getattr(args, "plugin_golden_include_unmarked_chunks", False)),
-        overwrite=bool(args.overwrite),
+        overwrite=args.overwrite,
     )
     response = client.post(f"{base_url}/pipeline/plugins/golden-draft/import", json=payload)
     response.raise_for_status()
@@ -1910,7 +1888,7 @@ def _resolve_matched_case_ids(
 
 
 def _load_run_override_file(args: argparse.Namespace) -> dict[str, Any]:
-    path_text = str(args.run_overrides_json or "").strip()
+    path_text = args.run_overrides_json.strip()
     if not path_text:
         return {}
     overrides_path = Path(path_text).expanduser()
@@ -1986,7 +1964,7 @@ def _wait_for_completed_run_detail(
 
 
 def _write_run_detail_output(args: argparse.Namespace, detail: dict[str, Any]) -> None:
-    out_path = str(args.out_run_json or "").strip()
+    out_path = args.out_run_json.strip()
     if not out_path:
         return
     if out_path == "-":
@@ -2047,11 +2025,7 @@ def _build_queryset_health_section(
         print(f"[regression_gate] wrote queryset health diff: {out_diff}")
 
     policy = _qs_resolve_policy(current_snapshot)
-    degradation_flags = compute_queryset_health_degradation_flags(
-        baseline=baseline_snapshot,
-        current=current_snapshot,
-        policy=policy,
-    )
+    degradation_flags = _qs_degradation_flags(diff["metric_deltas"], policy)
     notes: list[str] = []
     failures: list[str] = []
     policy_info = diff.get("policy") if isinstance(diff.get("policy"), dict) else {}
@@ -2085,7 +2059,7 @@ def _write_generated_thresholds_output(
     summary: dict[str, Any],
     case_source: dict[str, Any],
 ) -> None:
-    out_path = str(args.generate_thresholds_out or "").strip()
+    out_path = args.generate_thresholds_out.strip()
     if not out_path:
         return
 
@@ -2095,9 +2069,9 @@ def _write_generated_thresholds_output(
         metrics=parse_metrics_list(args.gen_metrics),
         slice_dims=parse_metrics_list(args.gen_slice_dims),
         slice_metrics=parse_metrics_list(args.gen_slice_metrics),
-        rel_drop=float(args.gen_rel_drop),
-        abs_slack=float(args.gen_abs_slack),
-        min_slice_items=int(args.gen_min_slice_items),
+        rel_drop=args.gen_rel_drop,
+        abs_slack=args.gen_abs_slack,
+        min_slice_items=args.gen_min_slice_items,
         case_source=case_source,
     )
     out_json = json.dumps(generated_config, ensure_ascii=False, indent=2) + "\n"
@@ -2112,21 +2086,21 @@ def _write_generated_thresholds_output(
         if diff:
             print("[regression_gate] thresholds diff (existing -> generated):")
             sys.stdout.write(diff)
-        if not bool(args.gen_force):
+        if not args.gen_force:
             _require(False, f"thresholds output already exists: {path} (use --gen-force to overwrite)")
     path.write_text(out_json, encoding="utf-8")
     print(f"[regression_gate] wrote generated thresholds: {path}")
 
 
 def _write_report_artifacts(args: argparse.Namespace, report: dict[str, Any]) -> None:
-    out_report_json = str(args.out_report_json or "").strip()
+    out_report_json = args.out_report_json.strip()
     if out_report_json:
         json_path = Path(out_report_json)
         json_path.parent.mkdir(parents=True, exist_ok=True)
         write_json_file(json_path, report)
         print(f"[regression_gate] wrote report json: {json_path}")
 
-    out_report_md = str(args.out_report_md or "").strip()
+    out_report_md = args.out_report_md.strip()
     if out_report_md:
         md_path = Path(out_report_md)
         md_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2197,7 +2171,7 @@ def main() -> int:
         bool(headers.get("X-User-ID") or headers.get("Authorization")),
         "missing auth headers (use --user-id or --bearer)",
     )
-    base_url = str(args.base_url).rstrip("/")
+    base_url = args.base_url.rstrip("/")
     timeout = httpx.Timeout(30.0)
 
     with httpx.Client(headers=headers, timeout=timeout, trust_env=False) as client:
@@ -2227,7 +2201,7 @@ def main() -> int:
             case_ids=matched_ids,
             dataset_id=dataset_id,
             metrics=metrics,
-            use_llm_judge=bool(args.use_llm_judge),
+            use_llm_judge=args.use_llm_judge,
             skip_empty_contexts=True,
             max_cases=min(500, len(matched_ids)),
             retrieval_overrides=overrides,
@@ -2237,8 +2211,8 @@ def main() -> int:
             client,
             base_url=base_url,
             run_id=run_id,
-            timeout_sec=float(args.timeout_sec),
-            poll_sec=float(args.poll_sec),
+            timeout_sec=args.timeout_sec,
+            poll_sec=args.poll_sec,
         )
         if run_result is None:
             return 1
@@ -2284,7 +2258,7 @@ def main() -> int:
         matched_case_count=len(matched_ids),
         metrics=metrics,
         thresholds_enabled=bool(thresholds or slice_thresholds),
-        ok=bool(ok and not qs_failures),
+        ok=ok and not qs_failures,
         failures=failures,
         detail=detail,
         run_payload=run_payload,

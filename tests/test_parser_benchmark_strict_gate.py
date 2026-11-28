@@ -4,10 +4,10 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-import app.parsing.factory as factory_module
-import app.parsing.processors.cross_page_merge as cross_page_merge_module
-import app.parsing.quality.document_quality as document_quality_module
-import app.parsing.quality.text_quality as text_quality_module
+import app.rag.ingestion.parsing.factory as factory_module
+import app.rag.ingestion.parsing.processors.cross_page_merge as cross_page_merge_module
+import app.rag.ingestion.parsing.quality.document_quality as document_quality_module
+import app.rag.ingestion.parsing.quality.text_quality as text_quality_module
 import scripts.parser_benchmark as benchmark_module
 from scripts.parser_benchmark import (
     BenchmarkCase,

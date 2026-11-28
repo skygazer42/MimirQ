@@ -4,44 +4,43 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Download, GitCompareArrows, Info } from 'lucide-react'
+import { Download, GitCompareArrows, Info } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { getChunkMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
+import { readMetadataString } from '@/components/chunk-preview/utils/metadata'
 import { cn } from '@/lib/utils'
 import type { ChunkPreviewResponse } from '@/types'
-import { buildSemanticEvidenceHighlights, chunkPreviewDiffToExport, computeChunkPreviewDiff } from '@/components/chunk-preview/utils/ab-diff'
+import {
+  buildSemanticEvidenceHighlights,
+  chunkPreviewDiffToExport,
+  computeChunkPreviewDiff,
+  getComparisonCandidates,
+} from '@/components/chunk-preview/utils/ab-diff'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
-
-type RunHistoryItem = {
-  id: string
-  fileName: string
-  parserBackend: string
-  strategy: string
-  chunkSize: number
-  chunkOverlap: number
-  totalChunks: number
-  durationMs: number
-  createdAt: number
-  cacheHit: boolean
-  cacheKey?: string
-}
+import type { ChunkPreviewState } from '../types'
 
 function formatDelta(n: number) {
-  if (!Number.isFinite(n) || n === 0) return '0'
+  if (n === 0) return '0'
   return n > 0 ? `+${n}` : String(n)
 }
 
 function formatPct(ratio: number | null) {
-  if (ratio == null || !Number.isFinite(ratio)) return '-'
+  if (ratio === null) return '-'
   return `${Math.round(ratio * 100)}%`
 }
 
-function formatDeltaPct(deltaRatio: number | null) {
-  if (deltaRatio == null || !Number.isFinite(deltaRatio) || deltaRatio === 0) return '0%'
+function formatDeltaPct(deltaRatio: number) {
+  if (deltaRatio === 0) return '0%'
   const v = Math.round(deltaRatio * 100)
   return v > 0 ? `+${v}%` : `${v}%`
 }
@@ -64,20 +63,22 @@ function getChunkCompareDeltaClass(deltaCount: number): string {
 
 function extractHierarchyBasis(preview: ChunkPreviewResponse): string[] {
   const bases = new Set<string>()
-  for (const c of preview?.chunks || []) {
-    const basis = getStringValue(getChunkMetadata(c), 'hierarchy_basis')
+  for (const chunk of preview.chunks) {
+    const basis = readMetadataString(chunk.metadata?.hierarchy_basis)
     if (!basis) continue
     bases.add(basis)
   }
   return Array.from(bases).sort((a, b) => a.localeCompare(b))
 }
 
-function EvidenceHighlightsPanel(props: Readonly<{
-  title: string
-  emptyLabel: string
-  tone: 'added' | 'removed'
-  items: ReturnType<typeof buildSemanticEvidenceHighlights>['added']
-}>) {
+function EvidenceHighlightsPanel(
+  props: Readonly<{
+    title: string
+    emptyLabel: string
+    tone: 'added' | 'removed'
+    items: ReturnType<typeof buildSemanticEvidenceHighlights>['added']
+  }>,
+) {
   const t = useTranslations('ChunkPreview')
   const { title, emptyLabel, tone, items } = props
   const toneClass = getEvidenceToneClass(tone)
@@ -92,7 +93,10 @@ function EvidenceHighlightsPanel(props: Readonly<{
     content = (
       <div className="mt-3 space-y-3">
         {items.map((item) => (
-          <div key={`${tone}:${item.index}:${item.example.slice(0, 24)}`} className="rounded-xl border border-border/60 bg-background/80 p-3">
+          <div
+            key={`${tone}:${item.index}:${item.example.slice(0, 24)}`}
+            className="rounded-xl border border-border/60 bg-background/80 p-3"
+          >
             <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
               <span>{t('compareDialog.evidence.itemLabel', { index: item.index })}</span>
               <span className="font-mono">{t('compareDialog.evidence.countLabel', { count: item.count })}</span>
@@ -142,39 +146,35 @@ function EvidenceHighlightsPanel(props: Readonly<{
   )
 }
 
-export function ChunkCompareDialog(props: Readonly<{
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  current: ChunkPreviewResponse
-  currentFileName: string
-  runHistory: RunHistoryItem[]
-  getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
-}>) {
-  const { open, onOpenChange, current, currentFileName, runHistory, getCachedPreview } = props
+export function ChunkCompareDialog(
+  props: Readonly<{
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    current: ChunkPreviewResponse
+    currentFileId: string
+    currentFileName: string
+    runHistory: ChunkPreviewState['runHistory']
+    getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
+  }>,
+) {
+  const { open, onOpenChange, current, currentFileId, currentFileName, runHistory, getCachedPreview } = props
   const t = useTranslations('ChunkPreview')
 
   const candidates = useMemo(() => {
-    const list = (runHistory || [])
-      .filter((item) => item.fileName === currentFileName && typeof item.cacheKey === 'string' && Boolean(item.cacheKey))
-      .sort((a, b) => b.createdAt - a.createdAt)
-    return list
-  }, [runHistory, currentFileName])
+    return getComparisonCandidates(runHistory, currentFileId)
+  }, [runHistory, currentFileId])
 
-  const [baselineKey, setBaselineKey] = useState<string>('')
+  const [baselineKey, setBaselineKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    const next =
-      (candidates.length > 1 ? candidates[1]?.cacheKey : candidates[0]?.cacheKey) ||
-      ''
-    setBaselineKey(next)
+    setBaselineKey((selected) =>
+      candidates.slice(1).some((item) => item.cacheKey === selected) ? selected : (candidates[1]?.cacheKey ?? null),
+    )
   }, [open, candidates])
 
-  const baseline = useMemo(() => {
-    const key = (baselineKey || '').trim()
-    if (!key) return null
-    return getCachedPreview(key)
-  }, [baselineKey, getCachedPreview])
+  const baselineMeta = candidates.slice(1).find((item) => item.cacheKey === baselineKey)
+  const baseline = baselineMeta === undefined ? null : getCachedPreview(baselineMeta.cacheKey)
 
   const currentHierarchyBasis = useMemo(() => extractHierarchyBasis(current), [current])
   const baselineHierarchyBasis = useMemo(() => (baseline ? extractHierarchyBasis(baseline) : []), [baseline])
@@ -185,16 +185,16 @@ export function ChunkCompareDialog(props: Readonly<{
   }, [baseline, current])
   const evidenceHighlights = useMemo(() => (diff ? buildSemanticEvidenceHighlights(diff) : null), [diff])
 
-  const baselineMeta = useMemo(() => {
-    if (!baselineKey) return null
-    return candidates.find((c) => c.cacheKey === baselineKey) || null
-  }, [baselineKey, candidates])
   const currentHierarchyBasisLabel = currentHierarchyBasis.length
     ? t('compareDialog.hierarchyBasis', { value: currentHierarchyBasis.join(',') })
     : ''
 
   let diffSection: React.ReactNode = null
   if (baseline && diff) {
+    const aUnit = t(`compareDialog.units.${diff.aUnit}`)
+    const bUnit = t(`compareDialog.units.${diff.bUnit}`)
+    const sameLengthUnit = diff.aUnit === diff.bUnit
+    const lengthUnit = sameLengthUnit ? bUnit : t('compareDialog.mixedUnits', { baseline: aUnit, current: bUnit })
     const evidenceHighlightsContent = evidenceHighlights ? (
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <EvidenceHighlightsPanel
@@ -221,12 +221,7 @@ export function ChunkCompareDialog(props: Readonly<{
             </div>
             <div className="mt-2 flex items-end justify-between">
               <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
-              <div
-                className={cn(
-                  'text-xs font-mono',
-                  getChunkCompareDeltaClass(diff.deltaCount)
-                )}
-              >
+              <div className={cn('text-xs font-mono', getChunkCompareDeltaClass(diff.deltaCount))}>
                 {formatDelta(diff.deltaCount)}
               </div>
             </div>
@@ -235,38 +230,56 @@ export function ChunkCompareDialog(props: Readonly<{
             </div>
           </div>
 
-          <div className="bg-card border border-border/60 rounded-xl p-4">
+          <section
+            className="bg-card border border-border/60 rounded-xl p-4"
+            aria-label={t('compareDialog.cards.lengthDistribution', { unit: lengthUnit })}
+          >
             <div className="text-[11px] text-muted-foreground uppercase font-medium">
-              {t('compareDialog.cards.lengthDistribution', { unit: diff.unit })}
+              {t('compareDialog.cards.lengthDistribution', { unit: lengthUnit })}
             </div>
             <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
               <div className="text-muted-foreground">
                 {t('compareDialog.cards.metrics.p10')}
                 <br />
-                <span className="font-mono text-foreground/90">{diff.bP10 ?? '-'}</span>
-                <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP10 ?? 0) - (diff.aP10 ?? 0))})</span>
+                <span className="font-mono text-foreground/90">
+                  A: {diff.aP10 ?? '-'} / B: {diff.bP10 ?? '-'}
+                </span>
+                {diff.deltaP10 !== null && (
+                  <span className="ml-1 text-muted-foreground">({formatDelta(diff.deltaP10)})</span>
+                )}
               </div>
               <div className="text-muted-foreground">
                 {t('compareDialog.cards.metrics.avg')}
                 <br />
-                <span className="font-mono text-foreground/90">{diff.bAvg ?? '-'}</span>
-                <span className="ml-1 text-muted-foreground">({formatDelta((diff.bAvg ?? 0) - (diff.aAvg ?? 0))})</span>
+                <span className="font-mono text-foreground/90">
+                  A: {diff.aAvg ?? '-'} / B: {diff.bAvg ?? '-'}
+                </span>
+                {diff.deltaAvg !== null && (
+                  <span className="ml-1 text-muted-foreground">({formatDelta(diff.deltaAvg)})</span>
+                )}
               </div>
               <div className="text-muted-foreground">
                 {t('compareDialog.cards.metrics.p95')}
                 <br />
-                <span className="font-mono text-foreground/90">{diff.bP95 ?? '-'}</span>
-                <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP95 ?? 0) - (diff.aP95 ?? 0))})</span>
+                <span className="font-mono text-foreground/90">
+                  A: {diff.aP95 ?? '-'} / B: {diff.bP95 ?? '-'}
+                </span>
+                {diff.deltaP95 !== null && (
+                  <span className="ml-1 text-muted-foreground">({formatDelta(diff.deltaP95)})</span>
+                )}
               </div>
             </div>
-          </div>
+            {!sameLengthUnit && (
+              <p className="mt-2 text-[11px] text-muted-foreground">{t('compareDialog.incompatibleLengthUnits')}</p>
+            )}
+          </section>
 
           <div className="bg-card border border-border/60 rounded-xl p-4">
             <div className="text-[11px] text-muted-foreground uppercase font-medium">
               {t('compareDialog.cards.contentOverlap')}
             </div>
             <div className="mt-2 flex items-end justify-between">
-              <div className="text-sm font-mono text-foreground/90">{Math.round((diff.overlap || 0) * 100)}%</div>
+              <div className="text-sm font-mono text-foreground/90">{formatPct(diff.overlap)}</div>
               <div className="text-[11px] text-muted-foreground">
                 {t('compareDialog.cards.addedRemoved', { added: diff.added, removed: diff.removed })}
               </div>
@@ -276,7 +289,10 @@ export function ChunkCompareDialog(props: Readonly<{
             </div>
           </div>
 
-          <div className="bg-card border border-border/60 rounded-xl p-4">
+          <section
+            className="bg-card border border-border/60 rounded-xl p-4"
+            aria-label={t('compareDialog.cards.qualityOverview')}
+          >
             <div className="text-[11px] text-muted-foreground uppercase font-medium">
               {t('compareDialog.cards.qualityOverview')}
             </div>
@@ -285,19 +301,25 @@ export function ChunkCompareDialog(props: Readonly<{
                 {t('compareDialog.cards.metrics.coverage')}
                 <br />
                 <span className="font-mono text-foreground/90">{formatPct(diff.bCoverage)}</span>
-                <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaCoverage)})</span>
+                {diff.deltaCoverage !== null && (
+                  <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaCoverage)})</span>
+                )}
               </div>
               <div className="text-muted-foreground">
                 {t('compareDialog.cards.metrics.waste')}
                 <br />
                 <span className="font-mono text-foreground/90">{formatPct(diff.bWaste)}</span>
-                <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaWaste)})</span>
+                {diff.deltaWaste !== null && (
+                  <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaWaste)})</span>
+                )}
               </div>
               <div className="text-muted-foreground">
                 {t('compareDialog.cards.metrics.gaps')}
                 <br />
                 <span className="font-mono text-foreground/90">{diff.bGapCount ?? '-'}</span>
-                <span className="ml-1 text-muted-foreground">({formatDelta((diff.bGapCount ?? 0) - (diff.aGapCount ?? 0))})</span>
+                {diff.deltaGapCount !== null && (
+                  <span className="ml-1 text-muted-foreground">({formatDelta(diff.deltaGapCount)})</span>
+                )}
               </div>
             </div>
             <div className="mt-2 text-[11px] text-muted-foreground">
@@ -306,7 +328,7 @@ export function ChunkCompareDialog(props: Readonly<{
                 current: current.quality_gate?.grade ?? '-',
               })}
             </div>
-          </div>
+          </section>
         </div>
 
         {evidenceHighlightsContent}
@@ -336,6 +358,7 @@ export function ChunkCompareDialog(props: Readonly<{
   }
 
   let dialogBody: React.ReactNode
+  let dialogFooter: React.ReactNode = null
   if (candidates.length < 2) {
     dialogBody = (
       <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/40 border border-border/60 rounded-xl p-4">
@@ -348,13 +371,13 @@ export function ChunkCompareDialog(props: Readonly<{
       <>
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <div className="text-xs text-muted-foreground min-w-[72px]">{t('compareDialog.baselineLabel')}</div>
-          <Select value={baselineKey} onValueChange={(v) => setBaselineKey(v)}>
+          <Select value={baselineMeta === undefined ? '' : baselineMeta.cacheKey} onValueChange={setBaselineKey}>
             <SelectTrigger className="h-9 w-full md:w-[520px] text-xs bg-card/80">
               <SelectValue placeholder={t('compareDialog.baselinePlaceholder')} />
             </SelectTrigger>
             <SelectContent>
               {candidates.slice(1).map((item) => (
-                <SelectItem key={item.id} value={String(item.cacheKey || '')}>
+                <SelectItem key={item.id} value={item.cacheKey}>
                   {t('compareDialog.candidateSummary', {
                     timestamp: new Date(item.createdAt).toLocaleString([], {
                       month: '2-digit',
@@ -382,52 +405,56 @@ export function ChunkCompareDialog(props: Readonly<{
           </div>
         </div>
 
-        {diffSection}
+        {baseline === null ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t('compareDialog.baselineUnavailable')}
+          </p>
+        ) : (
+          diffSection
+        )}
         {baselineMetaContent}
-
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!baseline}
-            onClick={() => {
-              if (!baseline) return
-              const payload = chunkPreviewDiffToExport(baseline, current, {
-                baseline_cache_key: baselineKey || undefined,
-              })
-              const filename = `${sanitizeFilename(currentFileName)}.chunk-preview.diff.json`
-              downloadTextFile(filename, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
-            }}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {t('compareDialog.actions.exportDiff')}
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-            {t('compareDialog.actions.close')}
-          </Button>
-        </div>
       </>
+    )
+    dialogFooter = (
+      <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-border/60 px-6 py-4">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!baseline}
+          onClick={() => {
+            if (!baseline) return
+            const payload = chunkPreviewDiffToExport(baseline, current, {
+              baseline_cache_key: baselineMeta?.cacheKey,
+            })
+            const filename = `${sanitizeFilename(currentFileName)}.chunk-preview.diff.json`
+            downloadTextFile(filename, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
+          }}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          {t('compareDialog.actions.exportDiff')}
+        </Button>
+        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          {t('compareDialog.actions.close')}
+        </Button>
+      </DialogFooter>
     )
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[92vw] max-w-[980px] p-0 overflow-hidden">
-        <div className="p-6 border-b border-border/60 bg-card/80">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[92vw] max-w-[980px] flex-col gap-0 p-0 overflow-hidden">
+        <div className="shrink-0 p-6 border-b border-border/60 bg-card/80">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <GitCompareArrows className="w-5 h-5 text-primary" />
               {t('compareDialog.title')}
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              {t('compareDialog.description')}
-            </DialogDescription>
+            <DialogDescription className="text-xs">{t('compareDialog.description')}</DialogDescription>
           </DialogHeader>
         </div>
 
-        <div className="p-6 space-y-4">
-          {dialogBody}
-        </div>
+        <div className="min-h-0 overflow-y-auto p-6 space-y-4">{dialogBody}</div>
+        {dialogFooter}
       </DialogContent>
     </Dialog>
   )

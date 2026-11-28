@@ -1,1 +1,0 @@
-../../models/ocr/ocr.res

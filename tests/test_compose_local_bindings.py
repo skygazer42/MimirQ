@@ -28,20 +28,6 @@ def test_retrieval_dev_api_binds_to_loopback() -> None:
     assert api["ports"] == ["127.0.0.1:${BACKEND_PORT:-8000}:8000"]
 
 
-def test_local_chroma_volume_uses_image_owned_directory() -> None:
-    retrieval = _compose("docker/docker-compose.retrieval-dev.yml")
-    lite = _compose("docker/docker-compose.lite.yml")
-
-    assert retrieval["x-backend-env"]["CHROMA_PERSIST_PATH"] == "${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}"
-    assert retrieval["services"]["mimirq-api"]["volumes"] == [
-        "upload_data:/data/uploads",
-        "vector_data:/app/vector_chroma",
-    ]
-    assert lite["x-backend-env"]["CHROMA_PERSIST_PATH"] == "${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}"
-    assert "vector_data:/app/vector_chroma" in lite["services"]["mimirq-api"]["volumes"]
-    assert "vector_data:/app/vector_chroma" in lite["services"]["mimirq-worker"]["volumes"]
-
-
 def test_web_compose_uses_docker_scoped_api_env_vars_with_same_origin_default() -> None:
     web = _compose("docker/docker-compose.web.yml")["services"]["web"]
 

@@ -24,4 +24,11 @@ describe('normalizePrecheckEmbeddingAdvisories', () => {
       },
     ])
   })
+
+  it('keeps an unknown advisory identifier out of its reading title', () => {
+    const [advisory] = normalizePrecheckEmbeddingAdvisories([{ code: 'new_model_advisory' }])
+
+    expect(advisory.title).toBe('向量模型建议')
+    expect(advisory.code).toBe('new_model_advisory')
+  })
 })

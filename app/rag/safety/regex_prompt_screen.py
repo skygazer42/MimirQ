@@ -1,4 +1,3 @@
-
 import asyncio
 import re
 from dataclasses import dataclass
@@ -22,7 +21,7 @@ class RegexPromptScreen:
     """Regex-based prompt injection/jailbreak screen (rule baseline, not a model)."""
 
     async def check(self, text: str) -> RegexPromptScreenResult:
-        return await asyncio.to_thread(self._check_sync, str(text or ""))
+        return await asyncio.to_thread(self._check_sync, text)
 
     @staticmethod
     def _check_sync(text: str) -> RegexPromptScreenResult:

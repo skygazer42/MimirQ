@@ -1,0 +1,169 @@
+"""
+PII-safe retrieval replay capture helpers.
+
+Wave7(B) goals:
+- Capture enough information to replay retrieval-only requests offline.
+- Default capture format MUST be PII-safe: no raw query text, no document snippets.
+- Provide deterministic fingerprints for candidate lists (for CI gating / diffs).
+"""
+
+import json
+import math
+from typing import Any
+
+from app.infrastructure.hashing import stable_hash
+
+RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1 = "mimirq.retrieval_replay_capture.v1"
+
+_FINGERPRINT_CITATION_LIMIT = 200
+
+_CAPTURE_CITATION_KEYS = frozenset(
+    {
+        # Identifiers / provenance (PII-safe identifiers only).
+        "chunk_id",
+        "document_id",
+        "chunk_index",
+        "page_number",
+        "start_char",
+        "end_char",
+        "doc_pipeline_key",
+        "pipeline_hash",
+        "retrieval_role",
+        "neighbor_of",
+        # Scores / knobs
+        "relevance_score",
+        "vector_score",
+        "bm25_score",
+        "lexical_score",
+        "keyword_score",
+        "rerank_score",
+        "retrieval_score",
+        "retriever_score",
+        "reranker_provider",
+        "retrieval_mode",
+        "hit_type",
+        # KG-derived ranking signals (optional; low-cardinality)
+        "kg_pagerank",
+        "kg_shared_events",
+        "kg_path_length",
+        "kg_edge_conf_low",
+        "kg_edge_conf_mid",
+        "kg_edge_conf_high",
+        "kg_evidence_anchored",
+        "kg_path",
+    }
+)
+
+
+def _sanitize_capture_citation(citation: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key in _CAPTURE_CITATION_KEYS if (value := citation.get(key)) is not None}
+
+
+def sanitize_citations_for_capture(citations: Any, *, max_items: int = 80) -> list[dict[str, Any]]:
+    """
+    Return a PII-safe list of citations for capture.
+
+    This strips all text fields (chunk_content, document_name, matched_terms, etc)
+    and keeps only allowlisted identifiers + numeric signals.
+    """
+    if not isinstance(citations, list) or not citations:
+        return []
+
+    lim = max(0, int(max_items or 0))
+    if lim <= 0:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for c in citations:
+        if len(out) >= lim:
+            break
+        if not isinstance(c, dict):
+            continue
+        safe = _sanitize_capture_citation(c)
+        if safe:
+            out.append(safe)
+    return out
+
+
+def _round_float(value: Any, *, digits: int = 3) -> float | None:
+    try:
+        if value is None:
+            return None
+        number = float(value)
+        return round(number, digits) if math.isfinite(number) else None
+    except (OverflowError, TypeError, ValueError):
+        return None
+
+
+def _fingerprint_sanitized_citations(citations: list[dict[str, Any]]) -> str:
+    cleaned: list[dict[str, Any]] = []
+    for idx, c in enumerate(citations[:_FINGERPRINT_CITATION_LIMIT], 1):
+        cleaned.append(
+            {
+                "rank": idx,
+                "chunk_id": str(c["chunk_id"]) if c.get("chunk_id") is not None else "",
+                "document_id": (str(c["document_id"]) or None) if c.get("document_id") is not None else None,
+                "relevance_score": _round_float(c.get("relevance_score")),
+                "retrieval_score": _round_float(c.get("retrieval_score")),
+                "retrieval_role": (str(c["retrieval_role"]) or None) if c.get("retrieval_role") is not None else None,
+            }
+        )
+
+    payload = json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return stable_hash(payload, length=32)
+
+
+def fingerprint_citations(citations: Any) -> str:
+    """Compute an ordering-sensitive fingerprint for deterministic replay comparisons."""
+    sanitized = sanitize_citations_for_capture(citations, max_items=_FINGERPRINT_CITATION_LIMIT)
+    return _fingerprint_sanitized_citations(sanitized)
+
+
+def build_retrieval_replay_capture_record(
+    *,
+    query: str,
+    dataset_id: str | None,
+    document_ids: list[str] | None,
+    rag_config: dict[str, Any],
+    evidence_payload: dict[str, Any],
+    seed: int | None = None,
+    max_citations: int = 80,
+) -> dict[str, Any]:
+    """
+    Build a single replay capture record from an Evidence API response payload.
+
+    PII-safe by default:
+    - stores query_hash + query_chars only (no raw query)
+    - stores only allowlisted citation keys (no chunk_content)
+    """
+    q = query.strip()
+    qh = stable_hash(q, length=16) if q else ""
+
+    metrics = evidence_payload.get("metrics")
+    retrieval_cfg_hash = metrics.get("retrieval_config_hash") if isinstance(metrics, dict) else None
+
+    citations_safe = sanitize_citations_for_capture(evidence_payload.get("citations"), max_items=max_citations)
+
+    rec: dict[str, Any] = {
+        "schema": RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
+        "query_hash": (qh),
+        "query_chars": len(q),
+        "dataset_id_hash": (stable_hash(str(dataset_id), length=16) if dataset_id else None),
+        "document_ids_count": len(document_ids or []),
+        "rag_config": dict(rag_config or {}),
+        "retrieval_config_hash": retrieval_cfg_hash,
+        "seed": int(seed) if seed is not None else None,
+        "citations": citations_safe,
+        "citations_fingerprint": _fingerprint_sanitized_citations(citations_safe),
+    }
+
+    # Drop empty/None fields to keep JSONL small.
+    return {k: v for k, v in rec.items() if v not in (None, [], {}, "")}
+
+
+__all__ = [
+    "RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1",
+    "build_retrieval_replay_capture_record",
+    "fingerprint_citations",
+    "sanitize_citations_for_capture",
+]

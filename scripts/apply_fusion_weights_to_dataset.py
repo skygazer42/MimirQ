@@ -26,9 +26,9 @@ import json
 import sys
 from uuid import UUID
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.dataset import Dataset
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
+from app.models.datasets.records import Dataset
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -58,10 +58,12 @@ def _unwrap_weights(obj: object) -> dict[object, object]:
 
 
 def _positive_allowed_weights(obj: dict[object, object]) -> dict[str, float]:
-    allowed = {"vector", "bm25", "lexical", "sparse"}
+    allowed = {"vector", "bm25", "lexical"}
     out: dict[str, float] = {}
     for k, v in obj.items():
         key = str(k or "").strip().lower()
+        if key == "sparse":
+            raise ValueError("sparse fusion weights are no longer supported")
         if not key or key not in allowed:
             continue
         try:
@@ -72,7 +74,7 @@ def _positive_allowed_weights(obj: dict[object, object]) -> dict[str, float]:
             raise ValueError("weights values must be in [0,1]")
         if w <= 0.0:
             continue
-        out[key] = float(w)
+        out[key] = w
     return out
 
 
@@ -86,7 +88,7 @@ def _extract_weights(obj: object) -> dict[str, float]:
     if s <= 0.0:
         raise ValueError("weights sum must be > 0")
 
-    norm = {k: round(float(v) / s, 6) for k, v in sorted(out.items())}
+    norm = {k: round(v / s, 6) for k, v in sorted(out.items())}
     return norm
 
 
@@ -116,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     dataset_id = args.dataset_id
 
     weights: dict[str, float] | None = None
-    if not bool(args.clear):
+    if not args.clear:
         try:
             weights = _extract_weights(_load_json(str(args.weights)))
         except Exception as exc:  # noqa: BLE001
@@ -136,14 +138,14 @@ def main(argv: list[str] | None = None) -> int:
 
         before = json.dumps(rag_defaults, ensure_ascii=False, sort_keys=True)
 
-        if bool(args.clear):
+        if args.clear:
             rag_defaults.pop("fusion_weights", None)
             if str(rag_defaults.get("fusion_strategy") or "").strip().lower() == "weighted":
                 rag_defaults.pop("fusion_strategy", None)
         else:
             assert weights is not None
             rag_defaults["fusion_weights"] = dict(weights)
-            if not bool(args.keep_strategy):
+            if not args.keep_strategy:
                 rag_defaults["fusion_strategy"] = "weighted"
 
         # Hide empty objects.
@@ -158,11 +160,11 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "ok": True,
-                    "dry_run": bool(dry_run),
+                    "dry_run": dry_run,
                     "tenant_id": str(tenant_id),
                     "dataset_id": str(dataset_id),
-                    "rag_defaults_before": json.loads(before or "{}"),
-                    "rag_defaults_after": json.loads(after or "{}"),
+                    "rag_defaults_before": json.loads(before),
+                    "rag_defaults_after": json.loads(after),
                 },
                 ensure_ascii=False,
                 indent=2,

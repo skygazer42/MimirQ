@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import os
@@ -40,7 +39,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--llm-mock",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Enable LLM mock mode for this run (sets LLM_MOCK_ENABLED=1).",
+        help="Set LLM_MOCK_ENABLED for the harness process and record it in the report.",
     )
     parser.add_argument(
         "--iterations",
@@ -81,7 +80,7 @@ def _apply_llm_mock_env(enabled: bool) -> str | None:
 
 
 def _strip_slashes(value: str) -> str:
-    return (value or "").strip().rstrip("/")
+    return value.strip().rstrip("/")
 
 
 def _build_headers(*, tenant_id: str, user_id: str, token: str) -> dict[str, str]:
@@ -113,16 +112,16 @@ def _run_case(
     timeout_sec: float,
     headers: dict[str, str],
 ) -> dict[str, Any]:
-    from app.rag.evaluation.perf_bench import bounded_top_counts, summarize_latencies_ms
+    from app.rag.evaluation.benchmarks.perf_bench import bounded_top_counts, summarize_latencies_ms
 
     latencies_ms: list[float] = []
     status_codes: Counter[str] = Counter()
     errors: Counter[str] = Counter()
     ok_count = 0
 
+    url = f"{base_url}{case.path}"
     started = time.perf_counter()
-    for _ in range(max(0, int(iterations or 0))):
-        url = f"{base_url}{case.path}"
+    for _ in range(max(0, iterations)):
         t0 = time.perf_counter()
         try:
             resp = client.request(
@@ -133,13 +132,13 @@ def _run_case(
                 timeout=timeout_sec,
             )
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            latencies_ms.append(float(elapsed_ms))
+            latencies_ms.append(elapsed_ms)
             status_codes[str(resp.status_code)] += 1
-            if int(resp.status_code) in set(case.expected_statuses):
+            if resp.status_code in case.expected_statuses:
                 ok_count += 1
         except Exception as exc:  # noqa: BLE001
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            latencies_ms.append(float(elapsed_ms))
+            latencies_ms.append(elapsed_ms)
             errors[type(exc).__name__] += 1
 
     total_sec = time.perf_counter() - started
@@ -149,10 +148,10 @@ def _run_case(
         "name": case.name,
         "method": case.method,
         "path": case.path,
-        "iterations": int(iterations),
-        "ok_count": int(ok_count),
-        "ok_ratio": float(ok_count / float(iterations)) if iterations > 0 else 0.0,
-        "qps": float(qps) if qps is not None else None,
+        "iterations": iterations,
+        "ok_count": ok_count,
+        "ok_ratio": ok_count / float(iterations) if iterations > 0 else 0.0,
+        "qps": qps,
         "latency_ms": summarize_latencies_ms(latencies_ms),
         "status_codes": dict(status_codes),
         "errors_top": bounded_top_counts(dict(errors), max_items=10),
@@ -161,21 +160,21 @@ def _run_case(
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    llm_mock = bool(getattr(args, "llm_mock", True))
+    llm_mock = args.llm_mock
     llm_mock_env_error = _apply_llm_mock_env(llm_mock)
     llm_mock_env = os.environ.get("LLM_MOCK_ENABLED")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    base_url = _strip_slashes(str(args.base_url))
-    iterations = max(1, int(getattr(args, "iterations", 5) or 5))
-    timeout_sec = float(getattr(args, "timeout_sec", 2.0) or 2.0)
+    base_url = _strip_slashes(args.base_url)
+    iterations = max(1, args.iterations or 5)
+    timeout_sec = args.timeout_sec or 2.0
 
     headers = _build_headers(
-        tenant_id=str(getattr(args, "tenant_id", "") or "").strip(),
-        user_id=str(getattr(args, "user_id", "") or "").strip(),
-        token=str(getattr(args, "token", "") or "").strip(),
+        tenant_id=args.tenant_id.strip(),
+        user_id=args.user_id.strip(),
+        token=args.token.strip(),
     )
 
     cases: list[PerfCase] = [
@@ -184,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         PerfCase(name="meta", method="GET", path="/api/v1/meta"),
     ]
 
-    dataset_id = str(getattr(args, "dataset_id", "") or "").strip()
+    dataset_id = args.dataset_id.strip()
     if dataset_id and headers.get("X-Tenant-ID") and (headers.get("Authorization") or headers.get("X-User-ID")):
         cases.append(
             PerfCase(
@@ -193,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
                 path="/api/v1/rag/retrieve-preview",
                 expected_statuses=(200, 400, 403),
                 json_body={
-                    "query": str(getattr(args, "query", "") or "What is MimirQ?"),
+                    "query": args.query or "What is MimirQ?",
                     "dataset_id": dataset_id,
                 },
             )
@@ -221,8 +220,8 @@ def main(argv: list[str] | None = None) -> int:
         "llm_mock": llm_mock,
         "llm_mock_env": llm_mock_env,
         "llm_mock_env_error": llm_mock_env_error,
-        "iterations": int(iterations),
-        "timeout_sec": float(timeout_sec),
+        "iterations": iterations,
+        "timeout_sec": timeout_sec,
         "cases": case_results,
     }
 

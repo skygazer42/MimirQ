@@ -2,8 +2,8 @@ import type {
   KGDeleteResponse,
   KGEntityAliasCreateRequest,
   KGEntityAliasItem,
-  KGEntityAliasesResponse,
   KGEntityAliasSuggestionsResponse,
+  KGEntityAliasesResponse,
   KGEntityDetailResponse,
   KGEntityMergePreviewResponse,
   KGEntityMergeRequest,
@@ -18,7 +18,6 @@ import type {
   KGManualImportDeleteResponse,
   KGManualImportListResponse,
   KGManualImportPreviewResponse,
-  KGManualImportRequest,
   KGManualImportResponse,
   KGPredicateOntologyCreateRequest,
   KGPredicateOntologyItem,
@@ -27,30 +26,24 @@ import type {
   KGSearchRequest,
   KGSearchResponse,
   KGStatsResponse,
-} from '@/types'
+} from '@/types/knowledge-graph'
+import type { OpenApiSchema } from '@/types/backend'
+import type { OpenApiQueryParams } from '@/types/openapi-helpers'
 
-import { apiClient } from '@/lib/api/core'
+import { apiClient, type ApiRequestOptions } from '@/lib/api/core'
 
-export type KGNetworkEdge = {
-  source: string
-  target: string
-  weight?: number
-}
+type NetworkEdgeInput = OpenApiSchema<'EdgeIn'>
+export type KGNetworkEdge = Pick<NetworkEdgeInput, 'source' | 'target'> & Partial<Pick<NetworkEdgeInput, 'weight'>>
 
-export type KGNetworkRequest = {
+export type KGNetworkRequest = Partial<Omit<OpenApiSchema<'GraphRequest'>, 'edges'>> & {
   edges: KGNetworkEdge[]
-  start_id?: string
-  target_id?: string
-  max_hops?: number
-  top_k?: number
-  algorithm?: 'degree' | 'pagerank'
-  node_id?: string
 }
 
 export type KGNetworkResponse = Record<string, unknown>
-export type KGSnapshotExportResponse = Record<string, unknown>
-export type KGSnapshotDiffResponse = Record<string, unknown>
-export type KGSnapshotCompareResponse = Record<string, unknown>
+type KGSnapshotExportResponse = Record<string, unknown>
+type KGSnapshotDiffResponse = Record<string, unknown>
+type KGSnapshotCompareResponse = Record<string, unknown>
+type KGGraphQuery = NonNullable<OpenApiQueryParams<'/api/v1/kg/graph', 'get'>>
 
 export const kgApi = {
   async extract(
@@ -63,26 +56,30 @@ export const kgApi = {
       prompt_template_id?: string
       prompt_template_key?: string
       prompt_ab_experiment_key?: string
-    }
-  ): Promise<KGExtractResponse> {
-    const { data } = await apiClient.post(`/kg/documents/${documentId}/extract`, null, { params })
+    },
+  ): Promise<KGExtractResponse & { queued: boolean }> {
+    const { data, status } = await apiClient.post<KGExtractResponse>(
+      `/kg/documents/${encodeURIComponent(documentId)}/extract`,
+      null,
+      { params, headers: { Prefer: 'respond-async' } },
+    )
+    return { ...data, queued: status === 202 }
+  },
+
+  async deleteDocumentKG(documentId: string, params?: { prune_orphan_entities?: boolean }): Promise<KGDeleteResponse> {
+    const { data } = await apiClient.delete(`/kg/documents/${encodeURIComponent(documentId)}`, { params })
     return data
   },
 
-  async deleteDocumentKG(
-    documentId: string,
-    params?: { prune_orphan_entities?: boolean }
-  ): Promise<KGDeleteResponse> {
-    const { data } = await apiClient.delete(`/kg/documents/${documentId}`, { params })
+  async previewManualImport(
+    body: Record<string, unknown>,
+    options?: ApiRequestOptions,
+  ): Promise<KGManualImportPreviewResponse> {
+    const { data } = await apiClient.post('/kg/imports/preview', body, { signal: options?.signal })
     return data
   },
 
-  async previewManualImport(body: KGManualImportRequest): Promise<KGManualImportPreviewResponse> {
-    const { data } = await apiClient.post('/kg/imports/preview', body)
-    return data
-  },
-
-  async importManualGraph(body: KGManualImportRequest): Promise<KGManualImportResponse> {
+  async importManualGraph(body: Record<string, unknown>): Promise<KGManualImportResponse> {
     const { data } = await apiClient.post('/kg/imports', body)
     return data
   },
@@ -94,7 +91,7 @@ export const kgApi = {
 
   async deleteManualImport(
     importId: string,
-    params?: { prune_entities?: boolean }
+    params?: { prune_entities?: boolean },
   ): Promise<KGManualImportDeleteResponse> {
     const { data } = await apiClient.delete(`/kg/imports/${encodeURIComponent(importId)}`, { params })
     return data
@@ -105,126 +102,104 @@ export const kgApi = {
     return data
   },
 
-  async getStats(params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string }): Promise<KGStatsResponse> {
+  async getStats(params?: {
+    document_ids?: string[]
+    dataset_id?: string
+    pipeline_hash?: string
+  }): Promise<KGStatsResponse> {
     const { data } = await apiClient.get('/kg/stats', { params })
     return data
   },
 
-  async getGraph(params?: {
-    document_ids?: string[]
-    dataset_id?: string
-    pipeline_hash?: string
-    max_events?: number
-    max_entities?: number
-    max_links?: number
-    include_entity_links?: boolean
-    include_relation_links?: boolean
-    min_shared_events?: number
-    max_entity_links?: number
-  }): Promise<KGGraphResponse> {
-    const { data } = await apiClient.get('/kg/graph', { params })
+  async getGraph(params?: KGGraphQuery, options?: ApiRequestOptions): Promise<KGGraphResponse> {
+    const { data } = await apiClient.get<KGGraphResponse>('/kg/graph', { params, signal: options?.signal })
     return data
   },
 
-  async expandGraph(params: {
-    node_id: string
-    document_ids?: string[]
-    dataset_id?: string
-    pipeline_hash?: string
-    max_events?: number
-    max_entities?: number
-    max_links?: number
-    include_entity_links?: boolean
-    include_relation_links?: boolean
-    min_shared_events?: number
-    max_entity_links?: number
-  }): Promise<KGGraphResponse> {
-    const { data } = await apiClient.get('/kg/graph/expand', { params })
+  async expandGraph(params: KGGraphQuery & { node_id: string }, options?: ApiRequestOptions): Promise<KGGraphResponse> {
+    const { data } = await apiClient.get<KGGraphResponse>('/kg/graph/expand', { params, signal: options?.signal })
     return data
   },
 
-  async exportGraphML(params?: {
-    document_ids?: string[]
-    dataset_id?: string
-    pipeline_hash?: string
-    max_events?: number
-    max_entities?: number
-    max_links?: number
-    include_entity_links?: boolean
-    include_relation_links?: boolean
-    min_shared_events?: number
-    max_entity_links?: number
-  }): Promise<string> {
-    const { data } = await apiClient.get('/kg/graph/export', {
+  async exportGraphML(params?: KGGraphQuery, options?: ApiRequestOptions): Promise<string> {
+    const { data, headers } = await apiClient.get<string>('/kg/graph/export', {
       params,
       responseType: 'text',
+      signal: options?.signal,
     })
+    const contentType = headers['content-type']
+    if (
+      typeof contentType !== 'string' ||
+      contentType.split(';', 1)[0].trim().toLowerCase() !== 'application/graphml+xml'
+    ) {
+      throw new Error('GraphML 响应格式不正确')
+    }
     return data
   },
 
-  async getKHopNeighbors(body: KGNetworkRequest): Promise<KGNetworkResponse> {
-    const { data } = await apiClient.post('/kg/network/k_hop_neighbors', body)
+  async getKHopNeighbors(body: KGNetworkRequest, options?: ApiRequestOptions): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/k_hop_neighbors', body, { signal: options?.signal })
     return data
   },
 
-  async getShortestPath(body: KGNetworkRequest): Promise<KGNetworkResponse> {
-    const { data } = await apiClient.post('/kg/network/shortest_path', body)
+  async getShortestPath(body: KGNetworkRequest, options?: ApiRequestOptions): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/shortest_path', body, { signal: options?.signal })
     return data
   },
 
-  async getPathsBetween(body: KGNetworkRequest): Promise<KGNetworkResponse> {
-    const { data } = await apiClient.post('/kg/network/paths_between', body)
+  async getPathsBetween(body: KGNetworkRequest, options?: ApiRequestOptions): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/paths_between', body, { signal: options?.signal })
     return data
   },
 
-  async getCentrality(body: KGNetworkRequest): Promise<KGNetworkResponse> {
-    const { data } = await apiClient.post('/kg/network/centrality', body)
+  async getCentrality(body: KGNetworkRequest, options?: ApiRequestOptions): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/centrality', body, { signal: options?.signal })
     return data
   },
 
-  async getCommunityOf(body: KGNetworkRequest): Promise<KGNetworkResponse> {
-    const { data } = await apiClient.post('/kg/network/community_of', body)
+  async getCommunityOf(body: KGNetworkRequest, options?: ApiRequestOptions): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/community_of', body, { signal: options?.signal })
     return data
   },
 
-  async getConnectedComponent(body: KGNetworkRequest): Promise<KGNetworkResponse> {
-    const { data } = await apiClient.post('/kg/network/connected_component', body)
+  async getConnectedComponent(body: KGNetworkRequest, options?: ApiRequestOptions): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/connected_component', body, { signal: options?.signal })
     return data
   },
 
-  async exportSnapshot(params: {
-    pipeline_hash: string
-    document_ids?: string[]
-    dataset_id?: string
-    include_details?: boolean
-  }): Promise<KGSnapshotExportResponse> {
-    const { data } = await apiClient.get('/kg/snapshots/export', { params })
+  async exportSnapshot(
+    params: { pipeline_hash: string; document_ids?: string[]; dataset_id?: string; include_details?: boolean },
+    options?: ApiRequestOptions,
+  ): Promise<KGSnapshotExportResponse> {
+    const { data } = await apiClient.get('/kg/snapshots/export', { params, signal: options?.signal })
     return data
   },
 
-  async diffSnapshots(body: {
-    snapshot_a: Record<string, unknown>
-    snapshot_b: Record<string, unknown>
-  }): Promise<KGSnapshotDiffResponse> {
-    const { data } = await apiClient.post('/kg/snapshots/diff', body)
+  async diffSnapshots(
+    body: { snapshot_a: Record<string, unknown>; snapshot_b: Record<string, unknown> },
+    options?: ApiRequestOptions,
+  ): Promise<KGSnapshotDiffResponse> {
+    const { data } = await apiClient.post('/kg/snapshots/diff', body, { signal: options?.signal })
     return data
   },
 
-  async compareSnapshots(params: {
-    pipeline_hash_a: string
-    pipeline_hash_b: string
-    document_ids?: string[]
-    dataset_id?: string
-  }): Promise<KGSnapshotCompareResponse> {
-    const { data } = await apiClient.get('/kg/snapshots/compare', { params })
+  async compareSnapshots(
+    params: { pipeline_hash_a: string; pipeline_hash_b: string; document_ids?: string[]; dataset_id?: string },
+    options?: ApiRequestOptions,
+  ): Promise<KGSnapshotCompareResponse> {
+    const { data } = await apiClient.get('/kg/snapshots/compare', { params, signal: options?.signal })
     return data
   },
 
   async getEvent(
     eventId: string,
-    params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string }
+    params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string },
+    options?: ApiRequestOptions,
   ): Promise<KGEventDetailResponse> {
-    const { data } = await apiClient.get(`/kg/events/${eventId}`, { params })
+    const { data } = await apiClient.get(`/kg/events/${encodeURIComponent(eventId)}`, {
+      params,
+      signal: options?.signal,
+    })
     return data
   },
 
@@ -236,37 +211,55 @@ export const kgApi = {
       pipeline_hash?: string
       max_events?: number
       max_neighbors?: number
-    }
+    },
+    options?: ApiRequestOptions,
   ): Promise<KGEntityDetailResponse> {
-    const { data } = await apiClient.get(`/kg/entities/${entityId}`, { params })
+    const { data } = await apiClient.get(`/kg/entities/${encodeURIComponent(entityId)}`, {
+      params,
+      signal: options?.signal,
+    })
     return data
   },
 
-  async listEntityAliases(entityId: string): Promise<KGEntityAliasesResponse> {
-    const { data } = await apiClient.get(`/kg/entities/${entityId}/aliases`)
+  async listEntityAliases(entityId: string, options: ApiRequestOptions = {}): Promise<KGEntityAliasesResponse> {
+    const { data } = await apiClient.get<KGEntityAliasesResponse>(
+      `/kg/entities/${encodeURIComponent(entityId)}/aliases`,
+      {
+        signal: options.signal,
+      },
+    )
     return data
   },
 
   async createEntityAlias(entityId: string, body: KGEntityAliasCreateRequest): Promise<KGEntityAliasItem> {
-    const { data } = await apiClient.post(`/kg/entities/${entityId}/aliases`, body)
+    const { data } = await apiClient.post(`/kg/entities/${encodeURIComponent(entityId)}/aliases`, body)
     return data
   },
 
   async deleteEntityAlias(entityId: string, aliasId: string): Promise<KGEntityAliasesResponse> {
-    const { data } = await apiClient.delete(`/kg/entities/${entityId}/aliases/${aliasId}`)
+    const { data } = await apiClient.delete(
+      `/kg/entities/${encodeURIComponent(entityId)}/aliases/${encodeURIComponent(aliasId)}`,
+    )
     return data
   },
 
   async suggestEntityAliases(
     entityId: string,
-    params?: { mode?: string; k?: number; min_similarity?: number }
+    params?: { mode?: string; k?: number; min_similarity?: number },
+    options: ApiRequestOptions = {},
   ): Promise<KGEntityAliasSuggestionsResponse> {
-    const { data } = await apiClient.get(`/kg/entities/${entityId}/alias_suggestions`, { params })
+    const { data } = await apiClient.get<KGEntityAliasSuggestionsResponse>(
+      `/kg/entities/${encodeURIComponent(entityId)}/alias_suggestions`,
+      {
+        params,
+        signal: options.signal,
+      },
+    )
     return data
   },
 
-  async listPredicateOntology(): Promise<KGPredicateOntologyListResponse> {
-    const { data } = await apiClient.get('/kg/ontology/predicates')
+  async listPredicateOntology(options?: ApiRequestOptions): Promise<KGPredicateOntologyListResponse> {
+    const { data } = await apiClient.get('/kg/ontology/predicates', { signal: options?.signal })
     return data
   },
 
@@ -277,19 +270,24 @@ export const kgApi = {
 
   async updatePredicateOntology(
     predicateId: string,
-    body: KGPredicateOntologyUpdateRequest
+    body: KGPredicateOntologyUpdateRequest,
   ): Promise<KGPredicateOntologyItem> {
-    const { data } = await apiClient.patch(`/kg/ontology/predicates/${predicateId}`, body)
+    const { data } = await apiClient.patch(`/kg/ontology/predicates/${encodeURIComponent(predicateId)}`, body)
     return data
   },
 
   async deletePredicateOntology(predicateId: string): Promise<KGPredicateOntologyListResponse> {
-    const { data } = await apiClient.delete(`/kg/ontology/predicates/${predicateId}`)
+    const { data } = await apiClient.delete(`/kg/ontology/predicates/${encodeURIComponent(predicateId)}`)
     return data
   },
 
-  async previewMergeEntities(body: KGEntityMergeRequest): Promise<KGEntityMergePreviewResponse> {
-    const { data } = await apiClient.post('/kg/entities/merge/preview', body)
+  async previewMergeEntities(
+    body: KGEntityMergeRequest,
+    options: ApiRequestOptions = {},
+  ): Promise<KGEntityMergePreviewResponse> {
+    const { data } = await apiClient.post<KGEntityMergePreviewResponse>('/kg/entities/merge/preview', body, {
+      signal: options.signal,
+    })
     return data
   },
 
@@ -304,18 +302,15 @@ export const kgApi = {
   },
 
   async undoResolutionAction(actionId: string): Promise<KGEntityResolutionUndoResponse> {
-    const { data } = await apiClient.post(`/kg/entities/resolution/actions/${actionId}/undo`)
+    const { data } = await apiClient.post(`/kg/entities/resolution/actions/${encodeURIComponent(actionId)}/undo`)
     return data
   },
 
-  async searchGraphNodes(params: {
-    q: string
-    kind?: string
-    limit?: number
-    document_ids?: string[]
-    pipeline_hash?: string
-  }): Promise<KGGraphNode[]> {
-    const { data } = await apiClient.get('/kg/graph/search', { params })
+  async searchGraphNodes(
+    params: { q: string; kind?: string; limit?: number; document_ids?: string[]; pipeline_hash?: string },
+    options?: ApiRequestOptions,
+  ): Promise<KGGraphNode[]> {
+    const { data } = await apiClient.get<KGGraphNode[]>('/kg/graph/search', { params, signal: options?.signal })
     return data
   },
 }

@@ -3,9 +3,8 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.models import registry as _model_registry  # noqa: F401
 from tests.helpers.async_utils import yield_control
 
 
@@ -19,6 +18,7 @@ class _DummyDoc:
         self.file_path = str(pdf_path)
         self.status = "pending"
         self.processing_progress = 0
+        self.processing_attempts = 0
         self.current_stage = "parsing"
         self.error_message = None
         self.total_characters = 0
@@ -27,16 +27,39 @@ class _DummyDoc:
 
 
 class _DummyQuery:
+    def __init__(self, doc: _DummyDoc) -> None:
+        self.doc = doc
+
     def filter(self, *_a, **_k):  # noqa: ANN001
         return self
 
     def first(self):  # noqa: ANN001
         return None
 
+    def update(self, values, *, synchronize_session):  # noqa: ANN001
+        assert not synchronize_session
+        if self.doc.status in {"processing", "deleting"}:
+            return 0
+        for field, value in values.items():
+            if field.key == "processing_attempts":
+                self.doc.processing_attempts += 1
+            else:
+                setattr(self.doc, field.key, value)
+        return 1
+
 
 class _DummyDB:
+    def __init__(self, doc: _DummyDoc) -> None:
+        self.doc = doc
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
+
     def query(self, _model):  # noqa: ANN001
-        return _DummyQuery()
+        return _DummyQuery(self.doc)
 
     def add(self, _obj) -> None:  # noqa: ANN001
         return None
@@ -47,6 +70,9 @@ class _DummyDB:
     def refresh(self, _obj) -> None:  # noqa: ANN001
         return None
 
+    def close(self) -> None:
+        return None
+
 
 async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202, ARG001
     await yield_control()
@@ -54,6 +80,7 @@ async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, t
     if backend == "auto":
         return {
             "resolved_backend": "docling",
+            "provenance": {"requested_backend": "auto", "resolved_backend": "docling"},
             "pdf_quality": {
                 "score": 0.9,
                 "text_quality_score": 0.9,
@@ -66,6 +93,7 @@ async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, t
         }
     return {
         "resolved_backend": "basic",
+        "provenance": {"requested_backend": backend, "resolved_backend": "basic"},
         "pdf_quality": {
             "score": 0.9,
             "text_quality_score": 0.9,
@@ -78,13 +106,10 @@ async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, t
     }
 
 
-def _override_get_db():  # noqa: ANN202
-    yield _DummyDB()
-
-
 def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.parsing as parsing_module
-    from app.services.dataset_service import DatasetService
+    import app.api.v1.pipelines.parsing as parsing_module
+    from app.services.datasets import management as dataset_service
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
 
     tenant_id = uuid.uuid4()
     doc_id = uuid.uuid4()
@@ -92,10 +117,12 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
     pdf_path = tmp_path / "demo.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n%dummy\n")
     dummy_doc = _DummyDoc(doc_id=doc_id, tenant_id=tenant_id, pdf_path=pdf_path)
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: _DummyDB(dummy_doc))
+    monkeypatch.setattr(parsing_module, "SessionLocal", lambda: _DummyDB(dummy_doc))
 
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_a, **_k: dummy_doc, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "_assert_path_under_tenant_root", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda *_a, **_k: False, raising=True)
 
@@ -111,7 +138,6 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
         return "test-account"
 
     app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
     app.include_router(parsing_module.router, prefix="/api/v1/parsing")

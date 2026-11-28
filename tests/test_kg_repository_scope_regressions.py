@@ -85,14 +85,13 @@ def test_search_similar_by_content_document_scope_filter_failure_fails_closed(
 
     monkeypatch.setattr(repo, "filter_event_ids_in_documents", _raise_filter, raising=True)
 
-    results = repo.search_similar_by_content(
-        query_vector=[0.2],
-        tenant_id=tenant_id,
-        k=1,
-        document_ids=[document_id],
-    )
-
-    assert results == []
+    with pytest.raises(RuntimeError, match="document scope SQL unavailable"):
+        repo.search_similar_by_content(
+            query_vector=[0.2],
+            tenant_id=tenant_id,
+            k=1,
+            document_ids=[document_id],
+        )
 
 
 def test_search_similar_by_content_dataset_scope_filter_failure_fails_closed(
@@ -118,15 +117,14 @@ def test_search_similar_by_content_dataset_scope_filter_failure_fails_closed(
 
     monkeypatch.setattr(repo, "filter_event_ids_in_documents", _raise_filter, raising=True)
 
-    results = repo.search_similar_by_content(
-        query_vector=[0.3],
-        tenant_id=tenant_id,
-        k=1,
-        dataset_id=dataset_id,
-        account_id="acct-1",
-    )
-
-    assert results == []
+    with pytest.raises(RuntimeError, match="dataset scope SQL unavailable"):
+        repo.search_similar_by_content(
+            query_vector=[0.3],
+            tenant_id=tenant_id,
+            k=1,
+            dataset_id=dataset_id,
+            account_id="acct-1",
+        )
 
 
 def test_search_similar_by_content_dataset_scope_pushes_allowed_document_batches(

@@ -1,36 +1,38 @@
-/**
- * 首页 - 对话界面（服务端读取 searchParams，再交给客户端组件渲染）
- */
 import { ChatPageClient } from '@/components/chat-page-client'
 
-type HomeSearchParams = {
-  conversation?: string
-  prompt?: string
-  autorun?: string
-  rag?: string
-  doc?: string
-  chunk?: string
-  start?: string
-  end?: string
+type SearchParamValue = string | string[] | undefined
+
+function firstSearchParam(value: SearchParamValue): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function isEnabledSearchParam(value: SearchParamValue): boolean {
+  return value === '1' || value === 'true'
+}
+
+function readHighlightOffset(value: SearchParamValue): number | undefined {
+  const text = firstSearchParam(value)?.trim()
+  if (text === undefined || !/^\d+$/.test(text)) return undefined
+  const offset = Number(text)
+  return Number.isSafeInteger(offset) ? offset : undefined
 }
 
 export default async function Home({
   searchParams,
-}: Readonly<{
-  // Next.js 16 types this as a Promise in app router PageProps.
-  searchParams?: Promise<HomeSearchParams>
-}>) {
-  const sp = await searchParams
+}: Readonly<{ searchParams: Promise<Record<string, SearchParamValue>> }>) {
+  const params = await searchParams
+  const prompt = typeof params.prompt === 'string' ? params.prompt : undefined
+
   return (
     <ChatPageClient
-      initialConversationId={sp?.conversation}
-      initialPrompt={sp?.prompt}
-      initialAutoSendPrompt={sp?.autorun === '1' || sp?.autorun === 'true'}
-      initialOpenRagSettings={sp?.rag === '1' || sp?.rag === 'true'}
-      initialDocumentId={sp?.doc}
-      initialChunkId={sp?.chunk}
-      initialHighlightStart={sp?.start}
-      initialHighlightEnd={sp?.end}
+      initialConversationId={firstSearchParam(params.conversation)}
+      initialPrompt={prompt}
+      initialAutoSendPrompt={prompt !== undefined && isEnabledSearchParam(params.autorun)}
+      initialOpenRagSettings={isEnabledSearchParam(params.rag)}
+      initialDocumentId={firstSearchParam(params.doc)}
+      initialChunkId={firstSearchParam(params.chunk)}
+      initialHighlightStart={readHighlightOffset(params.start)}
+      initialHighlightEnd={readHighlightOffset(params.end)}
     />
   )
 }

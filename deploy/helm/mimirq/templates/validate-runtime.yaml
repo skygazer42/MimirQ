@@ -3,6 +3,15 @@
 {{- $apiMinReplicas := ternary (int (.Values.api.autoscaling.minReplicas | default 1)) $apiReplicas .Values.api.autoscaling.enabled -}}
 {{- $workerMinReplicas := ternary (int (.Values.worker.autoscaling.minReplicas | default 1)) $workerReplicas .Values.worker.autoscaling.enabled -}}
 {{- $distributed := or (gt $apiReplicas 1) (gt $workerReplicas 1) (gt $apiMinReplicas 1) (gt $workerMinReplicas 1) -}}
+{{- $apiUploadReplicas := 0 -}}
+{{- if .Values.api.enabled -}}
+{{- $apiUploadReplicas = ternary (int .Values.api.autoscaling.maxReplicas) (int .Values.api.replicas) .Values.api.autoscaling.enabled -}}
+{{- end -}}
+{{- $workerUploadReplicas := 0 -}}
+{{- if .Values.worker.enabled -}}
+{{- $workerUploadReplicas = ternary (int .Values.worker.autoscaling.maxReplicas) (int .Values.worker.replicas) .Values.worker.autoscaling.enabled -}}
+{{- end -}}
+{{- $multipleUploadConsumers := gt (add $apiUploadReplicas $workerUploadReplicas) 1 -}}
 
 {{- $apiEnvironment := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "ENV")) .Values.runtimeGuards.environment .Values.secretEnv.ENV "development")) -}}
 {{- $workerEnvironment := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "ENV")) .Values.runtimeGuards.environment .Values.secretEnv.ENV "development")) -}}
@@ -44,10 +53,18 @@
 {{- fail "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." -}}
 {{- end -}}
 
-{{- if and $distributed (or (eq $apiVectorBackend "faiss") (eq $apiVectorBackend "chroma") (eq $workerVectorBackend "faiss") (eq $workerVectorBackend "chroma")) -}}
-{{- fail "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." -}}
+{{- if or (eq $apiVectorBackend "faiss") (eq $workerVectorBackend "faiss") -}}
+{{- fail "FAISS vector backend has been retired; choose a supported backend." -}}
 {{- end -}}
 
-{{- if and $distributed (not $usesRemoteDocuments) (not $sharedUploads) -}}
+{{- if or (eq $apiVectorBackend "chroma") (eq $workerVectorBackend "chroma") -}}
+{{- fail "Chroma vector backend has been retired; choose a supported backend." -}}
+{{- end -}}
+
+{{- if and $multipleUploadConsumers .Values.persistence.uploads.enabled (not $sharedUploads) -}}
+{{- fail "Shared uploads mounts across API/worker pods require persistence.uploads.accessModes to include ReadWriteMany, including when MinIO is enabled." -}}
+{{- end -}}
+
+{{- if and $multipleUploadConsumers (not $usesRemoteDocuments) (not $sharedUploads) -}}
 {{- fail "Distributed MimirQ deployments with local document storage require persistence.uploads.accessModes to include ReadWriteMany." -}}
 {{- end -}}

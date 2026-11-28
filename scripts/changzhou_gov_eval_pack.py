@@ -18,7 +18,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
@@ -26,13 +26,16 @@ import pandas as pd
 from docx import Document as DocxDocument
 from sqlalchemy import and_
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.core.database import SessionLocal  # noqa: E402
-from app.models.document import Document, DocumentChunk  # noqa: E402
-from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1  # noqa: E402
+from app.infrastructure.database.connection import SessionLocal  # noqa: E402
+from app.models.documents.records import Document, DocumentChunk  # noqa: E402
+from app.services.evaluation.case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1  # noqa: E402
 
 DEFAULT_CORPUS_ROOT = "/path/to/gov-service-knowledge"
 DEFAULT_OUT_DIR = "artifacts/changzhou_eval_pack_1000"
@@ -911,6 +914,8 @@ def load_regression_bundle(path: str | Path) -> dict[str, Any]:
 
 def _detect_local_dataset_id(corpus_root: Path, *, tenant_id: UUID) -> str:
     corpus_filenames = {path.name for path in corpus_root.rglob("*") if path.is_file()}
+    import app.models.registry  # noqa: F401
+
     db = SessionLocal()
     try:
         docs = db.query(Document).filter(Document.tenant_id == tenant_id, Document.disabled_at.is_(None)).all()
@@ -989,7 +994,7 @@ def _iter_search_terms(case: dict[str, Any]) -> list[str]:
 
 def _search_reference_matches(
     *,
-    db: Any,
+    db: "Session",
     dataset_uuid: UUID,
     tenant_uuid: UUID,
     term_cache: dict[tuple[str, str], list[dict[str, Any]]],
@@ -1037,7 +1042,7 @@ def _search_reference_matches(
 def _add_reference_matches(
     refs: list[dict[str, Any]],
     *,
-    db: Any,
+    db: "Session",
     dataset_uuid: UUID,
     tenant_uuid: UUID,
     term_cache: dict[tuple[str, str], list[dict[str, Any]]],
@@ -1065,7 +1070,7 @@ def _add_reference_matches(
 def _resolve_case_reference_sources(
     case: dict[str, Any],
     *,
-    db: Any,
+    db: "Session",
     dataset_uuid: UUID,
     tenant_uuid: UUID,
     term_cache: dict[tuple[str, str], list[dict[str, Any]]],
@@ -1132,6 +1137,8 @@ def resolve_reference_sources(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     dataset_uuid = UUID(str(dataset_id))
     tenant_uuid = UUID(str(tenant_id))
+    import app.models.registry  # noqa: F401
+
     db = SessionLocal()
     resolved_items: list[dict[str, Any]] = []
     unresolved_items: list[dict[str, Any]] = []
@@ -1355,6 +1362,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     payload = None
+    records: dict[str, list[SourceRecord]] | None = None
     cases: list[dict[str, Any]] = []
     dataset_id = _text(args.dataset_id)
     resolved_bundle = None
@@ -1467,9 +1475,9 @@ def main(argv: list[str] | None = None) -> int:
     summary = {
         "cases_total": len(cases) if cases else len((resolved_bundle or {}).get("items") or []),
         "case_type_counts": (payload or {}).get("generation_policy", {}).get("summary", {}).get("case_types", {}),
-        "service_records": len(records["service_records"]) if "records" in locals() else None,
-        "qa_records": len(records["qa_records"]) if "records" in locals() else None,
-        "one_thing_records": len(records["one_thing_records"]) if "records" in locals() else None,
+        "service_records": len(records["service_records"]) if records is not None else None,
+        "qa_records": len(records["qa_records"]) if records is not None else None,
+        "one_thing_records": len(records["one_thing_records"]) if records is not None else None,
         "dataset_id": dataset_id or None,
         "resolved_bundle_items": len((resolved_bundle or {}).get("items") or []) if resolved_bundle else 0,
         "imported_created": (import_result or {}).get("created") if import_result else None,

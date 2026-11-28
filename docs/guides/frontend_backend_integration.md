@@ -118,7 +118,7 @@ make api-check
 ```
 
 - `api-contract`: web 中实际调用的路由必须在后端存在
-- `api-coverage`: 后端公开路由必须在 `web/lib/api-client.ts` 中有对应封装
+- `api-coverage` 检查浏览器使用的后端公开路由在 `web/lib/api/` 中是否有对应封装
 
 ### 6.4 OpenAPI 导出 + 前端类型同步
 

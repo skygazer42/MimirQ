@@ -34,6 +34,24 @@ class _UuidStub:
         self.hex = hex_value
 
 
+@pytest.fixture(autouse=True)
+def isolate_smoke_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(smoke_test, "load_dotenv", lambda _path: {})
+    for key in (
+        "NEXT_PUBLIC_API_URL",
+        "NEXT_PUBLIC_TENANT_ID",
+        "NEXT_PUBLIC_USER_ID",
+        "MIMIRQ_SMOKE_TOKEN",
+        "MIMIRQ_DEMO_TOKEN",
+        "MIMIRQ_SMOKE_IDENTIFIER",
+        "MIMIRQ_DEMO_IDENTIFIER",
+        "MIMIRQ_SMOKE_PASSWORD",
+        "MIMIRQ_DEMO_PASSWORD",
+        "MIMIRQ_SMOKE_BOOTSTRAP_REGISTER",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 def _install_main_test_runtime(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -45,7 +63,6 @@ def _install_main_test_runtime(
     wait_for_document_completion_impl: Callable[..., dict[str, str]] | None = None,
     get_system_status_impl: Callable[..., dict[str, Any]] | None = None,
 ) -> None:
-    monkeypatch.setattr(smoke_test, "load_dotenv", lambda _path: {})
     monkeypatch.setattr(smoke_test, "wait_ready", wait_ready_impl)
     monkeypatch.setattr(smoke_test, "_detect_auth_mode", detect_auth_mode_impl)
     monkeypatch.setattr(smoke_test, "request_with_retries", request_with_retries_impl)
@@ -836,7 +853,6 @@ def test_main_returns_2_for_unexpected_error_and_writes_report(
         def __exit__(self, *_args: object) -> bool:
             return False
 
-    monkeypatch.setattr(smoke_test, "load_dotenv", lambda _path: {})
     monkeypatch.setattr(smoke_test, "wait_ready", lambda *_args, **_kwargs: {"ok": True})
     monkeypatch.setattr(smoke_test, "_detect_auth_mode", lambda *_args, **_kwargs: "bogus")
     monkeypatch.setattr(smoke_test.httpx, "Client", lambda **_kwargs: _ClientStub())

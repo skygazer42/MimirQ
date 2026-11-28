@@ -41,7 +41,7 @@ describe('QueryProvider auth scope', () => {
       root.render(
         <QueryProvider>
           <QueryClientProbe />
-        </QueryProvider>
+        </QueryProvider>,
       )
     })
 
@@ -55,7 +55,7 @@ describe('QueryProvider auth scope', () => {
           key: 'mimirq_user_id',
           oldValue: 'user-a',
           newValue: 'user-b',
-        })
+        }),
       )
     })
 

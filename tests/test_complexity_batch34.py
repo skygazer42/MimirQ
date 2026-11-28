@@ -1,20 +1,19 @@
-import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
-from app.deepdoc.parser.mineru_parser import (
+from app.rag.ingestion.parsing.enrich.table_structure_adapter import construct_table_from_ocr_boxes
+from app.rag.ingestion.parsing.models.recognizer import Recognizer
+from app.rag.ingestion.parsing.models.table_structure import TableStructureRecognizer
+from app.rag.ingestion.parsing.parsers.mineru_parser import (
     MinerUContentType,
     MinerULanguage,
     MinerUParseMethod,
-    MinerUParser,
+    MinerUResultParser,
 )
-from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
-from app.deepdoc.src.model.rag_tokenizer import RagTokenizer
-from app.deepdoc.vision.recognizer import Recognizer
-from app.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+from app.rag.ingestion.parsing.utils.tokenizer import RagTokenizer
 
 
 def test_table_structure_call_aligns_row_and_column_geometry(monkeypatch) -> None:
@@ -160,8 +159,8 @@ def test_construct_table_preserves_caption_headers_and_body_rendering() -> None:
         },
     ]
 
-    html = TableStructureRecognizer.construct_table([dict(box) for box in boxes], html=True)
-    desc = TableStructureRecognizer.construct_table([dict(box) for box in boxes], html=False)
+    html = construct_table_from_ocr_boxes([dict(box) for box in boxes], html=True)
+    desc = construct_table_from_ocr_boxes([dict(box) for box in boxes], html=False)
 
     assert html == (
         "<table><caption>表 1</caption>\n"
@@ -173,8 +172,7 @@ def test_construct_table_preserves_caption_headers_and_body_rendering() -> None:
 
 
 def test_mineru_read_output_uses_sanitized_nested_filename_and_rewrites_assets(tmp_path) -> None:
-    parser = object.__new__(MinerUParser)
-    parser.logger = logging.getLogger("test.mineru.read_output")
+    parser = MinerUResultParser()
 
     nested = tmp_path / "report_name"
     nested.mkdir()
@@ -200,7 +198,7 @@ def test_mineru_read_output_uses_sanitized_nested_filename_and_rewrites_assets(t
 
 
 def test_mineru_transfer_to_sections_preserves_fallbacks_and_tuple_shapes() -> None:
-    parser = object.__new__(MinerUParser)
+    parser = MinerUResultParser()
     parser._line_tag = lambda output: f"@@{output['page_idx']}##"
     outputs = [
         {"type": MinerUContentType.TEXT, "text": "Body", "page_idx": 1},
@@ -242,8 +240,7 @@ def test_mineru_transfer_to_sections_preserves_fallbacks_and_tuple_shapes() -> N
 
 
 def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(IntegratedPipelinePdfParser, "__init__", lambda self: None)
-    parser = MinerUParser(mineru_api="http://mineru.api", mineru_server_url="http://mineru.server")
+    parser = MinerUResultParser(mineru_api="http://mineru.api", mineru_server_url="http://mineru.server")
     input_path = tmp_path / "report name.pdf"
     input_path.write_bytes(b"%PDF-1.4\n")
     captured: dict[str, object] = {}
@@ -257,11 +254,12 @@ def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, 
         callback: object | None = None,
     ) -> Path:
         captured["pdf_name"] = Path(pdf).name
+        captured["pdf_path"] = Path(pdf)
         captured["out_dir"] = Path(out_dir)
         captured["options"] = options
         return Path(out_dir)
 
-    parser._run_mineru = _run
+    parser._run_mineru_api = _run
 
     def _read_output(
         final_out_dir: object,
@@ -297,7 +295,8 @@ def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, 
     )
 
     options = captured["options"]
-    assert not input_path.exists()
+    assert input_path.read_bytes() == b"%PDF-1.4\n"
+    assert not captured["pdf_path"].exists()
     assert captured["pdf_name"] == "reportname.pdf"
     assert captured["images_pdf"] == "reportname.pdf"
     assert sections == [("section", "manual", MinerUContentType.TEXT)]
@@ -312,8 +311,7 @@ def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, 
 
 
 def test_mineru_crop_filters_invalid_pages_and_preserves_page_offsets() -> None:
-    parser = object.__new__(MinerUParser)
-    parser.logger = logging.getLogger("test.mineru.crop")
+    parser = MinerUResultParser()
     parser.page_images = [
         Image.new("RGB", (20, 50), "white"),
         Image.new("RGB", (20, 50), "white"),
@@ -386,10 +384,7 @@ def test_rag_tokenizer_tokenize_preserves_order_across_ambiguous_alignment(monke
 
     tokenizer.dfs_ = _dfs
     tokenizer.sort_tks_ = lambda tkslist: [(["甲乙", "丙丁"], 9)]
-    monkeypatch.setattr(
-        "app.deepdoc.src.model.rag_tokenizer.word_tokenize",
-        lambda text: ["Running", "tests"],
-    )
+    tokenizer._word_tokenize = lambda text: ["Running", "tests"]
 
     assert tokenizer.tokenize("ignored") == "RUNNING TESTS 甲乙 丙丁 42"
 

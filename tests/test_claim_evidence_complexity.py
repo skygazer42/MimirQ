@@ -1,7 +1,52 @@
+import pytest
 from langchain_core.documents import Document
 
-from app.rag.core import claim_evidence as claim_evidence_mod
-from app.rag.core.claim_evidence import _extract_span, build_claim_evidence_map
+from app.rag.retrieval.evidence.citations import (
+    _build_snippet_and_span,
+    anchor_answer_citations,
+    build_citations_from_docs,
+)
+from app.rag.retrieval.evidence.excerpts import extract_evidence_text
+from app.rag.safety import claim_evidence as claim_evidence_mod
+from app.rag.safety.claim_evidence import _extract_span, build_claim_evidence_map
+from app.rag.safety.claim_verification import split_claim_spans
+
+
+def test_claim_spans_preserve_dotted_identifiers_and_decimals() -> None:
+    text = "Set `.spec.replicas` using config.json. The contrast ratio is 4.5:1. 保留第二句。"
+    expected = ["Set `.spec.replicas` using config.json.", "The contrast ratio is 4.5:1.", "保留第二句。"]
+
+    assert [text[claim.start : claim.end] for claim in split_claim_spans(text)] == expected
+
+
+def test_evidence_excerpts_preserve_technical_values_and_their_offsets() -> None:
+    text = "Background. The value of `.spec.replicas` belongs in config.json. The contrast ratio is 4.5:1."
+    assert extract_evidence_text(text, "contrast ratio", max_sentences=1) == "The contrast ratio is 4.5:1."
+    snippet, _, start, end = _build_snippet_and_span(text, "replicas")
+    assert ".spec.replicas" in snippet
+    assert start is not None and end is not None
+    assert text[start:end].strip() == "The value of `.spec.replicas` belongs in config.json."
+
+
+@pytest.mark.parametrize("literal", [".spec.replicas", "application/problem+json"])
+def test_answer_citation_anchors_the_returned_literal_instead_of_the_intro(literal):
+    text = f"The specification describes the format. Set the value to {literal} for this request."
+    document = Document(
+        id="chunk",
+        page_content=text,
+        metadata={"document_id": "source", "start_char": 420, "hierarchy_basis": "chunk_sequence"},
+    )
+    citations = build_citations_from_docs(
+        [document], retrieval_elapsed_sec=0.0, retrieval_mode="hybrid", query="What format does the specification use?"
+    )
+
+    [preferred] = anchor_answer_citations(citations, [document], f"Use `{literal}`.")
+
+    assert literal not in citations[0]["chunk_content"]
+    assert literal in preferred["chunk_content"]
+    start, end = preferred["evidence_start_char"] - 420, preferred["evidence_end_char"] - 420
+    assert text[start:end].strip() == f"Set the value to {literal} for this request."
+    assert preferred["chunk_id"] == citations[0]["chunk_id"]
 
 
 def test_extract_span_prefers_earliest_term_and_marks_trimmed_context() -> None:

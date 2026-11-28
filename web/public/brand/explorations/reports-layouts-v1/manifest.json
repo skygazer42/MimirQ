@@ -1,0 +1,16 @@
+{
+  "schemaVersion":1,
+  "lang":"zh",
+  "project":"Ragvia · 数据报告布局对比",
+  "round":"数据报告 01",
+  "nativeViewport":"1600x1000",
+  "brief":"沿用雾灰／墨色、Manrope 与 Noto Sans SC，保留完整 Ragvia 导航。五版共用同一份设计数据：128 个文档、18 次规则命中、4 项召回门禁；这些是排版数据，不是本地真实报告。只比较首屏构图，筛选与导出尚未接入。HTML／ZIP 脱敏已开启，JSON 保持原有导出范围。当前真实页面作为结构参照，选版后再应用正式页。",
+  "candidates":[
+    {"id":"a-overview","name":"A · 分析总览","source":"a-overview.html","concept":"把处理结果、字段覆盖、召回门禁和问题命中放在同一张连续工作面中。","typography":"Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#31754D","#805E18","#A74740","#75658F"],"traits":["横向总览","覆盖与门禁并排","规则命中宽表"]},
+    {"id":"b-chapters","name":"B · 章节报告","source":"b-chapters.html","concept":"沿章节目录阅读报告，主区保留连续正文和同一份数据依据。","typography":"Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#31754D","#805E18","#A74740","#75658F"],"traits":["章节目录","连续报告正文","适合阅读和交付"]},
+    {"id":"c-ledger","name":"C · 指标宽表","source":"c-ledger.html","concept":"把数值、范围和状态放在同一张指标表里，右侧核对当前指标的定义与缺口。","typography":"Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#31754D","#805E18","#A74740","#75658F"],"traits":["指标账本","范围与数值并列","就地核对指标"]},
+    {"id":"d-findings","name":"D · 问题聚焦","source":"d-findings.html","concept":"先找到质量规则的异常命中，再核对字段覆盖和报告依据。","typography":"Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#31754D","#805E18","#A74740","#75658F"],"traits":["异常优先","问题与依据分栏","报告范围持续可见"]},
+    {"id":"e-export","name":"E · 导出预览","source":"e-export.html","concept":"先确认阅读版的内容，再在旁边选择输出格式和脱敏选项。","typography":"Manrope / Noto Sans SC；20px 页标题，14px 正文，13px 操作","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#31754D","#805E18","#A74740","#75658F"],"traits":["阅读版预览","导出设置侧栏","一次明确的导出操作"]},
+    {"id":"current","name":"当前页面 · 参照","source":"current.png","kind":"image","baseline":true,"nativeViewport":"1280x720","concept":"真实页面包含 1 个文档，召回门禁待评估。仅用于比较容器、控件密度与信息层级，不将设计数据当成已执行报告。","traits":["真实运行页面","原有报告结构","1280×720 基线"]}
+  ]
+}

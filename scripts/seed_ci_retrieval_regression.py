@@ -22,15 +22,16 @@ from uuid import UUID
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-import app.models._all  # noqa: F401
-from app.core.database import Base, SessionLocal, engine
-from app.core.migrations import apply_runtime_migrations
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.models.tenant import Tenant, TenantMember
+import app.models.registry  # noqa: F401
+from app.infrastructure.database.connection import Base, SessionLocal, engine
+from app.infrastructure.database.migrations import apply_runtime_migrations
+from app.models.datasets.access import DatasetPermissionEnum
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
+from app.models.documents.records import DocumentChunk
+from app.models.identity.workspaces import Tenant, TenantMember
 
-MODEL_REGISTRY = app.models._all.REGISTERED_MODEL_MODULES
+MODEL_REGISTRY = app.models.registry.REGISTERED_MODEL_MODULES
 
 
 def _load_json(path: Path) -> Any:
@@ -140,7 +141,7 @@ def _parse_fixture_config(
     ds_obj = fixture.get("dataset") if isinstance(fixture.get("dataset"), dict) else {}
     dataset_id = UUID(str(ds_obj.get("id") or "").strip())
     dataset_name = str(ds_obj.get("name") or "CI Retrieval Regression Fixture").strip()
-    dataset_desc = str(ds_obj.get("description") or "").strip() or None
+    dataset_desc = ds_obj.get("description")
 
     documents = fixture.get("documents")
     if not isinstance(documents, list) or not documents:
@@ -271,11 +272,11 @@ def _upsert_document(
             dataset_id=dataset_id,
             filename=filename,
             file_type=file_type,
-            file_size=int(total_chars),
+            file_size=total_chars,
             file_path=f"ci://{filename}",
             status="completed",
             chunk_count=len(chunks),
-            total_characters=int(total_chars),
+            total_characters=total_chars,
             doc_metadata=dict(doc_meta),
         )
         db.add(row)
@@ -283,12 +284,12 @@ def _upsert_document(
         row.dataset_id = dataset_id
         row.filename = filename
         row.file_type = file_type
-        row.file_size = int(total_chars)
+        row.file_size = total_chars
         row.file_path = f"ci://{filename}"
         row.status = "completed"
         row.error_message = None
         row.chunk_count = len(chunks)
-        row.total_characters = int(total_chars)
+        row.total_characters = total_chars
         row.doc_metadata = dict(doc_meta)
 
     _replace_document_chunks(
@@ -352,11 +353,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.membership_only:
         if not args.tenant_id:
             p.error("--membership-only requires at least one --tenant-id")
-        if not str(args.account_id or "").strip():
+        if not args.account_id.strip():
             p.error("--membership-only requires --account-id")
         seed_tenant_memberships(
-            tenant_ids=[UUID(str(value)) for value in args.tenant_id],
-            account_id=str(args.account_id),
+            tenant_ids=[UUID(value) for value in args.tenant_id],
+            account_id=args.account_id,
         )
         print("[seed_ci_retrieval_regression] memberships OK")
         return 0

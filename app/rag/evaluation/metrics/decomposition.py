@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -7,25 +6,24 @@ _EDGE_STRIP = " \t\r\n,.;:!?，。；：！？、\"'`“”‘’()（）[]【�
 
 
 def _normalize_subquery(value: Any) -> str:
-    text = str(value or "").strip().lower()
+    if value is None:
+        return ""
+    text = str(value).strip().lower()
     if not text:
         return ""
     text = _SPACE_RE.sub(" ", text)
     return text.strip(_EDGE_STRIP)
 
 
-def _normalize_subquery_list(value: Any) -> list[str]:
+def _normalize_subquery_set(value: Any) -> set[str]:
     if not isinstance(value, list):
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
+        return set()
+    normalized: set[str] = set()
     for item in value:
         text = _normalize_subquery(item)
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return out
+        if text:
+            normalized.add(text)
+    return normalized
 
 
 def compute_decomposition_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -38,28 +36,25 @@ def compute_decomposition_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        gold = _normalize_subquery_list(row.get("gold_subqueries"))
-        if not gold:
+        gold_set = _normalize_subquery_set(row.get("gold_subqueries"))
+        if not gold_set:
             continue
-        predicted = _normalize_subquery_list(row.get("predicted_subqueries"))
-
-        gold_set = set(gold)
-        pred_set = set(predicted)
+        pred_set = _normalize_subquery_set(row.get("predicted_subqueries"))
         evaluated += 1
         if pred_set == gold_set:
             exact_match += 1
 
-        true_positive = int(len(gold_set & pred_set))
+        true_positive = len(gold_set & pred_set)
         precision_i = 0.0 if not pred_set else true_positive / len(pred_set)
-        recall_i = 0.0 if not gold_set else true_positive / len(gold_set)
+        recall_i = true_positive / len(gold_set)
         if precision_i <= 0.0 or recall_i <= 0.0:
             f1_i = 0.0
         else:
             f1_i = (2.0 * precision_i * recall_i) / (precision_i + recall_i)
 
-        precision_values.append(float(precision_i))
-        recall_values.append(float(recall_i))
-        f1_values.append(float(f1_i))
+        precision_values.append(precision_i)
+        recall_values.append(recall_i)
+        f1_values.append(f1_i)
 
     precision = 0.0 if not precision_values else round(sum(precision_values) / len(precision_values), 4)
     recall = 0.0 if not recall_values else round(sum(recall_values) / len(recall_values), 4)
@@ -67,8 +62,8 @@ def compute_decomposition_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     exact_match_rate = 0.0 if evaluated <= 0 else round(exact_match / evaluated, 4)
 
     return {
-        "evaluated": int(evaluated),
-        "exact_match": int(exact_match),
+        "evaluated": evaluated,
+        "exact_match": exact_match,
         "exact_match_rate": exact_match_rate,
         "precision": precision,
         "recall": recall,

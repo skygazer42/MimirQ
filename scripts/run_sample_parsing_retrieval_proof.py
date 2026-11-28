@@ -24,18 +24,26 @@ def run_sample_parsing_retrieval_proof(
         build_parsing_proof_summary,
     )
     from scripts.build_parsing_retrieval_proof_batch_spec import build_batch_spec
-    from scripts.build_parsing_retrieval_proof_review import build_review_markdown
+    from scripts.build_parsing_retrieval_proof_review import _normalize_checks, build_review_markdown
     from scripts.diff_parsing_retrieval_proof_summaries import run as run_parsing_proof_diff
     from scripts.parsing_retrieval_proof_gate import normalize_thresholds
     from scripts.run_parsing_retrieval_proof_batch import run_batch
     from scripts.validate_parsing_retrieval_proof_rollout import validate_rollout
 
-    case_queries = json.loads(Path(case_queries_path).resolve().read_text(encoding="utf-8"))
+    thresholds = {"hit_at_k_mean": 1.0, "mrr_mean": 1.0}
+    if thresholds_path is not None:
+        thresholds_path = Path(thresholds_path).resolve()
+        normalized = normalize_thresholds(json.loads(thresholds_path.read_text(encoding="utf-8")))
+        thresholds = {metric: normalized.get(metric, {}).get("min", 0.0) for metric in thresholds}
+
+    manifest_path = Path(manifest_path).resolve()
+    case_queries_path = Path(case_queries_path).resolve()
+    case_queries = json.loads(case_queries_path.read_text(encoding="utf-8"))
     spec = build_batch_spec(
-        manifest_path=Path(manifest_path).resolve(),
+        manifest_path=manifest_path,
         case_queries=case_queries if isinstance(case_queries, dict) else {},
         defaults={"parser_backend": "basic", "top_k": 1, "retrieval_mode": "keyword"},
-        case_queries_path=Path(case_queries_path).resolve(),
+        case_queries_path=case_queries_path,
     )
 
     out_dir = Path(out_dir).resolve()
@@ -56,9 +64,9 @@ def run_sample_parsing_retrieval_proof(
     review_md_path = out_dir / "review.md"
     if rollout_path is None:
         rollout_path = _REPO_ROOT / "ci" / "parsing_retrieval_proof_rollout.v1.json"
-    resolved_rollout_path = Path(rollout_path).resolve() if rollout_path is not None else None
+    resolved_rollout_path = Path(rollout_path).resolve()
     rollout_payload = None
-    if resolved_rollout_path is not None and resolved_rollout_path.exists():
+    if resolved_rollout_path.exists():
         rollout_raw = json.loads(resolved_rollout_path.read_text(encoding="utf-8"))
         rollout_payload = validate_rollout(rollout_raw if isinstance(rollout_raw, dict) else {})
         rollout_artifact_path.write_text(
@@ -69,63 +77,44 @@ def run_sample_parsing_retrieval_proof(
     report_payload = build_parsing_proof_report(
         summary_payload,
         summary_path=str(summary_path),
-        thresholds={
-            "hit_at_k_mean": 1.0,
-            "mrr_mean": 1.0,
-        },
+        thresholds=thresholds,
         rollout=rollout_payload,
     )
 
-    if thresholds_path is not None:
-        thresholds_obj = json.loads(Path(thresholds_path).resolve().read_text(encoding="utf-8"))
-        normalized = normalize_thresholds(thresholds_obj)
-        report_payload = build_parsing_proof_report(
-            summary_payload,
-            summary_path=str(summary_path),
-            thresholds={
-                "hit_at_k_mean": float((normalized.get("hit_at_k_mean") or {}).get("min") or 0.0),
-                "mrr_mean": float((normalized.get("mrr_mean") or {}).get("min") or 0.0),
-            },
-            rollout=rollout_payload,
-        )
-
     summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report_path.write_text(json.dumps(report_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    checks = _normalize_checks(report_payload.get("checks"))
     gate_payload = {
         "schema": "mimirq.parsing_retrieval_proof_gate_report.v1",
         "passed": bool(report_payload.get("passed")),
-        "checks": list(report_payload.get("checks") or []),
-        "failures": [],
+        "checks": checks,
+        "failures": [f"{check.get('metric')}: below threshold" for check in checks if not check.get("passed")],
         "input": str(summary_path),
-        "thresholds": str(Path(thresholds_path).resolve()) if thresholds_path is not None else None,
+        "thresholds": str(thresholds_path) if thresholds_path is not None else None,
         "provenance": {
-            "manifest_path": str(Path(manifest_path).resolve()),
-            "case_queries_path": str(Path(case_queries_path).resolve()),
+            "manifest_path": str(manifest_path),
+            "case_queries_path": str(case_queries_path),
             "spec_path": str(spec_path),
             "batch_report_path": str(out_dir / "batch.report.json"),
-            "rollout_path": str(resolved_rollout_path) if resolved_rollout_path is not None else None,
+            "rollout_path": str(resolved_rollout_path),
         },
     }
-    for check in list(report_payload.get("checks") or []):
-        if isinstance(check, dict) and not bool(check.get("passed")):
-            gate_payload["failures"].append(f"{check.get('metric')}: below threshold")
     gate_path.write_text(json.dumps(gate_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    if baseline_summary_path is not None and Path(baseline_summary_path).exists():
-        run_parsing_proof_diff(
-            baseline_path=Path(baseline_summary_path).resolve(),
+    baseline_summary_path = Path(baseline_summary_path).resolve()
+    if baseline_summary_path.exists():
+        diff_payload = run_parsing_proof_diff(
+            baseline_path=baseline_summary_path,
             current_path=summary_path,
             out=diff_path,
             out_md=diff_md_path,
         )
-    if diff_path.exists():
-        diff_payload = json.loads(diff_path.read_text(encoding="utf-8"))
         review_md_path.write_text(
             build_review_markdown(
                 summary=summary_payload,
                 report=report_payload,
                 gate=gate_payload,
-                diff=diff_payload if isinstance(diff_payload, dict) else {},
+                diff=diff_payload,
             ),
             encoding="utf-8",
         )

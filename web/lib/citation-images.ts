@@ -2,37 +2,31 @@
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 
-let BACKEND_ORIGIN = ''
-try {
-  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
-} catch {
-  BACKEND_ORIGIN = ''
-}
-
 export function resolveSafeCitationImageUrl(rawUrl: string | null | undefined): string | null {
-  const raw = String(rawUrl || '').trim()
-  if (!raw) return null
+  if (typeof rawUrl !== 'string') return null
+  const imageUrl = rawUrl.trim()
+  if (imageUrl === '') return null
 
-  const resolved =
-    /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)
-      ? raw
-      : toAbsoluteBackendUrl(raw)
+  const backendBaseUrl = API_BASE_URL === '' ? globalThis.window?.location.origin : API_BASE_URL
+  if (backendBaseUrl === undefined) return null
 
   let parsed: URL
+  let backend: URL
   try {
-    parsed = new URL(resolved, API_BASE_URL)
+    backend = new URL(backendBaseUrl)
+    parsed = new URL(toAbsoluteBackendUrl(imageUrl), backend)
   } catch {
     return null
   }
 
   // Safety: never render thumbnails from a non-backend origin (prevents accidental token leakage / tracking).
-  if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return null
+  if (parsed.origin !== backend.origin) return null
 
   // Only allow the dedicated backend image routes for citations.
-  const path = parsed.pathname || ''
-  const ok =
-    path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
-  if (!ok) return null
+  const documentsPath = `${backend.pathname.replace(/\/$/, '')}/api/v1/documents/`
+  const isCitationImageRoute =
+    parsed.pathname.startsWith(`${documentsPath}image/`) || parsed.pathname.startsWith(`${documentsPath}image-url/`)
+  if (!isCitationImageRoute) return null
 
   return parsed.toString()
 }

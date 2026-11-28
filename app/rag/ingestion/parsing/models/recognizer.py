@@ -1,0 +1,399 @@
+#
+#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+
+import logging
+import math
+from functools import cmp_to_key
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from app.rag.ingestion.parsing.models.image_operators import (
+    LinearResize,
+    PadStride,
+    Permute,
+    StandardizeImage,
+    preprocess,
+)
+from app.rag.ingestion.parsing.models.ocr import load_model
+
+_DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[1] / "resources" / "data_parser" / "qieci"
+
+
+class Recognizer:
+    def __init__(self, label_list, task_name, model_dir=None):
+        if not model_dir:
+            model_dir = str(_DEFAULT_MODEL_DIR)
+        self.ort_sess, self.run_options = load_model(model_dir, task_name)
+        self.input_names = [node.name for node in self.ort_sess.get_inputs()]
+        self.output_names = [node.name for node in self.ort_sess.get_outputs()]
+        self.input_shape = self.ort_sess.get_inputs()[0].shape[2:4]
+        self.label_list = label_list
+
+    @staticmethod
+    def sort_y_firstly(arr, threashold):
+        def cmp(c1, c2):
+            diff = c1["top"] - c2["top"]
+            if abs(diff) < threashold:
+                diff = c1["x0"] - c2["x0"]
+            return diff
+
+        arr = sorted(arr, key=cmp_to_key(cmp))
+        return arr
+
+    @staticmethod
+    def sort_x_firstly(arr, threashold):
+        def cmp(c1, c2):
+            diff = c1["x0"] - c2["x0"]
+            if abs(diff) < threashold:
+                diff = c1["top"] - c2["top"]
+            return diff
+
+        arr = sorted(arr, key=cmp_to_key(cmp))
+        return arr
+
+    @staticmethod
+    def sort_c_firstly(arr, thr=0):
+        # sort using y1 first and then x1
+        # sorted(arr, key=lambda r: (r["x0"], r["top"]))
+        arr = Recognizer.sort_x_firstly(arr, thr)
+        for i in range(len(arr) - 1):
+            for j in range(i, -1, -1):
+                # restore the order using th
+                if "C" not in arr[j] or "C" not in arr[j + 1]:
+                    continue
+                if arr[j + 1]["C"] < arr[j]["C"] or (
+                    arr[j + 1]["C"] == arr[j]["C"] and arr[j + 1]["top"] < arr[j]["top"]
+                ):
+                    tmp = arr[j]
+                    arr[j] = arr[j + 1]
+                    arr[j + 1] = tmp
+        return arr
+
+    @staticmethod
+    def sort_r_firstly(arr, thr=0):
+        # sort using y1 first and then x1
+        # sorted(arr, key=lambda r: (r["top"], r["x0"]))
+        arr = Recognizer.sort_y_firstly(arr, thr)
+        for i in range(len(arr) - 1):
+            for j in range(i, -1, -1):
+                if "R" not in arr[j] or "R" not in arr[j + 1]:
+                    continue
+                if arr[j + 1]["R"] < arr[j]["R"] or (
+                    arr[j + 1]["R"] == arr[j]["R"] and arr[j + 1]["x0"] < arr[j]["x0"]
+                ):
+                    tmp = arr[j]
+                    arr[j] = arr[j + 1]
+                    arr[j + 1] = tmp
+        return arr
+
+    @staticmethod
+    def overlapped_area(a, b, ratio=True):
+        tp, btm, x0, x1 = a["top"], a["bottom"], a["x0"], a["x1"]
+        if b["x0"] > x1 or b["x1"] < x0:
+            return 0
+        if b["bottom"] < tp or b["top"] > btm:
+            return 0
+        x0_ = max(b["x0"], x0)
+        x1_ = min(b["x1"], x1)
+        if x0_ > x1_:
+            raise ValueError("Bbox mismatch! T:{},B:{},X0:{},X1:{} ==> {}".format(tp, btm, x0, x1, b))
+        tp_ = max(b["top"], tp)
+        btm_ = min(b["bottom"], btm)
+        if tp_ > btm_:
+            raise ValueError("Bbox mismatch! T:{},B:{},X0:{},X1:{} => {}".format(tp, btm, x0, x1, b))
+        ov = (btm_ - tp_) * (x1_ - x0_) if x1 - x0 != 0 and btm - tp != 0 else 0
+        if ov > 0 and ratio:
+            ov /= (x1 - x0) * (btm - tp)
+        return ov
+
+    @staticmethod
+    def _not_overlapped(a, b):
+        return any(
+            [
+                a["x1"] < b["x0"],
+                a["x0"] > b["x1"],
+                a["bottom"] < b["top"],
+                a["top"] > b["bottom"],
+            ]
+        )
+
+    @staticmethod
+    def _overlap_is_comparable(layouts, i, j, far):
+        _ = far
+        return layouts[i].get("type", "") == layouts[j].get("type", "") and not Recognizer._not_overlapped(
+            layouts[i], layouts[j]
+        )
+
+    @staticmethod
+    def _box_overlap_area(boxes, layout):
+        area = 0
+        for box in boxes:
+            if not Recognizer._not_overlapped(box, layout):
+                area += Recognizer.overlapped_area(box, layout, False)
+        return area
+
+    @staticmethod
+    def _drop_layout_index(boxes, layouts, i, j):
+        if layouts[i].get("score") is not None and layouts[j].get("score") is not None:
+            return j if layouts[i]["score"] > layouts[j]["score"] else i
+
+        area_i = Recognizer._box_overlap_area(boxes, layouts[i])
+        area_j = Recognizer._box_overlap_area(boxes, layouts[j])
+        return j if area_i > area_j else i
+
+    @staticmethod
+    def layouts_cleanup(boxes, layouts, far=2, thr=0.7):
+        i = 0
+        while i + 1 < len(layouts):
+            j = i + 1
+            while j < min(i + far, len(layouts)) and not Recognizer._overlap_is_comparable(layouts, i, j, far):
+                j += 1
+            if j >= min(i + far, len(layouts)):
+                i += 1
+                continue
+            if (
+                Recognizer.overlapped_area(layouts[i], layouts[j]) < thr
+                and Recognizer.overlapped_area(layouts[j], layouts[i]) < thr
+            ):
+                i += 1
+                continue
+            layouts.pop(Recognizer._drop_layout_index(boxes, layouts, i, j))
+
+        return layouts
+
+    @staticmethod
+    def find_overlapped(box, boxes_sorted_by_y, naive=False):
+        if not boxes_sorted_by_y:
+            return
+        bxs = boxes_sorted_by_y
+        s, e, ii = 0, len(bxs), 0
+        while s < e and not naive:
+            ii = (e + s) // 2
+            pv = bxs[ii]
+            if box["bottom"] < pv["top"]:
+                e = ii
+                continue
+            if box["top"] > pv["bottom"]:
+                s = ii + 1
+                continue
+            break
+        while s < ii and box["top"] > bxs[s]["bottom"]:
+            s += 1
+        while e - 1 > ii and box["bottom"] < bxs[e - 1]["top"]:
+            e -= 1
+
+        max_overlaped_i, max_overlaped = None, 0
+        for i in range(s, e):
+            ov = Recognizer.overlapped_area(bxs[i], box)
+            if ov <= max_overlaped:
+                continue
+            max_overlaped_i = i
+            max_overlaped = ov
+
+        return max_overlaped_i
+
+    @staticmethod
+    def find_horizontally_tightest_fit(box, boxes):
+        if not boxes:
+            return
+        min_dis, min_i = 1000000, None
+        for i, b in enumerate(boxes):
+            if box.get("layoutno", "0") != b.get("layoutno", "0"):
+                continue
+            dis = min(
+                abs(box["x0"] - b["x0"]), abs(box["x1"] - b["x1"]), abs(box["x0"] + box["x1"] - b["x1"] - b["x0"]) / 2
+            )
+            if dis < min_dis:
+                min_i = i
+                min_dis = dis
+        return min_i
+
+    @staticmethod
+    def find_overlapped_with_threashold(box, boxes, thr=0.3):
+        if not boxes:
+            return
+        max_overlapped_i, max_overlapped, _max_overlapped = None, thr, 0
+        s, e = 0, len(boxes)
+        for i in range(s, e):
+            ov = Recognizer.overlapped_area(box, boxes[i])
+            _ov = Recognizer.overlapped_area(boxes[i], box)
+            if (ov, _ov) < (max_overlapped, _max_overlapped):
+                continue
+            max_overlapped_i = i
+            max_overlapped = ov
+            _max_overlapped = _ov
+
+        return max_overlapped_i
+
+    def preprocess(self, image_list):
+        inputs = []
+        if "scale_factor" in self.input_names:
+            preprocess_ops = [
+                LinearResize(interp=2, keep_ratio=False, target_size=[800, 608]),
+                StandardizeImage(is_scale=True, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                Permute(),
+                PadStride(stride=32),
+            ]
+
+            for im_path in image_list:
+                im, im_info = preprocess(im_path, preprocess_ops)
+                inputs.append(
+                    {
+                        "image": np.array((im,)).astype("float32"),
+                        "scale_factor": np.array((im_info["scale_factor"],)).astype("float32"),
+                    }
+                )
+        else:
+            hh, ww = self.input_shape
+            for img in image_list:
+                h, w = img.shape[:2]
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img = cv2.resize(np.array(img).astype("float32"), (ww, hh))
+                # Scale input pixel values to 0 to 1
+                img /= 255.0
+                img = img.transpose(2, 0, 1)
+                img = img[np.newaxis, :, :, :].astype(np.float32)
+                inputs.append({self.input_names[0]: img, "scale_factor": [w / ww, h / hh]})
+        return inputs
+
+    def postprocess(self, boxes, inputs, thr):
+        if not np.isfinite(boxes).all():
+            raise ValueError("Layout model returned nonfinite detections")
+        if "scale_factor" in self.input_names:
+            return self._postprocess_scaled_inputs(boxes, thr)
+        return self._postprocess_xywh_boxes(boxes, inputs, thr)
+
+    def _postprocess_scaled_inputs(self, boxes, thr):
+        results = []
+        for box in boxes:
+            clsid, bbox, score = int(box[0]), box[2:], box[1]
+            if clsid != box[0]:
+                raise ValueError("Layout model returned a noninteger class identifier")
+            if score < thr or clsid < 0 or clsid >= len(self.label_list):
+                continue
+            results.append(
+                {
+                    "type": self.label_list[clsid].lower(),
+                    "bbox": [float(t) for t in bbox.tolist()],
+                    "score": float(score),
+                }
+            )
+        return results
+
+    @staticmethod
+    def _xywh2xyxy(boxes):
+        # [x, y, w, h] to [x1, y1, x2, y2]
+        xyxy_boxes = np.copy(boxes)
+        xyxy_boxes[:, 0] = boxes[:, 0] - boxes[:, 2] / 2
+        xyxy_boxes[:, 1] = boxes[:, 1] - boxes[:, 3] / 2
+        xyxy_boxes[:, 2] = boxes[:, 0] + boxes[:, 2] / 2
+        xyxy_boxes[:, 3] = boxes[:, 1] + boxes[:, 3] / 2
+        return xyxy_boxes
+
+    @staticmethod
+    def _compute_iou(box, boxes):
+        xmin = np.maximum(box[0], boxes[:, 0])
+        ymin = np.maximum(box[1], boxes[:, 1])
+        xmax = np.minimum(box[2], boxes[:, 2])
+        ymax = np.minimum(box[3], boxes[:, 3])
+        intersection_area = np.maximum(0, xmax - xmin) * np.maximum(0, ymax - ymin)
+        box_area = (box[2] - box[0]) * (box[3] - box[1])
+        boxes_area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        union_area = box_area + boxes_area - intersection_area
+        return intersection_area / union_area
+
+    @classmethod
+    def _iou_filter(cls, boxes, scores, iou_threshold):
+        sorted_indices = np.argsort(scores)[::-1]
+        keep_boxes = []
+        while sorted_indices.size > 0:
+            box_id = sorted_indices[0]
+            keep_boxes.append(box_id)
+            ious = cls._compute_iou(boxes[box_id, :], boxes[sorted_indices[1:], :])
+            keep_indices = np.nonzero(ious < iou_threshold)[0]
+            sorted_indices = sorted_indices[keep_indices + 1]
+        return keep_boxes
+
+    def _postprocess_xywh_boxes(self, boxes, inputs, thr):
+        boxes = np.asarray(boxes)
+        boxes = (boxes[0] if boxes.ndim == 3 else boxes).T
+        scores = np.max(boxes[:, 4:], axis=1)
+        boxes = boxes[scores > thr, :]
+        scores = scores[scores > thr]
+        if len(boxes) == 0:
+            return []
+
+        class_ids = np.argmax(boxes[:, 4:], axis=1)
+        boxes = boxes[:, :4]
+        input_shape = np.array(
+            [
+                inputs["scale_factor"][0],
+                inputs["scale_factor"][1],
+                inputs["scale_factor"][0],
+                inputs["scale_factor"][1],
+            ]
+        )
+        boxes = np.multiply(boxes, input_shape, dtype=np.float32)
+        boxes = self._xywh2xyxy(boxes)
+
+        indices = []
+        for class_id in np.unique(class_ids):
+            class_indices = np.nonzero(class_ids == class_id)[0]
+            class_boxes = boxes[class_indices, :]
+            class_scores = scores[class_indices]
+            class_keep_boxes = self._iou_filter(class_boxes, class_scores, 0.2)
+            indices.extend(class_indices[class_keep_boxes])
+
+        return [
+            {
+                "type": self.label_list[class_ids[i]].lower(),
+                "bbox": [float(t) for t in boxes[i].tolist()],
+                "score": float(scores[i]),
+            }
+            for i in indices
+        ]
+
+    def __call__(self, image_list, thr=0.7, batch_size=16):
+        res = []
+        imgs = []
+        for i in range(len(image_list)):
+            if not isinstance(image_list[i], np.ndarray):
+                imgs.append(np.array(image_list[i]))
+            else:
+                imgs.append(image_list[i])
+
+        batch_loop_cnt = math.ceil(float(len(imgs)) / batch_size)
+        for i in range(batch_loop_cnt):
+            start_index = i * batch_size
+            end_index = min((i + 1) * batch_size, len(imgs))
+            batch_image_list = imgs[start_index:end_index]
+            inputs = self.preprocess(batch_image_list)
+            logging.debug("preprocess")
+            for ins in inputs:
+                bb = self.postprocess(
+                    self.ort_sess.run(None, {k: v for k, v in ins.items() if k in self.input_names}, self.run_options)[
+                        0
+                    ],
+                    ins,
+                    thr,
+                )
+                res.append(bb)
+
+        # seeit.save_results(image_list, res, self.label_list, threshold=thr)
+
+        return res

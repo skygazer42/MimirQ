@@ -11,7 +11,7 @@ import {
   shouldRegisterServiceWorker,
 } from './service-worker-registrar'
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('service worker policy', () => {
   afterEach(() => {
@@ -21,17 +21,40 @@ describe('service worker policy', () => {
   })
 
   it('registers only on secure non-local origins', () => {
-    expect(shouldRegisterServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: 'app.example.com', protocol: 'https:' })).toBe(true)
-    expect(shouldRegisterServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: 'localhost', protocol: 'https:' })).toBe(false)
-    expect(shouldRegisterServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: 'app.example.com', protocol: 'http:' })).toBe(false)
+    expect(
+      shouldRegisterServiceWorker({
+        hasWindow: true,
+        hasServiceWorker: true,
+        hostname: 'app.example.com',
+        protocol: 'https:',
+      }),
+    ).toBe(true)
+    expect(
+      shouldRegisterServiceWorker({
+        hasWindow: true,
+        hasServiceWorker: true,
+        hostname: 'localhost',
+        protocol: 'https:',
+      }),
+    ).toBe(false)
+    expect(
+      shouldRegisterServiceWorker({
+        hasWindow: true,
+        hasServiceWorker: true,
+        hostname: 'app.example.com',
+        protocol: 'http:',
+      }),
+    ).toBe(false)
   })
 
   it('clears stale workers only on local hosts', () => {
     expect(shouldClearLocalServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: '[::1]' })).toBe(true)
-    expect(shouldClearLocalServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: 'app.example.com' })).toBe(false)
+    expect(
+      shouldClearLocalServiceWorker({ hasWindow: true, hasServiceWorker: true, hostname: 'app.example.com' }),
+    ).toBe(false)
   })
 
-  it('deletes only MimirQ caches', async () => {
+  it('deletes only Ragvia caches', async () => {
     const deleteCache = vi.fn().mockResolvedValue(true)
     vi.stubGlobal('caches', {
       keys: vi.fn().mockResolvedValue(['mimirq-v1', 'other-app']),

@@ -10,7 +10,7 @@ from huggingface_hub import snapshot_download
 MODEL_REPO_ID = "qwqqwq/mimirq"
 MODEL_REVISION = "118452f3ea3ccd09a41b2d39ea82d7de535e2908"
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL_DIR = _REPO_ROOT / "app" / "deepdoc" / "resources" / "models"
+DEFAULT_MODEL_DIR = _REPO_ROOT / "app" / "rag" / "ingestion" / "parsing" / "resources" / "models"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -49,9 +49,7 @@ def verify_model_snapshot(model_dir: str | Path) -> int:
 
         actual = _sha256(candidate)
         if actual != expected:
-            raise RuntimeError(
-                f"model checksum mismatch: {relative_name} expected={expected} actual={actual}"
-            )
+            raise RuntimeError(f"model checksum mismatch: {relative_name} expected={expected} actual={actual}")
         verified += 1
 
     if verified == 0:

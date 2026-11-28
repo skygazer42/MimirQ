@@ -43,9 +43,17 @@ class _FakeRetriever:
         return list(self._docs)
 
 
+def _patch_retriever(monkeypatch: pytest.MonkeyPatch, retriever: _FakeRetriever) -> None:
+    from app.rag.retrieval.stages import followup, preparation, requirements
+
+    for stage in (preparation, followup, requirements):
+        monkeypatch.setattr(stage, "hybrid_retriever", retriever)
+
+
 def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.runtime import engine as engine_mod
 
     # Deterministic: disable any LLM-dependent query transforms.
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
@@ -90,9 +98,9 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
             )
         ]
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    _patch_retriever(monkeypatch, retriever)
     monkeypatch.setattr(
-        orch_mod,
+        engine_mod,
         "get_rag_engine",
         lambda: pytest.fail("retrieval-only paths must not initialize the LLM engine"),
         raising=True,
@@ -222,7 +230,7 @@ def test_orchestrator_preserves_degradation_contract_in_query_debug_and_trace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -268,17 +276,17 @@ def test_orchestrator_preserves_degradation_contract_in_query_debug_and_trace(
                 "applied_rules": ["rule_a"],
             },
             "channels": {
-                "attempted_channels": ["vector", "sparse"],
+                "attempted_channels": ["vector", "bm25"],
                 "successful_channels": ["vector"],
                 "retrieval_degraded": True,
                 "degraded_reasons": [
-                    {"channel": "sparse", "error_type": "timeout", "detail": "ignored by public contract"}
+                    {"channel": "bm25", "error_type": "timeout", "detail": "ignored by public contract"}
                 ],
                 "all_retrieval_channels_failed": False,
             },
         },
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    _patch_retriever(monkeypatch, retriever)
 
     out = orch_mod.run_retrieval(
         {
@@ -296,25 +304,23 @@ def test_orchestrator_preserves_degradation_contract_in_query_debug_and_trace(
 
     query_debug = out.get("query_debug") or {}
     assert query_debug.get("retrieval_degraded") is True
-    assert query_debug.get("retrieval_degraded_reasons") == ["main:sparse:timeout"]
+    assert query_debug.get("retrieval_degraded_reasons") == ["main:bm25:timeout"]
     channel_health = query_debug.get("channel_health") or {}
-    assert channel_health.get("attempted_channels") == ["vector", "sparse"]
+    assert channel_health.get("attempted_channels") == ["vector", "bm25"]
     assert channel_health.get("successful_channels") == ["vector"]
     assert channel_health.get("all_retrieval_channels_failed") is False
 
     trace = out.get("retrieval_trace") or {}
     retrieval = trace.get("retrieval") or {}
     assert retrieval.get("retrieval_degraded") is True
-    assert retrieval.get("retrieval_degraded_reasons") == ["main:sparse:timeout"]
+    assert retrieval.get("retrieval_degraded_reasons") == ["main:bm25:timeout"]
     assert (retrieval.get("channel_health") or {}).get("queries") == [
         {
             "kind": "main",
-            "attempted_channels": ["vector", "sparse"],
+            "attempted_channels": ["vector", "bm25"],
             "successful_channels": ["vector"],
             "retrieval_degraded": True,
-            "degraded_reasons": [
-                {"channel": "sparse", "error_type": "timeout", "detail": "ignored by public contract"}
-            ],
+            "degraded_reasons": [{"channel": "bm25", "error_type": "timeout", "detail": "ignored by public contract"}],
             "all_retrieval_channels_failed": False,
         }
     ]
@@ -323,9 +329,9 @@ def test_orchestrator_preserves_degradation_contract_in_query_debug_and_trace(
 def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retrieval.orchestration.query_contract as contract_mod
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    import app.rag.retrieval.planning.normalization as contract_mod
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -366,7 +372,7 @@ def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
             )
         ]
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    _patch_retriever(monkeypatch, retriever)
 
     def _run(dataset_id: str, document_id: str) -> dict:
         return orch_mod.run_retrieval(
@@ -381,7 +387,7 @@ def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
                 "retrieval_mode": "auto",
                 "retrieval_profile": " Grounded_Strict ",
                 "enable_reranker": False,
-                "reranker_provider": "none",
+                "reranker_provider": "openai",
                 "reranker_top_n": 5,
                 "enable_weight_rerank": True,
                 "rag_config_template": {
@@ -416,7 +422,7 @@ def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
     assert config.get("retrieval_contract_mode") == "evidence_strict"
     assert config.get("rag_config_template") == {
         "template_key": "baseline",
-        "version": 2,
+        "version": "2",
         "ab_variant": "B",
         "patch_hash": "patch-01",
     }

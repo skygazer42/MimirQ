@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 
 from app.rag.safety.regex_prompt_screen import RegexPromptScreen
@@ -19,8 +18,8 @@ class LLMGuard:
         self._safety_guard = RegexSafetyGuard()
 
     async def guard_input(self, text: str) -> LLMGuardResult:
-        prompt_result = await self._prompt_screen.check(str(text or ""))
-        safety_result = await self._safety_guard.guard_user_input(str(text or ""))
+        prompt_result = await self._prompt_screen.check(text)
+        safety_result = await self._safety_guard.guard_user_input(text)
 
         triggered: list[str] = []
         if prompt_result.label != "BENIGN":
@@ -28,7 +27,7 @@ class LLMGuard:
         if safety_result.action != "allow":
             triggered.append("safety_guard")
 
-        action = "block" if "prompt_screen" in triggered or "safety_guard" in triggered else "allow"
+        action = "block" if triggered else "allow"
         return LLMGuardResult(
             action=action,
             triggered_guards=triggered,
@@ -37,7 +36,7 @@ class LLMGuard:
         )
 
     async def guard_output(self, text: str) -> LLMGuardResult:
-        safety_result = await self._safety_guard.guard_agent_response(str(text or ""))
+        safety_result = await self._safety_guard.guard_agent_response(text)
         triggered = ["safety_guard"] if safety_result.action != "allow" else []
         action = "block" if triggered else "allow"
         return LLMGuardResult(

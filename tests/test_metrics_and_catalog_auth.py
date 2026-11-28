@@ -3,11 +3,14 @@ import hashlib
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.v1 import connectors_catalog, industry_rules, pipeline, retrieval_profiles
-from app.api.v1 import metrics as metrics_module
-from app.core.config import settings
-from app.rag.kg.api import routes as kg_routes
+from app.api.dependencies import get_current_account_id
+from app.api.v1.connectors import catalog as connectors_catalog
+from app.api.v1.knowledge_graph import routes as kg_routes
+from app.api.v1.pipelines import industry_rules
+from app.api.v1.pipelines import routes as pipeline
+from app.api.v1.retrieval import profiles as retrieval_profiles
+from app.api.v1.system import metrics as metrics_module
+from app.infrastructure.config import settings
 
 
 def test_metrics_requires_matching_bearer_token_when_configured(monkeypatch) -> None:
@@ -42,7 +45,8 @@ def test_metrics_falls_back_to_application_auth_when_token_unset(monkeypatch) ->
     app = FastAPI()
     app.include_router(metrics_module.router)
     monkeypatch.setattr(settings, "METRICS_BEARER_TOKEN", "", raising=False)
-    async def _fake_current_account_id(**_kwargs) -> str:
+
+    async def _fake_current_account_id(_request) -> str:
         return "acct-1"
 
     monkeypatch.setattr(metrics_module, "get_current_account_id", _fake_current_account_id, raising=True)

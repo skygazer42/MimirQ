@@ -101,13 +101,9 @@ def test_retention_jobs_cli_runs_semantic_cache_for_all_tenants(
     tenant_ids = [uuid.uuid4(), uuid.uuid4()]
     calls: list[dict[str, object]] = []
 
-    class _TenantRow:
-        def __init__(self, tenant_id: uuid.UUID) -> None:
-            self.id = tenant_id
-
     class _TenantQuery:
-        def all(self) -> list[_TenantRow]:
-            return [_TenantRow(tenant_id) for tenant_id in tenant_ids]
+        def all(self) -> list[tuple[uuid.UUID]]:
+            return [(tenant_id,) for tenant_id in tenant_ids]
 
     class _FakeSession:
         def query(self, _column: object) -> _TenantQuery:
@@ -219,7 +215,12 @@ def test_retention_jobs_cli_runs_dataset_retention(
 
     async def _run_dataset_retention_sweep(_db: object, **kwargs: object) -> dict[str, object]:
         calls.append(kwargs)
-        return {"job": "dataset-retention", "deleted": 0, "eligible": 1, "failed": False}
+        return {
+            "job": "dataset-retention",
+            "ok": True,
+            "documents": {"eligible": 1, "deleted": 0, "errors": 0, "conflicts": 0},
+            "versions": {"errors": 0},
+        }
 
     session = _FakeSession()
     column = _Column()
@@ -289,7 +290,7 @@ def test_retention_jobs_cli_runs_regression_and_knowledge_asset_retention(
 
     async def run_knowledge(_db: object, **kwargs: object) -> dict[str, object]:
         calls.append(("knowledge", kwargs))
-        return {"job": "knowledge", "failed": False}
+        return {"job": "knowledge", "denied": 0, "conflicts": 0, "errors": 0}
 
     session = _FakeSession()
     runtime_deps.SessionLocal = lambda: session
@@ -327,5 +328,5 @@ def test_retention_jobs_cli_runs_regression_and_knowledge_asset_retention(
     assert session.closed is True
     assert json.loads(capsys.readouterr().out)["results"] == [
         {"job": "regression", "failed": False},
-        {"job": "knowledge", "failed": False},
+        {"job": "knowledge", "denied": 0, "conflicts": 0, "errors": 0},
     ]

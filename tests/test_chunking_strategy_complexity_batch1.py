@@ -1,15 +1,15 @@
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies.api_reference import APIReferenceChunker
-from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker
-from app.rag.chunking.strategies.html_sections import HTMLSectionsChunker
-from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker
-from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker
-from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker
-from app.rag.chunking.strategies.nginx_config import NginxConfigChunker
-from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker
-from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker
-from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunker
+from app.rag.ingestion.chunking.strategies.config.nginx_config import NginxConfigChunker
+from app.rag.ingestion.chunking.strategies.documents.api_reference import APIReferenceChunker
+from app.rag.ingestion.chunking.strategies.markup.asciidoc_sections import AsciiDocSectionsChunker
+from app.rag.ingestion.chunking.strategies.markup.html_sections import HTMLSectionsChunker
+from app.rag.ingestion.chunking.strategies.markup.latex_sections import LatexSectionsChunker
+from app.rag.ingestion.chunking.strategies.markup.markdown_frontmatter import MarkdownFrontmatterChunker
+from app.rag.ingestion.chunking.strategies.markup.mediawiki_sections import MediaWikiSectionsChunker
+from app.rag.ingestion.chunking.strategies.markup.orgmode_sections import OrgModeSectionsChunker
+from app.rag.ingestion.chunking.strategies.markup.rst_sections import RSTSectionsChunker
+from app.rag.ingestion.chunking.strategies.records.spreadsheet_sheet import SpreadsheetSheetChunker
 
 
 def _summarize_chunks(chunker, text: str) -> list[tuple[str, dict]]:
@@ -352,14 +352,7 @@ def test_section_chunkers_characterize_heading_metadata_and_paths() -> None:
 
 
 def test_markdown_frontmatter_chunker_characterizes_frontmatter_and_body_metadata() -> None:
-    text = (
-        "---\n"
-        "title: Retrieval Review\n"
-        "owner: mimirq\n"
-        "---\n"
-        "# Retrieval Review\n\n"
-        "Body paragraph.\n"
-    )
+    text = "---\ntitle: Retrieval Review\nowner: mimirq\n---\n# Retrieval Review\n\nBody paragraph.\n"
 
     assert _summarize_chunks(MarkdownFrontmatterChunker(10_000, 0), text) == [
         (
@@ -406,6 +399,17 @@ def test_nginx_config_chunker_characterizes_server_block_metadata() -> None:
 
     assert _summarize_chunks(NginxConfigChunker(10_000, 0), text) == [
         (
+            "# meta",
+            {
+                "chunk_strategy": "nginx_config",
+                "start_char": 0,
+                "end_char": 6,
+                "doc_type_kwd": "nginx",
+                "nginx_block_kind": "nginx",
+                "chunk_index": 0,
+            },
+        ),
+        (
             "server {\n    listen 80;\n    server_name example.com;\n}",
             {
                 "chunk_strategy": "nginx_config",
@@ -415,7 +419,7 @@ def test_nginx_config_chunker_characterizes_server_block_metadata() -> None:
                 "nginx_block_kind": "server",
                 "nginx_server_name": "example.com",
                 "nginx_listen": "80",
-                "chunk_index": 0,
+                "chunk_index": 1,
             },
         ),
         (
@@ -428,7 +432,7 @@ def test_nginx_config_chunker_characterizes_server_block_metadata() -> None:
                 "nginx_block_kind": "server",
                 "nginx_server_name": "secure.example.com",
                 "nginx_listen": "443",
-                "chunk_index": 1,
+                "chunk_index": 2,
             },
         ),
     ]

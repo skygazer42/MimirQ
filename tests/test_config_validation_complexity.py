@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.infrastructure.config import Settings
 
 
 def test_dify_external_knowledge_keeps_api_key_check_first() -> None:
@@ -10,6 +10,7 @@ def test_dify_external_knowledge_keeps_api_key_check_first() -> None:
             {
                 "SECRET_KEY": "test-only-signing-key-not-for-production",
                 "DIFY_EXTERNAL_KNOWLEDGE_ENABLED": True,
+                "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS": "",
                 "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX": 0,
             }
         )

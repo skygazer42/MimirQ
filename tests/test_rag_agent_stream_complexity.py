@@ -1,9 +1,15 @@
-
 import asyncio
 from collections.abc import AsyncIterator, Callable
 
 import pytest
 from langchain_core.documents import Document
+
+
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from app.infrastructure import tokens
+
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
 
 
 class _StreamingChain:
@@ -64,7 +70,8 @@ class _SuccessfulToolRegistry:
     def __init__(self, calls: list[tuple[str, dict[str, object]]]) -> None:
         self._calls = calls
 
-    async def call_tool(self, name: str, arguments: dict[str, object]) -> _SuccessfulToolResult:
+    async def call_tool(self, name: str, arguments: dict[str, object], *, scope) -> _SuccessfulToolResult:
+        assert scope is None
         self._calls.append((name, arguments))
         return _SuccessfulToolResult()
 
@@ -101,7 +108,7 @@ def _configure_review_stream(
         return work(object())
 
     monkeypatch.setattr(runner, "_plan", fake_plan)
-    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: dict(kwargs))
+    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: {**kwargs, "format_instructions": ""})
     monkeypatch.setattr(
         rag_agent,
         "run_retrieval",
@@ -115,7 +122,7 @@ def _configure_review_stream(
     )
     monkeypatch.setattr(rag_agent, "run_blocking_retrieval_call_with_managed_session", fake_offload)
     monkeypatch.setattr(rag_agent, "build_citations_from_docs", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(rag_agent, "_build_history_text", lambda _history: "")
+    monkeypatch.setattr("app.rag.agents.rag_agent.format_history_text", lambda _history, *, window: "")
     monkeypatch.setattr(rag_agent, "_build_context", lambda _docs, **_kwargs: "review evidence")
     monkeypatch.setattr(
         rag_agent,
@@ -149,7 +156,14 @@ async def test_stream_yields_answering_before_generation_prep_and_aclose_skips_i
         monkeypatch,
         rag_agent,
         runner,
-        critic_review=lambda **_kwargs: {"verdict": "pass", "citation_missing": False},
+        critic_review=lambda **_kwargs: {
+            "verdict": "pass",
+            "citation_missing": False,
+            "supported_claims": 1,
+            "total_claims": 1,
+            "style_issues": [],
+            "reason_codes": [],
+        },
     )
     monkeypatch.setattr(rag_agent, "_build_context", fake_build_context)
     stream = runner.stream(request=rag_agent.AgenticStreamRequest(question="Answer incrementally", db=object()))
@@ -185,7 +199,7 @@ async def test_stream_reuses_history_mutated_by_retrieval_and_prepares_history_b
     def fake_build_rag_state(**kwargs: object) -> dict[str, object]:
         nonlocal base_history
         base_history = kwargs["history"]
-        return dict(kwargs)
+        return {**kwargs, "format_instructions": ""}
 
     def fake_retrieval(state: dict[str, object]) -> dict[str, object]:
         history = state["history"]
@@ -199,7 +213,7 @@ async def test_stream_reuses_history_mutated_by_retrieval_and_prepares_history_b
             "abstain_reason": None,
         }
 
-    def fake_build_history_text(history: list[dict[str, object]]) -> str:
+    def fake_build_history_text(history: list[dict[str, object]], *, window: int) -> str:
         preparation_order.append("history")
         generation_histories.append(history)
         return "|".join(str(item["content"]) for item in history)
@@ -212,11 +226,18 @@ async def test_stream_reuses_history_mutated_by_retrieval_and_prepares_history_b
         monkeypatch,
         rag_agent,
         runner,
-        critic_review=lambda **_kwargs: {"verdict": "pass", "citation_missing": False},
+        critic_review=lambda **_kwargs: {
+            "verdict": "pass",
+            "citation_missing": False,
+            "supported_claims": 1,
+            "total_claims": 1,
+            "style_issues": [],
+            "reason_codes": [],
+        },
     )
     monkeypatch.setattr(rag_agent, "build_rag_state", fake_build_rag_state)
     monkeypatch.setattr(rag_agent, "run_retrieval", fake_retrieval)
-    monkeypatch.setattr(rag_agent, "_build_history_text", fake_build_history_text)
+    monkeypatch.setattr("app.rag.agents.rag_agent.format_history_text", fake_build_history_text)
     monkeypatch.setattr(rag_agent, "_build_context", fake_build_context)
 
     await _collect_events(
@@ -342,14 +363,16 @@ async def test_stream_hands_off_to_multi_agent_runner_without_local_events(
     forwarded_requests: list[object] = []
 
     class _MultiAgentRunner:
-        async def stream(self, *, request: object) -> AsyncIterator[dict[str, object]]:
+        async def stream(self, *, request: object, plan_steps) -> AsyncIterator[dict[str, object]]:
+            assert [step.query for step in plan_steps] == ["one", "two"]
+            assert all(step.rationale == "test" for step in plan_steps)
             forwarded_requests.append(request)
             for event in forwarded_events:
                 yield event
 
     monkeypatch.setattr(runner, "_plan", fake_plan)
     monkeypatch.setattr(rag_agent.settings, "RAG_MULTI_AGENT_ENABLED", True, raising=False)
-    monkeypatch.setattr(rag_agent, "get_multi_agent_runner", lambda *, engine: _MultiAgentRunner())
+    monkeypatch.setattr("app.rag.agents.multi_agent.get_multi_agent_runner", lambda *, engine: _MultiAgentRunner())
 
     request = rag_agent.AgenticStreamRequest(question="delegate?")
     events = await _collect_events(runner.stream(request=request))
@@ -421,7 +444,7 @@ async def test_stream_offloads_rounds_and_preserves_generation_reflection_metric
         }
 
     monkeypatch.setattr(runner, "_plan", fake_plan)
-    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: dict(kwargs))
+    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: {**kwargs, "format_instructions": ""})
     monkeypatch.setattr(
         rag_agent,
         "build_chained_query",
@@ -435,7 +458,9 @@ async def test_stream_offloads_rounds_and_preserves_generation_reflection_metric
         "build_citations_from_docs",
         lambda docs, **_kwargs: [{"doc_ids": [doc.metadata["document_id"] for doc in docs]}],
     )
-    monkeypatch.setattr(rag_agent, "_build_history_text", lambda history: f"history:{len(history)}")
+    monkeypatch.setattr(
+        "app.rag.agents.rag_agent.format_history_text", lambda history, *, window: f"history:{len(history)}"
+    )
     monkeypatch.setattr(
         rag_agent,
         "_build_context",
@@ -600,6 +625,8 @@ async def test_tool_phase_yields_call_before_execution_then_populates_result_sta
     phase = runner._stream_tool_phase(
         question="2+2?",
         document_ids=None,
+        tenant_id=None,
+        dataset_ids=None,
         dataset_id=None,
         account_id=None,
         state=state,
@@ -607,9 +634,17 @@ async def test_tool_phase_yields_call_before_execution_then_populates_result_sta
 
     tool_call_event = await anext(phase)
 
+    tool_call_id = tool_call_event["data"]["tool_call_id"]
+    assert isinstance(tool_call_id, str) and tool_call_id
     assert tool_call_event == {
         "type": "agentic_step",
-        "data": {"step": "tool_call", "tool": "calculate", "rationale": "calculate exactly"},
+        "data": {
+            "step": "tool_call",
+            "tool": "calculate",
+            "tool_call_id": tool_call_id,
+            "arguments": {"expression": "2+2"},
+            "rationale": "calculate exactly",
+        },
     }
     assert tool_calls == []
     assert state.tool_metrics == []
@@ -620,7 +655,13 @@ async def test_tool_phase_yields_call_before_execution_then_populates_result_sta
     assert tool_calls == [("calculate", {"expression": "2+2"})]
     assert tool_result_event == {
         "type": "agentic_step",
-        "data": {"step": "tool_result", "tool": "calculate", "success": True, "error": None},
+        "data": {
+            "step": "tool_result",
+            "tool": "calculate",
+            "tool_call_id": tool_call_id,
+            "success": True,
+            "error": None,
+        },
     }
     assert state.tool_metrics == [{"name": "calculate", "success": True, "backend": "test-tool", "error": None}]
     assert state.tool_context_blocks == ["[Tool: calculate]\nExpression: 2+2\nResult: 4"]
@@ -650,6 +691,8 @@ async def test_tool_phase_aclose_after_call_skips_execution(
     phase = runner._stream_tool_phase(
         question="2+2?",
         document_ids=None,
+        tenant_id=None,
+        dataset_ids=None,
         dataset_id=None,
         account_id=None,
         state=state,
@@ -691,7 +734,7 @@ async def test_stream_records_tool_registry_failure_and_abstains_without_context
         "_plan_tool_invocations",
         lambda **_kwargs: [rag_agent.AgenticToolInvocation(name="calculate", arguments={"expression": "2+2"})],
     )
-    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: dict(kwargs))
+    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: {**kwargs, "format_instructions": ""})
     monkeypatch.setattr(
         rag_agent,
         "run_retrieval",
@@ -830,7 +873,7 @@ async def test_stream_uses_crag_context_and_fallback_citations(
         }
 
     monkeypatch.setattr(runner, "_plan", fake_plan)
-    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: dict(kwargs))
+    monkeypatch.setattr(rag_agent, "build_rag_state", lambda **kwargs: {**kwargs, "format_instructions": ""})
     monkeypatch.setattr(
         rag_agent,
         "run_retrieval",
@@ -845,7 +888,7 @@ async def test_stream_uses_crag_context_and_fallback_citations(
     monkeypatch.setattr(rag_agent, "run_blocking_retrieval_call_with_managed_session", fake_offload)
     monkeypatch.setattr(rag_agent, "run_crag_streaming", fake_crag_streaming)
     monkeypatch.setattr(rag_agent, "build_citations_from_docs", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(rag_agent, "_build_history_text", lambda _history: "")
+    monkeypatch.setattr("app.rag.agents.rag_agent.format_history_text", lambda _history, *, window: "")
     monkeypatch.setattr(rag_agent, "_build_context", lambda _docs, **_kwargs: "No relevant reference materials found.")
     monkeypatch.setattr(rag_agent.settings, "RAG_MULTI_AGENT_ENABLED", False, raising=False)
     monkeypatch.setattr(rag_agent.settings, "RAG_AGENTIC_TOOLS_ENABLED", False, raising=False)

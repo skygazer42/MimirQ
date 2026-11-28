@@ -1,9 +1,10 @@
 from app.query.expand import (
     coerce_expansion_rules,
+    coerce_query_aliases,
+    generate_alias_queries,
     generate_dictionary_expansions,
     load_base_dictionary_rules,
 )
-from app.rag.query_expansion import coerce_query_aliases, generate_alias_queries
 
 
 def test_query_rule_coercers_preserve_normalization_and_stable_deduplication() -> None:

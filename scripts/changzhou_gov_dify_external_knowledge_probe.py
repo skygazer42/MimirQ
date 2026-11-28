@@ -12,43 +12,33 @@ import json
 import os
 import socket
 import sys
-from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
+    _emit_progress,
+    _format_cli_error,
+    _text,
+    _utc_now_text,
+    load_console_token,
+)
+
 DEFAULT_CONSOLE_BASE_URL = "https://dify.example.com:5001/console/api"
 DEFAULT_STORAGE_STATE = "/tmp/dify_console_storage_state.json"
 DEFAULT_EXTERNAL_API_LIMIT = 50
 _REQUEST_ATTEMPTS = 3
-_CONSOLE_LOGIN_HINT = (
-    "Refresh Dify console login with "
-    "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
-    "make dify-console-login."
-)
 
 RequestJsonFn = Callable[..., dict[str, Any]]
 RequestMimirqDirectFn = Callable[..., dict[str, Any]]
 ProgressFn = Callable[[dict[str, Any]], None]
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _format_cli_error(exc: Exception) -> str:
-    message = str(exc)
-    lowered = message.lower()
-    if "http 401" in lowered or "token has expired" in lowered or "unauthorized" in lowered:
-        return f"{message}\nHINT: {_CONSOLE_LOGIN_HINT}"
-    return message
 
 
 def _endpoint_host(endpoint: str) -> str:
@@ -85,34 +75,6 @@ def _local_ipv4_addresses() -> list[str]:
     except OSError:
         pass
     return sorted(addresses)
-
-
-def load_console_token(
-    console_token: str,
-    storage_state: str,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> str:
-    explicit = _text(console_token)
-    if explicit:
-        return explicit
-    source_env = env if env is not None else os.environ
-    from_env = _text(source_env.get("DIFY_CONSOLE_TOKEN"))
-    if from_env:
-        return from_env
-    state_path = Path(_text(storage_state))
-    if not state_path.is_file():
-        return ""
-    payload = json.loads(state_path.read_text(encoding="utf-8"))
-    for origin in payload.get("origins") or []:
-        if not isinstance(origin, dict):
-            continue
-        for item in origin.get("localStorage") or []:
-            if isinstance(item, dict) and item.get("name") == "console_token":
-                value = _text(item.get("value"))
-                if value:
-                    return value
-    return ""
 
 
 def _request_json(
@@ -371,11 +333,6 @@ def build_boundary_verdict(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _emit_progress(progress_fn: ProgressFn | None, payload: dict[str, Any]) -> None:
-    if progress_fn is not None:
-        progress_fn(payload)
-
-
 def collect_probe_report(
     *,
     cases: list[dict[str, Any]],
@@ -400,7 +357,6 @@ def collect_probe_report(
     settings = external_api.get("settings") if isinstance(external_api.get("settings"), dict) else {}
     endpoint = _text(settings.get("endpoint"))
     endpoint_host = _endpoint_host(endpoint)
-    endpoint_host_matches_local_machine = False
     local_addresses = sorted({_text(item) for item in (local_ipv4_addresses or _local_ipv4_addresses()) if _text(item)})
     endpoint_host_matches_local_machine = bool(endpoint_host and endpoint_host in local_addresses)
     api_key = _text(settings.get("api_key"))
@@ -509,10 +465,10 @@ def collect_probe_report(
         },
         "summary": {
             "cases": len(rows),
-            "dify_hit_nonempty": sum(1 for row in rows if int(row.get("dify_hit_records") or 0) > 0),
-            "dify_hit_empty": sum(1 for row in rows if int(row.get("dify_hit_records") or 0) == 0),
-            "mimirq_direct_nonempty": sum(1 for row in rows if int(row.get("mimirq_direct_records") or 0) > 0),
-            "mimirq_direct_schema_valid": sum(1 for row in rows if bool(row.get("mimirq_direct_schema_valid"))),
+            "dify_hit_nonempty": sum(1 for row in rows if row["dify_hit_records"] > 0),
+            "dify_hit_empty": sum(1 for row in rows if row["dify_hit_records"] == 0),
+            "mimirq_direct_nonempty": sum(1 for row in rows if row["mimirq_direct_records"] > 0),
+            "mimirq_direct_schema_valid": sum(1 for row in rows if row["mimirq_direct_schema_valid"]),
             "dify_runtime_empty_but_mimirq_direct_ok": sum(
                 1 for row in rows if row.get("diagnosis") == "dify_runtime_empty_but_mimirq_direct_ok"
             ),

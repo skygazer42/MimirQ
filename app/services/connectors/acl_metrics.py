@@ -1,0 +1,98 @@
+"""
+Prometheus metrics for connector ACL application (best-effort, PII-safe).
+
+Design goals:
+- Tenant-safe / PII-safe: never label by tenant/account/group/document ids.
+- Low-cardinality: labels are bounded (connector_id, mode, shape).
+- Optional: enabled only when PROMETHEUS_ENABLED=true.
+"""
+
+import re
+
+from prometheus_client import Counter
+
+from app.infrastructure.config import settings
+
+CONNECTOR_ACL_APPLY_TOTAL = Counter(
+    "connector_acl_apply_total",
+    "Total connector document ACL applications",
+    ["connector_id", "mode", "shape"],
+)
+
+CONNECTOR_ACL_APPLY_ERRORS_TOTAL = Counter(
+    "connector_acl_apply_errors_total",
+    "Total connector document ACL application errors",
+    ["connector_id", "mode"],
+)
+
+
+def _enabled() -> bool:
+    return settings.PROMETHEUS_ENABLED
+
+
+def _norm_connector_id(value: str | None) -> str:
+    if value is None:
+        return "unknown"
+    s = str(value).strip().lower()
+    s = re.sub(r"[^a-z0-9._:-]+", "_", s)
+    return (s[:80] or "unknown").strip("_") or "unknown"
+
+
+def _norm_mode(value: str | None) -> str:
+    if value is None:
+        return "inherit"
+    s = str(value).strip().lower()
+    if s in {"", "inherit", "null", "none"}:
+        return "inherit"
+    if s in {"only_me", "all_team_members", "partial_members"}:
+        return s
+    return "unknown"
+
+
+def _shape(*, mode: str, member_count: int, group_count: int) -> str:
+    if mode == "inherit":
+        return "inherit"
+    if mode == "only_me":
+        return "only_me"
+    if mode == "all_team_members":
+        return "all_team_members"
+    if mode == "partial_members":
+        if member_count > 0 and group_count > 0:
+            return "members_and_groups"
+        if member_count > 0:
+            return "members_only"
+        if group_count > 0:
+            return "groups_only"
+        return "partial_empty"
+    return "unknown_mode"
+
+
+def observe_connector_acl_apply(
+    *,
+    connector_id: str | None,
+    mode: str | None,
+    member_count: int = 0,
+    group_count: int = 0,
+) -> None:
+    if not _enabled():
+        return
+    cid = _norm_connector_id(connector_id)
+    m = _norm_mode(mode)
+    sh = _shape(mode=m, member_count=member_count, group_count=group_count)
+    CONNECTOR_ACL_APPLY_TOTAL.labels(connector_id=cid, mode=m, shape=sh).inc()
+
+
+def observe_connector_acl_apply_error(*, connector_id: str | None, mode: str | None) -> None:
+    if not _enabled():
+        return
+    cid = _norm_connector_id(connector_id)
+    m = _norm_mode(mode)
+    CONNECTOR_ACL_APPLY_ERRORS_TOTAL.labels(connector_id=cid, mode=m).inc()
+
+
+__all__ = [
+    "CONNECTOR_ACL_APPLY_TOTAL",
+    "CONNECTOR_ACL_APPLY_ERRORS_TOTAL",
+    "observe_connector_acl_apply",
+    "observe_connector_acl_apply_error",
+]

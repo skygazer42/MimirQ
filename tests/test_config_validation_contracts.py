@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.infrastructure.config import Settings
 
 
 def _production_payload(**overrides: object) -> dict[str, object]:
@@ -27,6 +27,7 @@ def test_dify_external_knowledge_keeps_api_key_validation_first() -> None:
             {
                 "SECRET_KEY": "test-only-signing-key-not-for-production",
                 "DIFY_EXTERNAL_KNOWLEDGE_ENABLED": True,
+                "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS": "",
                 "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX": 0,
             }
         )
@@ -47,15 +48,14 @@ def test_chunk_retrieval_keeps_overlap_validation_before_llm_temperature() -> No
         )
 
 
-def test_zero_valued_retrieval_setting_keeps_legacy_default_validation_semantics() -> None:
-    settings = Settings.model_validate(
-        {
-            "SECRET_KEY": "test-only-signing-key-not-for-production",
-            "RETRIEVAL_COMPACT_MIN_RECORDS": 0,
-        }
-    )
-
-    assert settings.RETRIEVAL_COMPACT_MIN_RECORDS == 0
+def test_zero_valued_positive_retrieval_minimum_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="RETRIEVAL_COMPACT_MIN_RECORDS must be >= 1"):
+        Settings.model_validate(
+            {
+                "SECRET_KEY": "test-only-signing-key-not-for-production",
+                "RETRIEVAL_COMPACT_MIN_RECORDS": 0,
+            }
+        )
 
 
 def test_jwt_production_trusted_tenant_source_message_is_exact(

@@ -2,7 +2,9 @@
  * Processing, chunk preview, governance, and ingestion types re-exported by `@/types`.
  */
 
-import type { JsonObject, LooseString } from './common'
+import type { JsonObject } from './common'
+
+type LooseString<T extends string> = T | (string & {})
 
 export type DocumentStats = import('./backend').DocumentStats
 export type DocumentBatchLifecycleRequest = import('./backend').DocumentBatchLifecycleRequest
@@ -40,7 +42,7 @@ export type QAPairPreview = import('./backend').QAPairPreview
 export type DocumentQAGenerateRequest = import('./backend').DocumentQAGenerateRequest
 export type DocumentQAGenerateResponse = import('./backend').DocumentQAGenerateResponse
 
-export interface Citation {
+export type Citation = {
   document_id: string
   document_name: string
   chunk_id?: string
@@ -87,14 +89,14 @@ export interface Citation {
   img_url?: string
 }
 
-export interface ParsedSegment {
+export type ParsedSegment = {
   index: number
   content: string
   page_number?: number
   metadata?: JsonObject
 }
 
-export interface DocumentPreview {
+export type DocumentPreview = {
   filename: string
   file_type: string
   file_size: number
@@ -104,9 +106,9 @@ export interface DocumentPreview {
 
 export type DocumentParsedContentResponse = import('./backend').DocumentParsedContentResponse
 
-export interface ManualChunk {
+export type ManualChunk = {
   content: string
-  page_number?: number
+  page_number?: number | null
   start_char?: number
   end_char?: number
   metadata?: JsonObject
@@ -114,55 +116,55 @@ export interface ManualChunk {
 
 // ==================== 切块预览相关类型 ====================
 
-export interface ChunkPreset {
+export type ChunkPreset = {
   id: string
   name: string
   description?: string | null
   payload: JsonObject
 }
 
-export interface ChunkPresetCreateRequest {
+export type ChunkPresetCreateRequest = {
   name: string
   description?: string | null
   payload: JsonObject
 }
 
-export interface ChunkPresetUpdateRequest {
+export type ChunkPresetUpdateRequest = {
   name: string
   description?: string | null
   payload: JsonObject
 }
 
-export interface ChunkPresetListResponse {
+export type ChunkPresetListResponse = {
   items: ChunkPreset[]
 }
 
-export interface ChunkPreviewParams {
+export type ChunkPreviewParams = {
   chunk_size: number
   chunk_overlap: number
   unit?: 'chars' | 'tokens'
   strategy_params?: JsonObject
 }
 
-export interface ChunkPreviewItem {
+export type ChunkPreviewItem = {
   index: number
   content: string
   length: number
-  tokens_est?: number
+  tokens_est?: number | null
   start_index: number
   end_index: number
-  page_number?: number
+  page_number?: number | null
   metadata?: JsonObject
 }
 
-export interface ChunkPreviewHistogramBin {
+export type ChunkPreviewHistogramBin = {
   label: string
   min?: number | null
   max?: number | null
   count: number
 }
 
-export interface ChunkPreviewStats {
+export type ChunkPreviewStats = {
   unit?: 'chars' | 'tokens'
   count?: number
   total?: number
@@ -185,20 +187,20 @@ export interface ChunkPreviewStats {
   histogram?: ChunkPreviewHistogramBin[]
 }
 
-export interface ChunkPreviewQualityReason {
+export type ChunkPreviewQualityReason = {
   code: string
   severity?: 'info' | 'warning' | 'error'
   message: string
   meta?: JsonObject
 }
 
-export interface ChunkPreviewQualityGate {
+export type ChunkPreviewQualityGate = {
   grade?: 'pass' | 'warn' | 'fail'
   reasons?: string[]
   reason_items?: ChunkPreviewQualityReason[]
 }
 
-export interface ChunkPreviewRecommendationPatch {
+export type ChunkPreviewRecommendationPatch = {
   target?: 'preview' | 'pipeline' | 'perf'
   id: string
   title: string
@@ -206,7 +208,7 @@ export interface ChunkPreviewRecommendationPatch {
   patch?: JsonObject
 }
 
-export interface ChunkPreviewReviewSignals {
+export type ChunkPreviewReviewSignals = {
   basis?: 'all' | 'child'
   short_indices?: number[]
   duplicate_indices?: number[]
@@ -216,7 +218,7 @@ export interface ChunkPreviewReviewSignals {
   overlap_prev_by_index?: Record<string, number>
 }
 
-export interface ChunkPreviewResponse {
+export type ChunkPreviewResponse = {
   filename: string
   file_type: string
   file_size: number
@@ -236,15 +238,16 @@ export interface ChunkPreviewResponse {
   total_characters: number
   params: ChunkPreviewParams
   chunks: ChunkPreviewItem[]
-  stats?: ChunkPreviewStats
+  stats?: ChunkPreviewStats | null
+  chunking_stats_tokens?: JsonObject | null
   auto_selected_strategy?: string
   warnings?: string[]
-  review_signals?: ChunkPreviewReviewSignals
+  review_signals?: ChunkPreviewReviewSignals | null
   quality_gate?: ChunkPreviewQualityGate
   recommendations?: string[]
   recommendation_patches?: ChunkPreviewRecommendationPatch[]
-  original_text?: string
-  original_text_cleaned?: string
+  original_text?: string | null
+  original_text_cleaned?: string | null
   original_text_included?: boolean
   original_text_truncated?: boolean
   original_text_max_chars?: number
@@ -254,13 +257,13 @@ export interface ChunkPreviewResponse {
 
 // ==================== 数据治理（清洗）相关类型 ====================
 
-export interface RegexRuleModel {
+export type RegexRuleModel = {
   pattern: string
   repl?: string
   flags?: number
 }
 
-export interface CleanPreviewRuleStat {
+export type CleanPreviewRuleStat = {
   index: number
   pattern: string
   repl?: string
@@ -270,7 +273,7 @@ export interface CleanPreviewRuleStat {
   pack?: string | null
 }
 
-export interface CleanPreviewRequest {
+export type CleanPreviewRequest = {
   markdown: string
   rules?: RegexRuleModel[]
   rule_packs?: string[]
@@ -324,7 +327,7 @@ export interface CleanPreviewRequest {
   common_lines_min_occurrences?: number
 }
 
-export interface CleanPreviewResponse {
+export type CleanPreviewResponse = {
   markdown: string
   applied_rules: number
   changed: boolean
@@ -355,11 +358,11 @@ export interface CleanPreviewResponse {
   suggested_pipeline_patch?: DocumentPipelineOptions
 }
 
-export interface CleanRulesResponse {
+export type CleanRulesResponse = {
   rules: RegexRuleModel[]
 }
 
-export interface GovernanceIssue {
+export type GovernanceIssue = {
   code: string
   severity: 'info' | 'warning' | 'error'
   message: string
@@ -368,7 +371,7 @@ export interface GovernanceIssue {
   suggested_pipeline_patch?: DocumentPipelineOptions
 }
 
-export interface GovernanceAnalyzeRequest {
+export type GovernanceAnalyzeRequest = {
   markdown: string
   input_format?: 'markdown' | 'html'
   html_xpath?: string
@@ -387,36 +390,23 @@ export interface GovernanceAnalyzeRequest {
   drop_low_density_threshold?: number
 }
 
-export interface GovernanceAnalyzeResponse {
+export type GovernanceAnalyzeResponse = {
   input_chars?: number
   input_lines?: number
   issues?: GovernanceIssue[]
   suggested_pipeline_patch?: DocumentPipelineOptions
 }
 
-export interface GovernanceRulePackListResponse {
+export type GovernanceRulePackListResponse = {
   items: string[]
 }
 
 // ==================== Governance (Lifecycle) ====================
 
-export interface DocumentLifecycleMetadata {
-  publication_status?: 'draft' | 'published' | 'deprecated'
-  lifecycle_owner?: string | null
-  review_due_at?: string | null
-  authority_level?: number | null
-  supersedes_document_id?: string | null
-}
+export type DocumentLifecycleMetadata = import('./backend').DocumentLifecycleMetadata
+export type DocumentLifecycleMetadataUpdateRequest = import('./backend').DocumentLifecycleMetadataUpdateRequest
 
-export interface DocumentLifecycleMetadataUpdateRequest {
-  publication_status?: 'draft' | 'published' | 'deprecated'
-  lifecycle_owner?: string | null
-  review_due_at?: string | null
-  authority_level?: number | null
-  supersedes_document_id?: string | null
-}
-
-export interface StaleDocumentItem {
+export type StaleDocumentItem = {
   id: string
   filename: string
   file_type: string
@@ -429,7 +419,7 @@ export interface StaleDocumentItem {
   updated_at?: string | null
 }
 
-export interface StaleDocumentsByDatasetResponse {
+export type StaleDocumentsByDatasetResponse = {
   dataset_id: string
   as_of: string
   due_before: string
@@ -440,31 +430,21 @@ export interface StaleDocumentsByDatasetResponse {
   items: StaleDocumentItem[]
 }
 
-export interface GovernanceCommonLineCandidate {
+export type GovernanceCommonLineCandidate = {
   signature: string
   sample: string
   docs: number
   ratio: number
 }
 
-export interface GovernanceCommonLinesLearnRequest {
-  dataset_id: string
-  limit_docs?: number
-  use_original?: boolean
-  min_docs?: number
-  min_ratio?: number
-  max_line_length?: number
-  max_candidates?: number
-}
-
-export interface GovernanceCommonLinesLearnResponse {
+export type GovernanceCommonLinesLearnResponse = {
   dataset_id: string
   total_documents: number
   used_documents: number
   candidates: GovernanceCommonLineCandidate[]
 }
 
-export interface GovernanceProfilePayload {
+export type GovernanceProfilePayload = {
   version: string
   extends?: string | null
   input_formats: Array<'markdown' | 'html'>
@@ -473,7 +453,7 @@ export interface GovernanceProfilePayload {
   processing_scripts?: GovernanceProcessingScript[]
 }
 
-export interface GovernanceProcessingScript {
+export type GovernanceProcessingScript = {
   name: string
   language: 'javascript' | 'typescript' | 'python' | 'rust'
   stage: 'post_parse' | 'post_governance'
@@ -483,7 +463,7 @@ export interface GovernanceProcessingScript {
   created_at?: string | null
 }
 
-export interface GovernanceProfileSummary {
+export type GovernanceProfileSummary = {
   id?: string | null
   key: string
   name: string
@@ -491,43 +471,43 @@ export interface GovernanceProfileSummary {
   is_system: boolean
 }
 
-export interface GovernanceProfileListResponse {
+export type GovernanceProfileListResponse = {
   total: number
   items: GovernanceProfileSummary[]
 }
 
-export interface GovernanceProfileOut extends GovernanceProfileSummary {
+export type GovernanceProfileOut = GovernanceProfileSummary & {
   payload: GovernanceProfilePayload
   created_at?: string | null
   updated_at?: string | null
 }
 
-export interface GovernanceProfileCreate {
+export type GovernanceProfileCreate = {
   name: string
   description?: string
   key?: string
   payload: GovernanceProfilePayload
 }
 
-export interface GovernanceProfileUpdate {
+export type GovernanceProfileUpdate = {
   name?: string
   description?: string
   payload?: GovernanceProfilePayload
 }
 
-export interface GovernanceProfileImportResponse {
+export type GovernanceProfileImportResponse = {
   created: number
   updated: number
   items: GovernanceProfileSummary[]
 }
 
-export interface GovernanceProfileResolvedResponse {
+export type GovernanceProfileResolvedResponse = {
   profile: GovernanceProfileOut
   chain: GovernanceProfileSummary[]
   effective: GovernanceProfilePayload
 }
 
-export interface LLMCleanPreviewRequest {
+export type LLMCleanPreviewRequest = {
   markdown: string
   prompt_template_id?: string
   template_key?: string
@@ -539,7 +519,7 @@ export interface LLMCleanPreviewRequest {
   max_chars?: number
 }
 
-export interface LLMCleanPreviewResponse {
+export type LLMCleanPreviewResponse = {
   markdown: string
   changed: boolean
   model_used?: string | null
@@ -552,19 +532,19 @@ export interface LLMCleanPreviewResponse {
 
 // ==================== 流水线能力（可用性）相关类型 ====================
 
-export interface ParserBackendInfo {
+export type ParserBackendInfo = {
   name: string
   available: boolean
   notes?: string | null
 }
 
-export interface ChunkStrategyInfo {
+export type ChunkStrategyInfo = {
   name: string
   available: boolean
   notes?: string | null
 }
 
-export interface PipelineCapabilitiesResponse {
+export type PipelineCapabilitiesResponse = {
   default_parser_backend: string
   default_chunk_strategy: string
   pdf_backends: ParserBackendInfo[]
@@ -573,13 +553,13 @@ export interface PipelineCapabilitiesResponse {
 
 // ==================== 流水线预览/工具相关类型 ====================
 
-export interface PipelineParseImageInfo {
+export type PipelineParseImageInfo = {
   id: string
   url: string
   filename: string
 }
 
-export interface PipelinePDFQualityScore {
+export type PipelinePDFQualityScore = {
   score: number
   text_quality_score: number
   format_consistency_score: number
@@ -588,14 +568,14 @@ export interface PipelinePDFQualityScore {
   page_count: number
 }
 
-export interface PipelineParsePreviewResponse {
+export type PipelineParsePreviewResponse = {
   backend: string
   pdf_quality?: PipelinePDFQualityScore | null
   markdown: string
   images: PipelineParseImageInfo[]
 }
 
-export interface PipelineChunkItem {
+export type PipelineChunkItem = {
   id: string
   level: string
   index: number
@@ -606,30 +586,30 @@ export interface PipelineChunkItem {
   parent_id?: string | null
 }
 
-export interface PipelineChunkPreviewRequest {
+export type PipelineChunkPreviewRequest = {
   markdown: string
 }
 
-export interface PipelineChunkPreviewResponse {
+export type PipelineChunkPreviewResponse = {
   paragraphs: PipelineChunkItem[]
   sentences: PipelineChunkItem[]
 }
 
-export interface KeywordExtractRequest {
+export type KeywordExtractRequest = {
   text: string
   provider?: string
   top_k?: number
 }
 
-export interface KeywordExtractResponse {
+export type KeywordExtractResponse = {
   provider: string
   keywords: string[]
 }
 
-export interface AutoAnnotationRequest {
+export type AutoAnnotationRequest = {
   text: string
   mode?: 'document_focus' | 'compliance'
-  providers?: Array<'cpu' | 'llm' | 'gliner' | 'keyword' | 'entity' | 'regex' | 'pii' | 'secret' | 'sensitive'>
+  providers?: Array<'cpu' | 'llm' | 'keyword' | 'entity' | 'regex' | 'pii' | 'secret' | 'sensitive'>
   enable_llm?: boolean
   enable_llm_topics?: boolean
   llm_model?: string | null
@@ -642,7 +622,7 @@ export interface AutoAnnotationRequest {
   max_annotations?: number
 }
 
-export interface AutoAnnotationItem {
+export type AutoAnnotationItem = {
   text: string
   type: 'entity' | 'keyword' | 'sensitive' | 'custom'
   label: string
@@ -652,7 +632,7 @@ export interface AutoAnnotationItem {
   source: string
 }
 
-export interface AutoDocumentTag {
+export type AutoDocumentTag = {
   type: 'topic' | 'category' | 'domain' | 'industry' | 'doc_type' | 'sensitivity' | 'quality' | 'keyword'
   value: string
   label: string
@@ -660,7 +640,7 @@ export interface AutoDocumentTag {
   source: string
 }
 
-export interface AutoAnnotationResponse {
+export type AutoAnnotationResponse = {
   annotations: AutoAnnotationItem[]
   document_tags: AutoDocumentTag[]
   summary?: string | null
@@ -673,13 +653,13 @@ export interface AutoAnnotationResponse {
   warnings: string[]
 }
 
-export interface ZipImageInfo {
+export type ZipImageInfo = {
   img_id: string
   original_path: string
   url: string
 }
 
-export interface ZipWithImagesResponse {
+export type ZipWithImagesResponse = {
   markdown: string
   images: ZipImageInfo[]
   image_count: number
@@ -689,22 +669,22 @@ export interface ZipWithImagesResponse {
 
 // ==================== 入库策略（解析前预处理）相关类型 ====================
 
-export interface IngestionPreprocessStep {
+export type IngestionPreprocessStep = {
   id: string
   params?: Record<string, unknown>
 }
 
-export interface IngestionPreprocessConfig {
+export type IngestionPreprocessConfig = {
   enabled: boolean
   steps?: IngestionPreprocessStep[]
 }
 
-export interface IngestionRuleMatch {
+export type IngestionRuleMatch = {
   extensions?: string[]
   filename_regex?: string | null
 }
 
-export interface IngestionRule {
+export type IngestionRule = {
   id: string
   name: string
   enabled: boolean
@@ -716,17 +696,17 @@ export interface IngestionRule {
   pipeline_patch?: Record<string, unknown>
 }
 
-export interface IngestionPolicy {
+export type IngestionPolicy = {
   version: string
   rules?: IngestionRule[]
 }
 
-export interface IngestionPolicyImportResponse {
+export type IngestionPolicyImportResponse = {
   replaced: boolean
   rule_count: number
 }
 
-export interface IngestionPolicyVersion {
+export type IngestionPolicyVersion = {
   id: string
   created_at: string
   created_by?: string | null
@@ -737,23 +717,23 @@ export interface IngestionPolicyVersion {
   rollback_to_version_id?: string | null
 }
 
-export interface IngestionPolicyVersionListResponse {
+export type IngestionPolicyVersionListResponse = {
   current_version_id?: string | null
   items?: IngestionPolicyVersion[]
 }
 
-export interface IngestionPolicyRollbackRequest {
+export type IngestionPolicyRollbackRequest = {
   version_id: string
 }
 
-export interface PreprocessStepLog {
+export type PreprocessStepLog = {
   id: string
   applied: boolean
   changed: boolean
   note?: string
 }
 
-export interface PreprocessSummary {
+export type PreprocessSummary = {
   changed: boolean
   size_before: number
   size_after: number
@@ -761,7 +741,7 @@ export interface PreprocessSummary {
   warnings: string[]
 }
 
-export interface IngestionPreviewRule {
+export type IngestionPreviewRule = {
   matched: boolean
   rule_id?: string | null
   rule_name?: string | null
@@ -771,7 +751,7 @@ export interface IngestionPreviewRule {
   chunk_strategy: string
 }
 
-export interface IngestionPreviewResponse {
+export type IngestionPreviewResponse = {
   rule: IngestionPreviewRule
   preprocess: PreprocessSummary
   parse: PipelineParsePreviewResponse

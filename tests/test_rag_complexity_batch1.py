@@ -1,4 +1,3 @@
-
 import json
 from io import BytesIO
 from pathlib import Path
@@ -9,9 +8,10 @@ import pytest
 from langgraph.checkpoint.base import empty_checkpoint
 from PIL import Image
 
-from app.rag.checkpointer.sqlite import SqliteSaver
 from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_analysis_png
-from app.rag.evaluation.replay_capture import sanitize_citations_for_capture
+from app.rag.evaluation.regression.replay_capture import sanitize_citations_for_capture
+from app.rag.ingestion.governance.deduplication.near_dedup import INDEX_VERSION, load_near_dedup_index
+from app.rag.ingestion.governance.deduplication.paragraph_dedup import drop_duplicate_paragraphs
 from app.rag.kg.extraction.config import _clean_kg_python_params
 from app.rag.kg.extraction.skill_processor import _coerce_str_list
 from app.rag.llm.factory import create_llm_client
@@ -20,8 +20,7 @@ from app.rag.pipeline_plugins import refs as plugin_refs
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
 from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
-from app.rag.preprocessing.near_dedup import INDEX_VERSION, load_near_dedup_index
-from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
+from app.rag.runtime.checkpoints.sqlite import SqliteSaver
 
 
 def _checkpoint_with_id(checkpoint_id: str) -> dict:
@@ -310,28 +309,17 @@ def test_clean_python_plugin_ref_accepts_registered_and_allowed_import_refs(monk
         clean_python_plugin_ref("pkg/module.py", file_path_message="custom path message")
 
 
-def test_load_near_dedup_index_filters_invalid_rows_and_normalizes_values(tmp_path: Path) -> None:
+def test_load_near_dedup_index_accepts_valid_fingerprints_and_discards_invalid_index(tmp_path: Path) -> None:
     path = tmp_path / "near-dedup.json"
-    path.write_text(
-        json.dumps(
-            {
-                "version": INDEX_VERSION,
-                "buckets": {
-                    "band-1": [" ABCD ", "", None, "ef01"],
-                    3: ["skip-key"],
-                    "band-2": "skip-value",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    buckets = {"0:abcd": [" ABCDEFABCDEFABCD ", "0123456789abcdef"]}
+    path.write_text(json.dumps({"version": INDEX_VERSION, "buckets": buckets}), encoding="utf-8")
+    assert load_near_dedup_index(path) == {"0:abcd": ["abcdefabcdefabcd", "0123456789abcdef"]}
 
-    assert load_near_dedup_index(path) == {
-        "3": ["skip-key"],
-        "band-1": ["abcd", "ef01"],
-    }
+    invalid_buckets = {**buckets, "1:1234": ["not-a-fingerprint"]}
+    path.write_text(json.dumps({"version": INDEX_VERSION, "buckets": invalid_buckets}), encoding="utf-8")
+    assert load_near_dedup_index(path) == {}
 
-    path.write_text(json.dumps({"version": INDEX_VERSION + 1, "buckets": {"band-1": ["abcd"]}}), encoding="utf-8")
+    path.write_text(json.dumps({"version": INDEX_VERSION + 1, "buckets": buckets}), encoding="utf-8")
     assert load_near_dedup_index(path) == {}
 
 

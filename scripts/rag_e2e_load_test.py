@@ -96,6 +96,13 @@ def _p95_ms(section: dict[str, Any], key: str) -> int:
     return _as_int(raw.get("p95_ms"))
 
 
+def _required_load_count(section: dict[str, Any], phase: str, field: str) -> int:
+    value = section[field]
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{phase}.{field} must be a nonnegative integer")
+    return value
+
+
 def evaluate_load_gate(
     result: dict[str, Any],
     *,
@@ -109,25 +116,25 @@ def evaluate_load_gate(
     chat = result.get("chat") if isinstance(result.get("chat"), dict) else {}
     failures: list[str] = []
 
-    expected_ingest = _as_int(ingest.get("requested"))
-    completed_ingest = _as_int(ingest.get("completed"))
-    ingest_errors = _as_int(ingest.get("errors"))
+    expected_ingest = _required_load_count(ingest, "ingest", "requested")
+    completed_ingest = _required_load_count(ingest, "ingest", "completed")
+    ingest_errors = _required_load_count(ingest, "ingest", "errors")
     if expected_ingest > 0 and completed_ingest < expected_ingest:
         failures.append(f"ingest_completed {completed_ingest} < requested {expected_ingest}")
     if ingest_errors > 0:
         failures.append(f"ingest_errors {ingest_errors} > 0")
 
-    expected_retrieve = _as_int(retrieve.get("requested"))
-    ok_retrieve = _as_int(retrieve.get("ok"))
-    retrieve_errors = _as_int(retrieve.get("errors"))
+    expected_retrieve = _required_load_count(retrieve, "retrieve", "requested")
+    ok_retrieve = _required_load_count(retrieve, "retrieve", "ok")
+    retrieve_errors = _required_load_count(retrieve, "retrieve", "errors")
     if expected_retrieve > 0 and ok_retrieve < expected_retrieve:
         failures.append(f"retrieve_ok {ok_retrieve} < requested {expected_retrieve}")
     if retrieve_errors > 0:
         failures.append(f"retrieve_errors {retrieve_errors} > 0")
 
-    expected_chat = _as_int(chat.get("requested"))
-    ok_chat = _as_int(chat.get("ok"))
-    chat_errors = _as_int(chat.get("errors"))
+    expected_chat = _required_load_count(chat, "chat", "requested")
+    ok_chat = _required_load_count(chat, "chat", "ok")
+    chat_errors = _required_load_count(chat, "chat", "errors")
     if expected_chat > 0 and ok_chat < expected_chat:
         failures.append(f"chat_ok {ok_chat} < requested {expected_chat}")
     if chat_errors > 0:
@@ -786,8 +793,8 @@ def _build_parser(default_file: Path) -> argparse.ArgumentParser:
 
 
 def _comparison_report_paths(args: argparse.Namespace) -> tuple[str, str] | None:
-    baseline_report = str(args.baseline_report or "").strip()
-    candidate_report = str(args.candidate_report or "").strip()
+    baseline_report = args.baseline_report.strip()
+    candidate_report = args.candidate_report.strip()
     if not baseline_report and not candidate_report:
         return None
     if bool(baseline_report) != bool(candidate_report):
@@ -828,14 +835,14 @@ def _handle_comparison_mode(args: argparse.Namespace) -> int | None:
     comparison = evaluate_concurrency_gate(
         baseline,
         candidate,
-        min_retrieve_throughput_ratio=float(args.min_retrieve_throughput_ratio),
-        min_chat_throughput_ratio=float(args.min_chat_throughput_ratio),
+        min_retrieve_throughput_ratio=args.min_retrieve_throughput_ratio,
+        min_chat_throughput_ratio=args.min_chat_throughput_ratio,
     )
     comparison["schema"] = "mimirq.rag_concurrency_gate.v1"
     comparison["baseline_report"] = baseline_report
     comparison["candidate_report"] = candidate_report
     if args.out:
-        out_path = Path(str(args.out))
+        out_path = Path(args.out)
         _write_json_output(out_path, comparison)
         print(f"[rag-e2e-loadtest] wrote: {out_path}")
     for failure in comparison["failures"]:
@@ -851,27 +858,27 @@ def _build_config_from_args(
     filename: str,
 ) -> E2ELoadTestConfig:
     return E2ELoadTestConfig(
-        base_url=str(args.base_url or "").rstrip("/"),
-        tenant_id=str(args.tenant_id or ""),
-        user_id=str(args.user_id or ""),
-        bearer=str(args.bearer or ""),
+        base_url=args.base_url.rstrip("/"),
+        tenant_id=args.tenant_id,
+        user_id=args.user_id,
+        bearer=args.bearer,
         file_bytes=file_bytes,
         filename=filename,
-        parser_backend=str(args.parser_backend or "auto"),
-        dataset_id=str(args.dataset_id or "") or None,
-        dataset_name=str(args.dataset_name or ""),
-        ingest_count=int(args.ingest_count or 0),
-        ingest_concurrency=int(args.ingest_concurrency or 1),
-        poll_interval_sec=float(args.poll_interval_sec or 0.0),
-        ingest_timeout_sec=float(args.ingest_timeout_sec or 0.0),
-        retrieve_requests=int(args.retrieve_requests or 0),
-        retrieve_concurrency=int(args.retrieve_concurrency or 1),
-        query=str(args.query or ""),
-        chat_requests=int(args.chat_requests or 0),
-        chat_concurrency=int(args.chat_concurrency or 1),
-        message=str(args.message or ""),
-        enable_reranker=bool(args.enable_reranker),
-        doc_sample_size=int(args.doc_sample_size or 0),
+        parser_backend=args.parser_backend,
+        dataset_id=args.dataset_id,
+        dataset_name=args.dataset_name,
+        ingest_count=args.ingest_count,
+        ingest_concurrency=args.ingest_concurrency,
+        poll_interval_sec=args.poll_interval_sec,
+        ingest_timeout_sec=args.ingest_timeout_sec,
+        retrieve_requests=args.retrieve_requests,
+        retrieve_concurrency=args.retrieve_concurrency,
+        query=args.query,
+        chat_requests=args.chat_requests,
+        chat_concurrency=args.chat_concurrency,
+        message=args.message,
+        enable_reranker=args.enable_reranker,
+        doc_sample_size=args.doc_sample_size,
     )
 
 
@@ -969,13 +976,13 @@ def main(argv: list[str] | None = None) -> int:
     if comparison_exit is not None:
         return comparison_exit
 
-    file_path = Path(str(args.file))
+    file_path = Path(args.file)
     if not file_path.exists():
         print(f"[rag-e2e-loadtest] ERROR: file not found: {file_path}", file=sys.stderr)
         return 2
 
     file_bytes = file_path.read_bytes()
-    filename = str(args.filename or file_path.name)
+    filename = args.filename or file_path.name
 
     cfg = _build_config_from_args(args, file_bytes=file_bytes, filename=filename)
 
@@ -984,7 +991,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        result = asyncio.run(_run_with_client(cfg, timeout_sec=float(args.timeout_sec)))
+        result = asyncio.run(_run_with_client(cfg, timeout_sec=args.timeout_sec))
     except KeyboardInterrupt:
         print("[rag-e2e-loadtest] cancelled", file=sys.stderr)
         return 130
@@ -992,13 +999,13 @@ def main(argv: list[str] | None = None) -> int:
     _print_result_summary(result)
     gate = evaluate_load_gate(
         result,
-        max_ingest_p95_ms=int(args.max_ingest_p95_ms or 0),
-        max_retrieve_p95_ms=int(args.max_retrieve_p95_ms or 0),
-        max_chat_p95_ms=int(args.max_chat_p95_ms or 0),
+        max_ingest_p95_ms=args.max_ingest_p95_ms,
+        max_retrieve_p95_ms=args.max_retrieve_p95_ms,
+        max_chat_p95_ms=args.max_chat_p95_ms,
     )
     result["gate"] = gate
 
-    out_path = str(args.out or "").strip()
+    out_path = args.out.strip()
     if out_path:
         _write_result_report(out_path, result)
 

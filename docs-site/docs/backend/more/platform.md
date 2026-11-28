@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 平台与账号
 
-MimirQ 提供完整的多租户平台能力，包括租户管理、用户角色权限（RBAC）、SCIM 自动同步和用量审计。
+Ragvia 提供完整的多租户平台能力，包括租户管理、用户角色权限（RBAC）、SCIM 自动同步和用量审计。
 
 ## 平台功能概览
 
@@ -28,7 +28,7 @@ flowchart TB
 
 ## 租户管理模型
 
-MimirQ 采用单库多租户架构，所有数据表通过 `tenant_id` 列实现逻辑隔离：
+Ragvia 采用单库多租户架构，所有数据表通过 `tenant_id` 列实现逻辑隔离：
 
 | 概念 | 说明 |
 |------|------|
@@ -71,7 +71,7 @@ MimirQ 采用单库多租户架构，所有数据表通过 `tenant_id` 列实现
 
 ## SCIM 同步
 
-MimirQ 实现 SCIM 2.0 协议端点，支持与企业 IdP（如 Azure AD、Okta）自动同步用户和组：
+Ragvia 实现 SCIM 2.0 协议端点，支持与企业 IdP（如 Azure AD、Okta）自动同步用户和组：
 
 | 端点 | 说明 |
 |------|------|
@@ -85,7 +85,7 @@ SCIM 端点使用独立的 Bearer Token 认证，务必通过环境变量配置�
 
 ## 系统设置
 
-平台级配置通过 `app/core/config.py` 集中管理（1200+ 配置项），关键分类：
+平台级配置通过 `app/infrastructure/config.py` 集中管理（1200+ 配置项），关键分类：
 
 | 分类 | 示例参数 |
 |------|----------|
@@ -108,12 +108,12 @@ SCIM 端点使用独立的 Bearer Token 认证，务必通过环境变量配置�
 
 | 文件 | 职责 |
 |------|------|
-| `app/models/tenant.py` | 租户数据模型 |
-| `app/models/tenant_group.py` | 租户分组模型 |
+| `app/models/identity/workspaces.py` | 租户数据模型 |
+| `app/models/identity/workspaces.py` | 租户分组模型 |
 | `app/api/schemas/rbac.py` | RBAC Schema |
 | `app/api/v1/rbac.py` | RBAC API 路由 |
 | `app/api/v1/scim.py` | SCIM 端点 |
-| `app/core/config.py` | 集中配置（1200+ 项） |
+| `app/infrastructure/config.py` | 集中配置（1200+ 项） |
 
 ---
 

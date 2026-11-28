@@ -3,7 +3,7 @@ sidebar_label: "完整操作指南"
 sidebar_position: 1
 ---
 
-# MimirQ 完整操作指南
+# Ragvia 完整操作指南
 
 这是一条面向实际使用者的端到端路径：部署并登录、建立数据集、上传解析、切块索引、检索测试、带引用问答、评测回归和生产运维。模块实现与 API 字段不在这里展开，需要时沿链接进入专项文档。
 
@@ -23,7 +23,7 @@ flowchart LR
 ### Docker 一键启动
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 # 编辑 .env，真实模型调用至少填写 LLM_API_KEY
@@ -123,7 +123,7 @@ Chunk Preview 用于试验策略，正式资产仍从入库页面进入目标数
 
 ## 4. 检索、问答和 Dify
 
-MimirQ 把“找到证据”和“生成答案”分开验收：
+Ragvia 把“找到证据”和“生成答案”分开验收：
 
 - “检索测试”判断召回与重排是否正确。
 - 首页问答判断 LLM 是否基于证据作答。
@@ -132,9 +132,9 @@ MimirQ 把“找到证据”和“生成答案”分开验收：
 Dify 支持两种接入：
 
 - **External Knowledge API**：`POST /api/v1/integrations/dify/retrieval`。
-- **Workflow HTTP 节点**：Dify 传查询、数据集范围和过滤参数，MimirQ 返回证据和 Trace。
+- **Workflow HTTP 节点**：Dify 传查询、数据集范围和过滤参数，Ragvia 返回证据和 Trace。
 
-Dify 负责编排和生成，MimirQ 继续负责知识治理、检索、重排、权限过滤与证据。请求字段与调用顺序以 [OpenAPI](https://skygazer42.github.io/MimirQ/) 为准。
+Dify 负责编排和生成，Ragvia 继续负责知识治理、检索、重排、权限过滤与证据。请求字段与调用顺序以 [OpenAPI](https://skygazer42.github.io/MimirQ/) 为准。
 
 ## 5. 评测与持续改进
 
@@ -172,7 +172,7 @@ Dify 负责编排和生成，MimirQ 继续负责知识治理、检索、重排�
 | 清空数据 | `make docker-reset` | 删除 | 保留 |
 | 删除数据和镜像 | `make docker-purge` | 删除 | 删除 |
 
-后两项不可恢复，执行前必须完成备份与恢复演练。MimirQ 使用独立项目名 `mimirq`；Windows PowerShell、Dify 共存和旧版恢复见[部署指南](../ops/deployment)。不要运行全局 `docker system prune` 来替代项目级清理。
+后两项不可恢复，执行前必须完成备份与恢复演练。Ragvia 使用独立项目名 `mimirq`；Windows PowerShell、Dify 共存和旧版恢复见[部署指南](../ops/deployment)。不要运行全局 `docker system prune` 来替代项目级清理。
 
 ## 8. 排障顺序
 
@@ -199,4 +199,4 @@ Dify 负责编排和生成，MimirQ 继续负责知识治理、检索、重排�
 - [ ] 备份已实际恢复，并重新验证检索和引用。
 - [ ] 升级、数据库迁移、回滚和并发已在预发验证。
 
-仓库内更详细、可离线阅读的版本见 [MimirQ 全流程操作指南](https://github.com/skygazer42/MimirQ/blob/main/docs/user_guide.md)。
+仓库内更详细、可离线阅读的版本见 [Ragvia 全流程操作指南](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/user_guide.md)。

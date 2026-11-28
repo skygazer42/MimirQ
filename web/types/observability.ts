@@ -1,22 +1,8 @@
-export interface RagMetricsSummaryResponse {
-  enabled: boolean
-  path: string
-  window_minutes: number
-  truncated: boolean
-  record_count: number
-  rag_trace_count: number
-  reranker_api_count: number
-  retrieval_avg_elapsed_sec?: number | null
-  retrieval_p95_elapsed_sec?: number | null
-  rerank_avg_elapsed_sec?: number | null
-  citations_avg_count?: number | null
-  retrieval_mode_counts: Record<string, number>
-  hit_type_counts: Record<string, number>
-  error_counts: Record<string, number>
-  timeseries: Record<string, unknown[]>
-}
+import type { OpenApiSchema } from './backend'
 
-export interface OnlineQualitySummaryResponse {
+export type RagMetricsSummaryResponse = OpenApiSchema<'RagMetricsSummaryResponse'>
+
+export type OnlineQualitySummaryResponse = {
   enabled: boolean
   path: string
   window_minutes: number
@@ -30,46 +16,13 @@ export interface OnlineQualitySummaryResponse {
   alerts: Array<Record<string, unknown>>
 }
 
-export interface QuerysetHealthRunsResponse {
-  enabled: boolean
-  path: string
-  total: number
-  truncated: boolean
-  items: Array<Record<string, unknown>>
-  timeseries: Record<string, unknown[]>
-}
+export type QuerysetHealthRunsResponse = OpenApiSchema<'QuerysetHealthRunsResponse'>
 
-export interface QuerysetHealthDiffResponse {
-  diff: Record<string, unknown>
-}
+export type QuerysetHealthDiffResponse = OpenApiSchema<'QuerysetHealthDiffResponse'>
 
-export interface RagQueryAnalyticsResponse {
-  enabled: boolean
-  path: string
-  window_minutes: number
-  truncated: boolean
-  record_count: number
-  rag_trace_count: number
-  unique_query_hashes: number
+export type RagQueryAnalyticsResponse = OpenApiSchema<'RagQueryAnalyticsResponse'>
 
-  zero_hit_count: number
-  zero_hit_rate?: number | null
-
-  slow_threshold_sec: number
-  slow_count: number
-  slow_rate?: number | null
-
-  retrieval_p50_elapsed_sec?: number | null
-  retrieval_p95_elapsed_sec?: number | null
-  retrieval_p99_elapsed_sec?: number | null
-
-  error_kind_counts: Record<string, number>
-  top_zero_hit_queries: Array<{ query_hash: string; count: number } | Record<string, unknown>>
-  top_slow_queries: Array<{ query_hash: string; count: number; max_elapsed_sec: number } | Record<string, unknown>>
-  timeseries: Record<string, unknown[]>
-}
-
-export interface DepsDiagnosticsResponse {
+export type DepsDiagnosticsResponse = {
   schema: string
   generated_at: string
 
@@ -79,7 +32,7 @@ export interface DepsDiagnosticsResponse {
   milvus: Record<string, unknown>
 }
 
-export interface RagCostAttributionResponse {
+export type RagCostAttributionResponse = {
   enabled: boolean
   path: string
   window_minutes: number
@@ -107,13 +60,13 @@ export interface RagCostAttributionResponse {
   retrieval_query_count: number
 }
 
-export interface OpsConfigSnapshotResponse {
+export type OpsConfigSnapshotResponse = {
   schema: string
   fingerprint: string
   config: Record<string, unknown>
 }
 
-export interface PeriodicJobFreshnessItemResponse {
+export type PeriodicJobFreshnessItemResponse = {
   key: string
   action: string
   resource_type: string
@@ -127,14 +80,14 @@ export interface PeriodicJobFreshnessItemResponse {
   stale: boolean
 }
 
-export interface PeriodicJobFreshnessResponse {
+export type PeriodicJobFreshnessResponse = {
   schema: string
   generated_at: string
   tenant_id: string
   items: PeriodicJobFreshnessItemResponse[]
 }
 
-export interface TaskQueueObservabilitySnapshotResponse {
+export type TaskQueueObservabilitySnapshotResponse = {
   schema: string
   generated_at: string
   source: string
@@ -154,7 +107,7 @@ export interface TaskQueueObservabilitySnapshotResponse {
   error?: string | null
 }
 
-export interface RagTraceBundleResponse {
+export type RagTraceBundleResponse = {
   enabled: boolean
   path: string
   window_minutes: number
@@ -164,7 +117,7 @@ export interface RagTraceBundleResponse {
   records: Array<Record<string, unknown>>
 }
 
-export interface RagTraceBundleSummaryResponse {
+export type RagTraceBundleSummaryResponse = {
   request_id: string
   window_minutes: number
   truncated: boolean
@@ -191,14 +144,14 @@ export interface RagTraceBundleSummaryResponse {
   vector_backend?: string | null
 }
 
-export interface RagTraceBundleDiffItem {
+export type RagTraceBundleDiffItem = {
   key: string
   a?: unknown
   b?: unknown
   delta?: number | null
 }
 
-export interface RagTraceBundleDiffResponse {
+export type RagTraceBundleDiffResponse = {
   schema: string
   generated_at: string
   request_id_a: string
@@ -210,7 +163,7 @@ export interface RagTraceBundleDiffResponse {
   diff: RagTraceBundleDiffItem[]
 }
 
-export interface SloWindowSnapshotResponse {
+export type SloWindowSnapshotResponse = {
   window_minutes: number
   source: string
   rag_trace_count?: number | null
@@ -220,13 +173,13 @@ export interface SloWindowSnapshotResponse {
   error_rate?: number | null
 }
 
-export interface SloSnapshotResponse {
+export type SloSnapshotResponse = {
   schema: string
   generated_at: string
   windows: SloWindowSnapshotResponse[]
 }
 
-export interface IndexAuditChannelSummary {
+export type IndexAuditChannelSummary = {
   documents_with_channel_rows?: number
   documents_using_legacy_fallback?: number
   ready_documents?: number
@@ -247,7 +200,7 @@ export interface IndexAuditChannelSummary {
   legacy_by_channel?: Record<string, number>
 }
 
-export interface IndexAuditResponse {
+export type IndexAuditResponse = {
   tenant_id: string
   dataset_id: string
   vector_backend: string
@@ -265,23 +218,16 @@ export interface IndexAuditResponse {
   index_channels?: IndexAuditChannelSummary
 }
 
-export interface IndexAuditReconcileResponse {
-  schema?: string
-  task_id?: string | null
-  reconcile_task_id?: string | null
-  status?: string | null
-  enqueued?: boolean | null
-  message?: string | null
-}
+export type IndexAuditReconcileResponse = OpenApiSchema<'IndexAuditReconcileResponse'>
 
-export interface IndexAuditReconcileEnqueueRequest {
+export type IndexAuditReconcileEnqueueRequest = {
   dataset_id: string
   document_id?: string | null
   limit?: number
   dry_run?: boolean
 }
 
-export interface IndexAuditReconcileEnqueueResponse {
+export type IndexAuditReconcileEnqueueResponse = {
   schema: string
   job_name: string
   job_id: string
@@ -297,13 +243,8 @@ export interface IndexAuditReconcileEnqueueResponse {
   legacy_unknown_report_only: boolean
 }
 
-export interface IndexAuditReconcileStatusResponse {
-  status:
-    | 'legacy_unknown'
-    | 'pending'
-    | 'error'
-    | 'ready'
-    | 'unknown'
+export type IndexAuditReconcileStatusResponse = {
+  status: 'legacy_unknown' | 'pending' | 'error' | 'ready' | 'unknown'
   reason?: string | null
   legacy?: boolean | null
   ready?: boolean | null
@@ -317,7 +258,7 @@ export interface IndexAuditReconcileStatusResponse {
   } | null
 }
 
-export interface IngestionDashboardSummaryResponse {
+export type IngestionDashboardSummaryResponse = {
   window_hours: number
   bucket_minutes: number
   window_start: string
@@ -330,5 +271,5 @@ export interface IngestionDashboardSummaryResponse {
   avg_completed_latency_sec?: number | null
 
   top_error_reasons: Record<string, number>
-  timeseries: Record<string, any[]>
+  timeseries: OpenApiSchema<'IngestionTimeseries'>
 }

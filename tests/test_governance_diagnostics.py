@@ -1,9 +1,8 @@
-
 from types import SimpleNamespace
 
 import pytest
 
-from app.rag.preprocessing import diagnostics
+from app.rag.ingestion.governance import diagnostics
 
 
 def _artifact_rich_text() -> str:
@@ -120,15 +119,16 @@ def test_filter_risks_and_after_clean_density_preserve_order_and_thresholds(
         lambda *_args, **_kwargs: set(),
     )
     seen: dict[str, float] = {}
+    density_calls: list[tuple[str, float]] = []
 
     def outline(_text: str, *, min_content_chars: int, max_heading_ratio: float):
         seen["outline_min"] = min_content_chars
         seen["outline_ratio"] = max_heading_ratio
         return SimpleNamespace(dropped=True)
 
-    def low_density(_text: str, *, threshold: float):
-        seen["density_threshold"] = threshold
-        return SimpleNamespace(dropped=True)
+    def low_density(text: str, *, threshold: float):
+        density_calls.append((text, threshold))
+        return SimpleNamespace(dropped=True, metrics={"density": threshold / 2})
 
     monkeypatch.setattr(diagnostics, "drop_if_outline_only", outline)
     monkeypatch.setattr(diagnostics, "drop_if_low_density", low_density)
@@ -155,8 +155,8 @@ def test_filter_risks_and_after_clean_density_preserve_order_and_thresholds(
     assert seen == {
         "outline_min": 321,
         "outline_ratio": 0.7,
-        "density_threshold": 0.2,
     }
+    assert density_calls == [("Readable text", 0.2), ("!!!", 0.08)]
 
 
 def test_html_input_and_max_chars_bound_artifact_detection(

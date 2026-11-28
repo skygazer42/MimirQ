@@ -97,4 +97,38 @@ describe('OIDC exchange route', () => {
     expect(cookie).toContain('Path=/api/oidc')
     expect(cookie).toContain('SameSite=lax')
   })
+
+  it.each([
+    ['code', 42],
+    ['code_verifier', { value: 'verifier' }],
+    ['provider_id', ['default']],
+    ['redirect_uri', { toString: 42 }],
+  ])('rejects non-string %s without contacting the provider', async (field, value) => {
+    const request = new NextRequest('https://app.example.com/api/oidc/exchange', {
+      method: 'POST',
+      headers: { origin: 'https://app.example.com', 'content-type': 'application/json' },
+      body: JSON.stringify({ code: 'auth-code', code_verifier: 'verifier', provider_id: 'default', [field]: value }),
+    })
+
+    const response = await POST(request)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'invalid_request' })
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(oidc.fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([null, {}])('preserves the missing-input response for %j', async (body) => {
+    const response = await POST(
+      new NextRequest('https://app.example.com/api/oidc/exchange', {
+        method: 'POST',
+        headers: { origin: 'https://app.example.com', 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'missing_code_or_verifier' })
+    expect(oidc.fetch).not.toHaveBeenCalled()
+  })
 })

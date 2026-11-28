@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,19 +5,19 @@ import pytest
 from langchain_core.documents import Document
 
 import app.rag.pipeline_plugins.local_runner as local_runner
-from app.parsing.utils import text as text_utils
-from app.rag.chunking.contextual_enrichment import build_context_prefix
-from app.rag.chunking.strategies.http_trace import HTTPTraceChunker
-from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker
-from app.rag.chunking.strategies.xml_feed import XMLFeedChunker
-from app.rag.evaluation.kg_hardcase_generator import Hardcase, sanitize_hardcases
+from app.rag.evaluation.generation.kg_hardcase_generator import Hardcase, sanitize_hardcases
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
+from app.rag.ingestion.chunking.contextual_enrichment import build_context_prefix
+from app.rag.ingestion.chunking.strategies.records.http_trace import HTTPTraceChunker
+from app.rag.ingestion.chunking.strategies.records.sitemap_xml import SitemapXMLChunker
+from app.rag.ingestion.chunking.strategies.records.xml_feed import XMLFeedChunker
+from app.rag.ingestion.governance.markup.code_blocks import strip_fenced_code_line_numbers
+from app.rag.ingestion.governance.redaction.secrets import SecretMatch, find_secret_matches
+from app.rag.ingestion.governance.tagging.cpu_tagger import extract_cpu_tags
+from app.rag.ingestion.parsing.utils import text as text_utils
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY
 from app.rag.policy.query_expansion import build_lightweight_subquery_queries
-from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
-from app.rag.preprocessing.cpu_tagger import extract_cpu_tags
-from app.rag.preprocessing.secrets import SecretMatch, find_secret_matches
-from app.rag.retrieval.hybrid.common import _iter_metadata_exact_anchor_values
+from app.rag.retrieval.recall.common import _iter_metadata_exact_anchor_values
 
 
 def _summarize_chunks(chunker, text: str) -> list[tuple[str, dict]]:
@@ -197,6 +196,17 @@ def test_sitemap_and_xml_feed_chunkers_characterize_offsets_and_entry_metadata()
                 "chunk_index": 2,
             },
         ),
+        (
+            "</urlset>",
+            {
+                "chunk_strategy": "sitemap_xml",
+                "start_char": 115,
+                "end_char": 124,
+                "doc_type_kwd": "sitemap",
+                "sitemap_xml_unstructured": True,
+                "chunk_index": 3,
+            },
+        ),
     ]
     assert _summarize_chunks(XMLFeedChunker(1000, 0), xml_feed_text) == [
         (
@@ -236,6 +246,17 @@ def test_sitemap_and_xml_feed_chunkers_characterize_offsets_and_entry_metadata()
                 "xml_feed_count": 2,
                 "xml_feed_title": "Gamma",
                 "chunk_index": 2,
+            },
+        ),
+        (
+            "</channel></rss>",
+            {
+                "chunk_strategy": "xml_feed",
+                "start_char": 181,
+                "end_char": 197,
+                "doc_type_kwd": "xml",
+                "xml_feed_unstructured": True,
+                "chunk_index": 3,
             },
         ),
     ]

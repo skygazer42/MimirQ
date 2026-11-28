@@ -43,12 +43,16 @@ def _filter_manifest_cases(manifest_path: Path, docs_arg: str) -> tuple[Path, Pa
     if not isinstance(rows, list):
         raise ValueError("manifest_invalid")
 
-    docs_raw = str(docs_arg or "").strip().lower()
+    docs_raw = docs_arg.strip().lower()
     if docs_raw in {"", "all", "*"}:
         return manifest_path.parent, manifest_path
 
     requested = {item.strip() for item in docs_raw.split(",") if item.strip()}
-    filtered = [row for row in rows if isinstance(row, dict) and str(row.get("id") or "").strip().lower() in requested]
+    filtered = [
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("id") is not None and str(row["id"]).strip().lower() in requested
+    ]
     if not filtered:
         raise ValueError("docs_filter_empty")
 
@@ -62,7 +66,7 @@ def _filter_manifest_cases(manifest_path: Path, docs_arg: str) -> tuple[Path, Pa
 def _augment_report(out_path: Path) -> None:
     report = _load_json(out_path)
     if not isinstance(report, dict):
-        return
+        raise ValueError("parse_benchmark_report_must_be_object")
     report["doc_type_matrix"] = build_doc_type_matrix(report)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -98,17 +102,17 @@ def run(argv: list[str] | None = None) -> int:
         "--out",
         str(out_path),
     ]
-    if str(args.baseline or "").strip():
+    if args.baseline.strip():
         bench_argv.extend(["--baseline", str(Path(args.baseline).resolve())])
-    if str(args.strict_profile or "").strip():
+    if args.strict_profile.strip():
         bench_argv.extend(["--strict-profile", str(Path(args.strict_profile).resolve())])
-    if bool(args.strict):
+    if args.strict:
         bench_argv.append("--strict")
 
     parser_benchmark_script = _load_parser_benchmark_module()
     with _patched_argv(bench_argv):
         exit_code = int(parser_benchmark_script.main() or 0)
-    if out_path.exists():
+    if exit_code == 0 or out_path.exists():
         _augment_report(out_path)
     return exit_code
 

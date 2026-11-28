@@ -3,27 +3,26 @@
  */
 'use client'
 
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { ConnectorRunOut } from '@/types'
+import type { ConnectorRunOut } from '@/types/connectors'
 import { connectorApi } from '@/lib/api/connectors'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientWarning } from '@/lib/client-logging'
 import { detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
 
-
-export type ConnectorRunsListParams = {
+type ConnectorRunsListParams = {
   datasetId?: string
   limit?: number
 }
 
+export type LoadConnectorRuns = (params?: ConnectorRunsListParams, options?: { selectScope?: boolean }) => Promise<void>
+
 type UseConnectorRunsOptions = {
   selectedDatasetId?: string
-  limit?: number
-  loadDocuments?: () => void | Promise<void>
 }
 
 type ConnectorRunsScope = {
@@ -31,120 +30,113 @@ type ConnectorRunsScope = {
   limit: number
 }
 
-export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments }: UseConnectorRunsOptions) {
+async function fetchConnectorRuns(scope: ConnectorRunsScope, signal: AbortSignal): Promise<ConnectorRunOut[]> {
+  const res = await connectorApi.listRuns({ limit: scope.limit, dataset_id: scope.datasetId }, { signal })
+  return res.items
+}
+
+const CONNECTOR_RUNS_LIMIT = 20
+
+export function useConnectorRuns({ selectedDatasetId }: UseConnectorRunsOptions) {
   const queryClient = useQueryClient()
-  const [scope, setScope] = useState<ConnectorRunsScope>({ datasetId: selectedDatasetId, limit })
+  const [scope, setScope] = useState<ConnectorRunsScope>({ datasetId: selectedDatasetId, limit: CONNECTOR_RUNS_LIMIT })
   const [enabled, setEnabled] = useState(false)
-
-  const queryParams = useMemo(
-    () => ({
-      datasetId: scope.datasetId,
-      limit: scope.limit,
-    }),
-    [scope.datasetId, scope.limit]
-  )
-
-  const queryFn = useCallback(async () => {
-    const res = await connectorApi.listRuns({
-      limit: queryParams.limit,
-      dataset_id: queryParams.datasetId,
-    })
-    return res.items || []
-  }, [queryParams.datasetId, queryParams.limit])
 
   const {
     data: connectorRuns = [],
     dataUpdatedAt,
+    error,
     isFetching,
     isLoading,
-  } = useQuery<ConnectorRunOut[]>({
-    queryKey: queryKeys.connectors.runs(queryParams),
-    queryFn,
+  } = useQuery({
+    queryKey: queryKeys.connectors.runs(scope),
+    queryFn: ({ signal }) => fetchConnectorRuns(scope, signal),
     enabled,
-    placeholderData: keepPreviousData,
   })
 
-  const loadConnectorRuns = useCallback(
-    async (params?: ConnectorRunsListParams) => {
-      const nextScope = {
-        datasetId: params?.datasetId ?? selectedDatasetId,
-        limit: params?.limit ?? limit,
-      }
-      setScope(nextScope)
-      setEnabled(true)
-
+  const fetchRunsForScope = useCallback(
+    async (targetScope: ConnectorRunsScope) => {
       try {
         await queryClient.fetchQuery({
-          queryKey: queryKeys.connectors.runs(nextScope),
-          queryFn: async () => {
-            const res = await connectorApi.listRuns({
-              limit: nextScope.limit,
-              dataset_id: nextScope.datasetId,
-            })
-            return res.items || []
-          },
+          queryKey: queryKeys.connectors.runs(targetScope),
+          staleTime: 0,
+          queryFn: ({ signal }) => fetchConnectorRuns(targetScope, signal),
         })
       } catch (err) {
         reportClientWarning('Load connector runs failed', err)
       }
     },
-    [limit, queryClient, selectedDatasetId]
+    [queryClient],
   )
 
-  const refreshSelectedDatasetRuns = useCallback(async () => {
-    await loadConnectorRuns({ datasetId: selectedDatasetId })
-  }, [loadConnectorRuns, selectedDatasetId])
+  const loadConnectorRuns = useCallback<LoadConnectorRuns>(
+    async (params, options) => {
+      const nextScope = {
+        datasetId: params?.datasetId ?? selectedDatasetId,
+        limit: params?.limit ?? CONNECTOR_RUNS_LIMIT,
+      }
+      if (options?.selectScope !== false) {
+        setScope((current) =>
+          current.datasetId === nextScope.datasetId && current.limit === nextScope.limit ? current : nextScope,
+        )
+        setEnabled(true)
+      }
+      await fetchRunsForScope(nextScope)
+    },
+    [fetchRunsForScope, selectedDatasetId],
+  )
+
+  const refreshActionDatasetRuns = useCallback(() => fetchRunsForScope(scope), [fetchRunsForScope, scope])
 
   const cancelConnectorRun = useCallback(
     async (runId: string) => {
-      if (!runId) return
       try {
-        await connectorApi.cancelRun(runId)
-        toast.success('已取消导入任务')
-        detachPromise(refreshSelectedDatasetRuns())
+        const run = await connectorApi.cancelRun(runId)
+        if (run.status === 'cancelled') {
+          toast.success('已取消导入任务')
+        } else {
+          toast.info('任务状态已变化，正在刷新列表')
+        }
+        detachPromise(refreshActionDatasetRuns())
       } catch (error: unknown) {
         toast.error(formatApiError(error, '取消导入任务失败'))
       }
     },
-    [refreshSelectedDatasetRuns]
+    [refreshActionDatasetRuns],
   )
 
   const retryFailedConnectorRun = useCallback(
     async (runId: string) => {
-      if (!runId) return
       try {
         const next = await connectorApi.retryFailed(runId)
-        toast.success(`已创建重试任务：${String(next.id || '').slice(0, 8)}`)
-        detachPromise(refreshSelectedDatasetRuns())
-        detachPromise(loadDocuments?.())
+        toast.success(`已创建重试任务：${next.id.slice(0, 8)}`)
+        detachPromise(refreshActionDatasetRuns())
       } catch (error: unknown) {
         toast.error(formatApiError(error, '重试失败项失败'))
       }
     },
-    [loadDocuments, refreshSelectedDatasetRuns]
+    [refreshActionDatasetRuns],
   )
 
   const resumeConnectorRun = useCallback(
     async (runId: string) => {
-      if (!runId) return
       try {
         const next = await connectorApi.resumeRun(runId)
-        toast.success(`已创建续跑任务：${String(next.id || '').slice(0, 8)}`)
-        detachPromise(refreshSelectedDatasetRuns())
-        detachPromise(loadDocuments?.())
+        toast.success(`已创建续跑任务：${next.id.slice(0, 8)}`)
+        detachPromise(refreshActionDatasetRuns())
       } catch (error: unknown) {
         toast.error(formatApiError(error, '续跑失败'))
       }
     },
-    [loadDocuments, refreshSelectedDatasetRuns]
+    [refreshActionDatasetRuns],
   )
 
   return {
     connectorRuns,
     connectorRunsLoading: enabled && (isLoading || isFetching),
-    connectorRunsUpdatedAt: dataUpdatedAt || null,
+    connectorRunsError: error === null ? null : formatApiError(error, '加载导入任务失败'),
+    connectorRunsUpdatedAt: dataUpdatedAt === 0 ? null : dataUpdatedAt,
     loadConnectorRuns,
-    refreshSelectedDatasetRuns,
     cancelConnectorRun,
     retryFailedConnectorRun,
     resumeConnectorRun,

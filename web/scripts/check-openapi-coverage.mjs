@@ -19,41 +19,41 @@ import { parseBackendRoutes, normalizeRoute, readText } from './api-contract-lib
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 
 function stripApiV1Prefix(rawPath) {
-  const p = String(rawPath || '')
-  if (p === '/api/v1') return '/'
-  if (p.startsWith('/api/v1/')) return p.slice('/api/v1'.length)
-  return p
+  if (rawPath === '/api/v1') return '/'
+  if (rawPath.startsWith('/api/v1/')) return rawPath.slice('/api/v1'.length)
+  return rawPath
 }
 
 function parseOpenapiRoutes() {
   const spec = JSON.parse(readText('web/openapi.json'))
-  const paths = spec?.paths && typeof spec.paths === 'object' ? spec.paths : {}
+  const paths = spec?.paths
+  if (paths === null || typeof paths !== 'object' || Array.isArray(paths)) {
+    throw new TypeError('web/openapi.json must contain a paths object')
+  }
 
-  const out = new Map()
+  const routes = new Map()
 
   for (const [rawPath, ops] of Object.entries(paths)) {
     const stripped = stripApiV1Prefix(rawPath)
     const normalized = normalizeRoute(stripped)
-    if (!ops || typeof ops !== 'object') continue
+    if (ops === null || typeof ops !== 'object') continue
 
     for (const method of Object.keys(ops)) {
-      if (String(method || '').startsWith('x-')) continue
-      const upper = String(method || '').toUpperCase()
+      const upper = method.toUpperCase()
       if (!HTTP_METHODS.has(upper)) continue
-      out.set(`${upper} ${normalized}`, { rawPath, method: upper })
+      routes.set(`${upper} ${normalized}`, { rawPath, method: upper })
     }
   }
 
-  return out
+  return routes
 }
 
-function isOpenapiV1Route(route) {
-  const rawPath = String(route?.rawPath || '')
+function isOpenapiV1Route({ rawPath }) {
   return rawPath === '/api/v1' || rawPath.startsWith('/api/v1/')
 }
 
 function main() {
-  const backend = parseBackendRoutes()
+  const backend = parseBackendRoutes({ schemaOnly: true })
   const openapi = parseOpenapiRoutes()
 
   const missing = []
@@ -73,16 +73,14 @@ function main() {
 
   if (!missing.length && !unexpectedV1Extras.length) {
     process.stdout.write(
-      `[openapi-coverage] OK: ${backend.size} backend routes covered (${openapi.size} OpenAPI routes; extras: ${extras.length})\n`
+      `[openapi-coverage] OK: ${backend.size} backend routes covered (${openapi.size} OpenAPI routes; extras: ${extras.length})\n`,
     )
     return
   }
 
   if (missing.length) {
     missing.sort((a, b) => a.key.localeCompare(b.key))
-    process.stderr.write(
-      `[openapi-coverage] FAIL: missing ${missing.length} backend routes in web/openapi.json\n\n`
-    )
+    process.stderr.write(`[openapi-coverage] FAIL: missing ${missing.length} backend routes in web/openapi.json\n\n`)
     for (const m of missing.slice(0, 200)) {
       process.stderr.write(`- ${m.key}  (backend: ${m.src})\n`)
     }
@@ -94,7 +92,7 @@ function main() {
   if (unexpectedV1Extras.length) {
     if (missing.length) process.stderr.write('\n')
     process.stderr.write(
-      `[openapi-coverage] FAIL: ${unexpectedV1Extras.length} OpenAPI /api/v1 routes are not represented by app/api/v1 route parsing\n\n`
+      `[openapi-coverage] FAIL: ${unexpectedV1Extras.length} OpenAPI /api/v1 routes are not represented by app/api/v1 route parsing\n\n`,
     )
     for (const item of unexpectedV1Extras.slice(0, 200)) {
       process.stderr.write(`- ${item.key}  (openapi: ${item.route.rawPath})\n`)

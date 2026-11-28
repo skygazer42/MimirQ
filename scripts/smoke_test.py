@@ -178,9 +178,9 @@ def wait_ready(
         try:
             resp = client.get(url)
             payload = _parse_json(resp)
-            ok = bool(isinstance(payload, dict) and payload.get("ok") is True)
+            ok = isinstance(payload, dict) and payload.get("ok") is True
             if resp.status_code == 200 and ok:
-                return payload if isinstance(payload, dict) else {"ok": True}
+                return payload
 
             note = f"status={resp.status_code}"
             if isinstance(payload, dict):
@@ -361,7 +361,7 @@ def _summarize_retrieval_evidence(
         for item in rows
     )
     return {
-        "has_evidence": bool(isinstance(payload, dict) and payload.get("has_evidence") is True),
+        "has_evidence": isinstance(payload, dict) and payload.get("has_evidence") is True,
         "citation_count": len(rows),
         "matched": matched,
     }
@@ -736,8 +736,8 @@ def _resolve_auth_headers(
 
     headers = build_headers(
         tenant_id=tenant_id,
-        user_id=(user_id or None),
-        token=(token or None),
+        user_id=user_id,
+        token=token,
     )
     report["headers"] = {
         "tenant": bool(headers.get("X-Tenant-ID")),
@@ -747,6 +747,14 @@ def _resolve_auth_headers(
     return headers
 
 
+def _require_created_id(response: httpx.Response, *, url: str, detail: str) -> str:
+    payload = _parse_json(response)
+    created_id = payload.get("id") if isinstance(payload, dict) else None
+    if isinstance(created_id, str) and created_id.strip():
+        return created_id
+    raise CallError(method="POST", url=url, status_code=response.status_code, detail=detail)
+
+
 def _ensure_dataset(
     client: httpx.Client,
     *,
@@ -754,35 +762,27 @@ def _ensure_dataset(
     headers: dict[str, str],
     dataset_id_arg: str | None,
 ) -> tuple[str, bool]:
-    dataset_id = str(dataset_id_arg or "").strip() or None
-    created_dataset = dataset_id is None
-    if dataset_id:
-        print(f"[smoke] dataset: reuse {dataset_id}")
-        return dataset_id, created_dataset
+    existing_id = dataset_id_arg.strip() if dataset_id_arg is not None else ""
+    if existing_id:
+        print(f"[smoke] dataset: reuse {existing_id}")
+        return existing_id, False
 
     ds_payload = {
         "name": f"smoke-{uuid.uuid4().hex[:8]}",
         "description": "smoke test dataset",
     }
-    ds_resp = request_with_retries(
+    url = _join(api_base, "datasets/")
+    response = request_with_retries(
         client,
         "POST",
-        _join(api_base, "datasets/"),
+        url,
         expected={201},
         headers=headers,
         json=ds_payload,
     )
-    ds_json = _parse_json(ds_resp)
-    dataset_id = str(ds_json.get("id") if isinstance(ds_json, dict) else "") or None
-    if not dataset_id:
-        raise CallError(
-            method="POST",
-            url=_join(api_base, "datasets/"),
-            status_code=ds_resp.status_code,
-            detail="dataset create returned no id",
-        )
+    dataset_id = _require_created_id(response, url=url, detail="dataset create returned no id")
     print(f"[smoke] dataset: created {dataset_id}")
-    return dataset_id, created_dataset
+    return dataset_id, True
 
 
 def _upload_smoke_document(
@@ -801,10 +801,11 @@ def _upload_smoke_document(
         "SMOKE_NOTE: This is a test artifact.\n"
     )
     files = {"file": ("smoke.txt", doc_text.encode("utf-8"), "text/plain")}
-    up_resp = request_with_retries(
+    url = _join(api_base, "documents/upload")
+    response = request_with_retries(
         client,
         "POST",
-        _join(api_base, "documents/upload"),
+        url,
         expected={201},
         headers=headers,
         files=files,
@@ -814,15 +815,7 @@ def _upload_smoke_document(
             core_only=core_only,
         ),
     )
-    up_json = _parse_json(up_resp)
-    doc_id = str(up_json.get("id") if isinstance(up_json, dict) else "") or None
-    if not doc_id:
-        raise CallError(
-            method="POST",
-            url=_join(api_base, "documents/upload"),
-            status_code=up_resp.status_code,
-            detail="upload returned no document id",
-        )
+    doc_id = _require_created_id(response, url=url, detail="upload returned no document id")
     print(f"[smoke] upload: document_id={doc_id}")
     return doc_id, smoke_fact
 
@@ -842,9 +835,9 @@ def _record_ingestion_status(
         api_base=api_base,
         headers=headers,
         document_id=document_id,
-        timeout_sec=float(args.ingest_timeout_sec),
-        poll_interval_sec=float(args.poll_interval_sec),
-        verbose=bool(args.verbose),
+        timeout_sec=args.ingest_timeout_sec,
+        poll_interval_sec=args.poll_interval_sec,
+        verbose=args.verbose,
     )
     print("[smoke] ingest: completed")
     if secondary_api_base:
@@ -853,9 +846,9 @@ def _record_ingestion_status(
             api_base=secondary_api_base,
             headers=headers,
             document_id=document_id,
-            timeout_sec=float(args.ingest_timeout_sec),
-            poll_interval_sec=float(args.poll_interval_sec),
-            verbose=bool(args.verbose),
+            timeout_sec=args.ingest_timeout_sec,
+            poll_interval_sec=args.poll_interval_sec,
+            verbose=args.verbose,
         )
         print("[smoke] secondary ingest view: completed")
 
@@ -987,7 +980,7 @@ def _validate_chat_response(
     require_structured: bool,
     report: dict[str, Any],
 ) -> bool:
-    structured_flag = bool(chat_json.get("structured") is True)
+    structured_flag = chat_json.get("structured") is True
     structured_data = chat_json.get("structured_data")
     content = str(chat_json.get("content") or "")
     answer = ""
@@ -1043,7 +1036,7 @@ def _run_chat_mode(
     report: dict[str, Any],
     started: float,
 ) -> None:
-    structured_preset = str(args.structured_preset or "summary")
+    structured_preset = args.structured_preset or "summary"
     chat_resp = request_with_retries(
         client,
         "POST",
@@ -1078,7 +1071,7 @@ def _run_chat_mode(
         chat_json=chat_json,
         smoke_fact=smoke_fact,
         structured_preset=structured_preset,
-        require_structured=not bool(args.allow_unstructured),
+        require_structured=not args.allow_unstructured,
         report=report,
     )
     structured_data = chat_json.get("structured_data")
@@ -1104,28 +1097,28 @@ def _execute_smoke(
     report: dict[str, Any],
     started: float,
 ) -> int | None:
-    timeout = httpx.Timeout(float(args.timeout_sec))
+    timeout = httpx.Timeout(args.timeout_sec)
     limits = httpx.Limits(max_connections=10, max_keepalive_connections=10)
     with _create_client(timeout=timeout, limits=limits) as client:
         report["ready"] = wait_ready(
             client,
             api_base=api_base,
-            timeout_sec=float(args.ready_timeout_sec),
-            poll_interval_sec=float(args.poll_interval_sec),
+            timeout_sec=args.ready_timeout_sec,
+            poll_interval_sec=args.poll_interval_sec,
         )
         print("[smoke] ready: ok")
         if args.web_base_url:
             report["web_auth"] = _probe_web_auth_page(
                 client,
-                web_base=str(args.web_base_url),
+                web_base=args.web_base_url,
             )
             print("[smoke] web: auth page ok")
         if secondary_api_base:
             report["secondary_ready"] = wait_ready(
                 client,
                 api_base=secondary_api_base,
-                timeout_sec=float(args.ready_timeout_sec),
-                poll_interval_sec=float(args.poll_interval_sec),
+                timeout_sec=args.ready_timeout_sec,
+                poll_interval_sec=args.poll_interval_sec,
             )
             print("[smoke] secondary ready: ok")
 
@@ -1149,8 +1142,8 @@ def _execute_smoke(
             api_base=api_base,
             headers=headers,
             dataset_id=dataset_id,
-            parser_backend=str(args.parser_backend or "auto"),
-            core_only=bool(args.core_only),
+            parser_backend=args.parser_backend or "auto",
+            core_only=args.core_only,
         )
         report["document_id"] = doc_id
         _record_ingestion_status(

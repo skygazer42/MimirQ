@@ -4,15 +4,17 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.rag.retrieval.recall import channel_collection
+
 if not hasattr(_datetime, "UTC"):
     _datetime.UTC = _datetime.timezone.utc
 
 
 def _runtime(*, dataset_scoped: bool, space: str = "space-a", collection: str = "documents_emb_space_a"):
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     return DatasetEmbeddingRuntimeConfig(
-        provider="local",
+        provider="openai_compatible",
         model="embed-model",
         api_base="",
         api_key="",
@@ -23,12 +25,10 @@ def _runtime(*, dataset_scoped: bool, space: str = "space-a", collection: str = 
 
 
 def _configure_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     for name, value in {
         "BM25_INDEX_ENABLED": False,
-        "COLBERT_RETRIEVAL_ENABLED": False,
-        "COLPALI_RETRIEVAL_ENABLED": False,
         "LEXICAL_DB_ENABLED": False,
         "RETRIEVAL_CANDIDATE_CACHE_ENABLED": False,
         "SEMANTIC_CACHE_ENABLED": False,
@@ -37,15 +37,15 @@ def _configure_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
         "RETRIEVAL_GOVERNANCE_PREFER_LATEST": False,
         "RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED": False,
     }.items():
-        monkeypatch.setattr(settings, name, value, raising=False)
+        monkeypatch.setattr(settings, name, value)
 
 
 def test_index_chunks_raises_when_scoped_document_runtime_cannot_be_resolved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.indexer as indexer_module
-    from app.models.dataset import Dataset as DBDataset
-    from app.models.document import Document as DBDocument
+    import app.rag.ingestion.indexing.indexer as indexer_module
+    from app.models.datasets.records import Dataset as DBDataset
+    from app.models.documents.records import Document as DBDocument
     from app.types.indexing import ChunkInput
 
     tenant_id = uuid.uuid4()
@@ -96,8 +96,8 @@ def test_index_chunks_raises_when_scoped_document_runtime_cannot_be_resolved(
 def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
+    import app.rag.retrieval.recall.retriever as retriever_module
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     _configure_retrieval(monkeypatch)
     tenant_id = uuid.uuid4()
@@ -122,7 +122,7 @@ def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
             return None
 
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=lambda **kwargs: []))
+    monkeypatch.setattr(channel_collection, "get_vector_store", lambda: SimpleNamespace(search=lambda **kwargs: []))
 
     retriever = HybridRetriever(
         tenant_id=tenant_id,
@@ -145,11 +145,8 @@ def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
         )
 
 
-def test_retriever_dataset_scope_rejects_malformed_runtime_metadata(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
+def test_retriever_dataset_scope_rejects_malformed_runtime_metadata() -> None:
+    from app.rag.retrieval.recall.runtime_scope import RetrievalScope, resolve_runtime_scope
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -168,35 +165,36 @@ def test_retriever_dataset_scope_rejects_malformed_runtime_metadata(
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-
     with pytest.raises(LookupError, match="dataset-scoped embedding runtime invalid"):
-        HybridRetriever(dataset_ids=[dataset_id])._resolve_dataset_runtime_shards(tenant_id=tenant_id)
+        resolve_runtime_scope(_Session(), scope=RetrievalScope(tenant_id, "member", dataset_ids=(dataset_id,)))
 
 
 def test_retriever_document_scope_raises_when_dataset_runtime_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.retriever import HybridRetriever
+    from app.models.datasets.records import Dataset
+    from app.models.documents.records import Document
+    from app.rag.retrieval.recall import retriever as retriever_module
 
     _configure_retrieval(monkeypatch)
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(
-        HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _runtime(dataset_scoped=False)
-    )
-    monkeypatch.setattr(
-        HybridRetriever,
-        "_resolve_document_dataset_scope",
-        lambda self, *, tenant_id, document_ids: ((dataset_id,), False),  # noqa: ARG005
-    )
-    monkeypatch.setattr(
-        HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: []
-    )  # noqa: ARG005
+    lookups = []
 
-    retriever = HybridRetriever(
+    class _Session:
+        def query(self, *columns):
+            lookups.append(columns)
+            rows = [(document_id, dataset_id)] if columns == (Document.id, Document.dataset_id) else []
+            return SimpleNamespace(filter=lambda *_conditions: SimpleNamespace(all=lambda: rows))
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(retriever_module, "SessionLocal", _Session)
+
+    retriever = retriever_module.HybridRetriever(
         tenant_id=tenant_id,
         account_id="member-1",
         document_ids=[document_id],
@@ -216,3 +214,4 @@ def test_retriever_document_scope_raises_when_dataset_runtime_is_missing(
             tenant_id=tenant_id,
             retrieval_mode="vector",
         )
+    assert lookups == [(Document.id, Document.dataset_id), (Dataset.id, Dataset.dataset_metadata)]

@@ -6,8 +6,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.api.schemas.rbac import TenantMemberUpdateRequest
-from app.models.tenant import TenantMember
+from app.api.schemas.identity.permissions import TenantMemberUpdateRequest
+from app.models.identity.workspaces import TenantMember
 
 
 class _CommitOnlyDB:
@@ -19,7 +19,7 @@ class _CommitOnlyDB:
 
 
 def test_global_chunk_preset_mutation_requires_editor_role(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import chunk_presets
+    from app.api.v1.pipelines import chunk_presets
 
     write_called = False
 
@@ -29,11 +29,11 @@ def test_global_chunk_preset_mutation_requires_editor_role(monkeypatch: pytest.M
         return SimpleNamespace(id=uuid4(), name="shared", description=None, payload={})
 
     monkeypatch.setattr(
-        chunk_presets.DatasetService,
+        chunk_presets.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
     )
-    monkeypatch.setattr(chunk_presets, "_create_chunk_preset_row", _create)
+    monkeypatch.setattr(chunk_presets.chunk_preset_service, "create_chunk_preset", _create)
 
     with pytest.raises(HTTPException) as exc_info:
         chunk_presets.create_chunk_preset(
@@ -49,7 +49,7 @@ def test_global_chunk_preset_mutation_requires_editor_role(monkeypatch: pytest.M
 
 @pytest.mark.asyncio
 async def test_rtbf_execution_requires_lifecycle_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import rtbf
+    from app.api.v1.system import rtbf
 
     cascade_called = False
 
@@ -77,7 +77,7 @@ async def test_rtbf_execution_requires_lifecycle_permission(monkeypatch: pytest.
 
 
 def test_prompt_template_mutations_require_settings_write(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import prompt_templates
+    from app.api.v1.conversations import prompts as prompt_templates
 
     def _deny(*_args, **_kwargs) -> None:
         raise HTTPException(status_code=403, detail="denied")
@@ -135,7 +135,7 @@ def test_prompt_template_mutations_require_settings_write(monkeypatch: pytest.Mo
 
 
 def test_industry_rule_write_requires_system_settings_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import industry_rules
+    from app.api.v1.pipelines import industry_rules
 
     write_called = False
 
@@ -173,7 +173,7 @@ def test_industry_ruleset_name_cannot_escape_ruleset_root() -> None:
 
 @pytest.mark.asyncio
 async def test_cannot_demote_the_only_active_admin() -> None:
-    from app.api.v1.rbac import patch_tenant_member_role
+    from app.api.v1.identity.rbac import patch_tenant_member_role
 
     engine = create_engine("sqlite:///:memory:")
     TenantMember.__table__.create(engine)
@@ -207,7 +207,7 @@ async def test_cannot_demote_the_only_active_admin() -> None:
 
 
 def test_can_demote_an_admin_when_another_active_admin_remains() -> None:
-    from app.api.v1.rbac import patch_tenant_member_role
+    from app.api.v1.identity.rbac import patch_tenant_member_role
 
     engine = create_engine("sqlite:///:memory:")
     TenantMember.__table__.create(engine)

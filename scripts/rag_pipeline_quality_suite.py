@@ -62,7 +62,7 @@ def _profile_counts(profile: str) -> dict[str, int]:
 
 def build_phases(args: argparse.Namespace) -> list[Phase]:
     py = str(args.python)
-    out_dir = Path(args.output_dir)
+    out_dir = Path(args.output_dir).resolve()
     base_url = str(args.base_url).rstrip("/")
     api_v1 = _api_v1_url(base_url)
     tenant_id = str(args.tenant_id)
@@ -338,19 +338,23 @@ def run_phases(phases: list[Phase], *, out_dir: Path) -> int:
             continue
 
         started = time.perf_counter()
-        proc = subprocess.run(phase.command, cwd=REPO_ROOT, text=True)  # noqa: S603
+        try:
+            returncode = subprocess.run(phase.command, cwd=REPO_ROOT, text=True).returncode  # noqa: S603
+        except OSError as exc:
+            print(f"[rag-pipeline-quality-suite] {phase.name} failed to start: {exc}", file=sys.stderr)
+            returncode = 1
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        status = "passed" if proc.returncode == 0 else "failed"
+        status = "passed" if returncode == 0 else "failed"
         results.append(
             {
                 **_phase_to_dict(phase),
                 "status": status,
-                "returncode": proc.returncode,
+                "returncode": returncode,
                 "elapsed_ms": elapsed_ms,
             }
         )
-        if proc.returncode != 0 and phase.required:
-            overall_rc = proc.returncode or 1
+        if returncode != 0 and phase.required:
+            overall_rc = returncode
             break
 
     report = {
@@ -413,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    return run_phases(phases, out_dir=Path(str(args.output_dir)))
+    return run_phases(phases, out_dir=Path(args.output_dir).resolve())
 
 
 if __name__ == "__main__":

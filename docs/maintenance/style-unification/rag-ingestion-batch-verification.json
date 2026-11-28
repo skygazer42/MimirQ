@@ -1,0 +1,96 @@
+{
+  "schema": "ragvia.rag_ingestion_batch_verification.v2",
+  "date": "2026-11-16",
+  "branch": "feat/ragvia-ui",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "counts": {
+    "app/rag/ingestion/parsing": {
+      "python_files": 124,
+      "lines": 31871
+    },
+    "app/rag/ingestion/governance": {
+      "python_files": 37,
+      "lines": 7658
+    },
+    "app/rag/ingestion/chunking": {
+      "python_files": 104,
+      "lines": 23056
+    },
+    "app/rag/ingestion/indexing": {
+      "python_files": 14,
+      "lines": 9286
+    }
+  },
+  "moves": {
+    "parsing_python": 127,
+    "parsing_resources": 134,
+    "raw_file_adapters": 8,
+    "governance_python": 37,
+    "chunking_python": 104,
+    "indexing_python": 14,
+    "pipeline": "app/rag/ingestion/pipeline.py",
+    "indexer_moved": true,
+    "vector_writer_moved": true,
+    "index_channels_moved": true
+  },
+  "checks": {
+    "python311_ast_compile": 1382,
+    "missing_app_import_bindings": 0,
+    "app_import_statements": 4915,
+    "ruff_check_exit": 0,
+    "ruff_format_exit": 0,
+    "git_diff_check_exit": 0,
+    "cold_parser_factory": true,
+    "cold_parser_worker": true,
+    "cold_governance_processor": true,
+    "cold_chunker_factory": true,
+    "cold_pipeline": true,
+    "cold_indexer": true,
+    "model_manifest_paths": 12,
+    "model_paths_new_root": true,
+    "active_old_path_refs": [],
+    "git_index_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "original_git_index_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "pytest_run": false,
+    "real_parser_model_db_vector_execution": false
+  },
+  "boundaries": {
+    "rag_owns": "parse,governance,document_chunking,post_parse_processing,indexing_orchestration",
+    "services_api_owns": "HTTP upload,URL download,request validation,application facade",
+    "storage_models_connectors_own": "resource clients,ORM and external connection lifecycles"
+  },
+  "next_scope": "Reduce direct API/document-service imports through a public ingestion entry without moving HTTP-specific adapters into RAG.",
+  "current_inventory": {
+    "app_files": 1375,
+    "app_python": 1223,
+    "resources": 152,
+    "app_review_rows": 1375,
+    "coverage_rows": 6955,
+    "layout_rows": 1674,
+    "all_app_review_paths_current": true,
+    "all_current_hashes_verified": true,
+    "git_index_unchanged": true
+  },
+  "final_checks": {
+    "ruff_check": 0,
+    "ruff_format_check": 0,
+    "ast_compile_errors": 0,
+    "missing_app_imports": 0,
+    "git_diff_check": 0,
+    "cold_openapi": {
+      "paths": 358,
+      "routes": 422,
+      "schemas": 671,
+      "equal_previous_baseline": true
+    },
+    "old_active_path_refs": 0,
+    "pytest_run": false,
+    "note_format_exit": 0,
+    "note_archive_exit": 0,
+    "note_tree_exit": 1,
+    "note_tree_historical_missing_links": 10
+  },
+  "limits": [
+    "Note tree check still reports the same ten historical missing links; this batch did not rewrite unrelated historical references."
+  ]
+}

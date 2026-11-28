@@ -30,9 +30,12 @@ test('command menu natural-language handoff routes into chat autorun', async ({ 
   })
   await page.goto('/')
 
-  await expect(page.getByPlaceholder('问点什么... (Shift + Enter 换行)')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByLabel('消息输入框', { exact: true })).toBeVisible({ timeout: 60_000 })
 
-  await page.getByRole('button', { name: '打开命令搜索' }).click()
+  await page
+    .getByRole('navigation', { name: '主导航' })
+    .getByRole('button', { name: '搜索与命令', exact: true })
+    .click()
 
   const commandDialog = page.getByRole('dialog')
   await expect(commandDialog).toBeVisible()
@@ -40,12 +43,14 @@ test('command menu natural-language handoff routes into chat autorun', async ({ 
   const commandInput = commandDialog.getByRole('combobox')
   await expect(commandInput).toBeVisible()
   await commandInput.fill(prompt)
-  await expect(page.getByRole('option', { name: /执行自然语言指令/ })).toBeVisible()
+  await expect(commandDialog.getByRole('option', { name: /向知识库提问/ })).toHaveAttribute('aria-selected', 'true')
 
   await commandInput.press('Enter')
 
   await expect.poll(() => state.chatRequests?.at(-1)?.message || '').toBe(prompt)
-  await expect.poll(() => new URL(page.url()).searchParams.get('conversation')).toBe('conv-e2e-1')
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('conversation'))
+    .toBe(state.chatRequests?.at(-1)?.conversationId)
   await expect(page.getByText('已完成智能对话验证。')).toBeVisible({ timeout: 60_000 })
 })
 
@@ -59,7 +64,7 @@ test('document viewer restores expanded layout and active tab after reload', asy
 
   await page.getByRole('button', { name: '展开' }).click()
 
-  const chunksTab = page.getByRole('tab', { name: '智能切片' })
+  const chunksTab = page.getByRole('tab', { name: '切片', exact: true })
   await chunksTab.click()
   await expect(chunksTab).toHaveAttribute('data-state', 'active')
   await expect(page.getByRole('button', { name: '收起', exact: true })).toBeVisible()
@@ -67,6 +72,6 @@ test('document viewer restores expanded layout and active tab after reload', asy
   await page.reload()
 
   await expect(page.getByRole('heading', { name: UPLOADED_DOCUMENT_FILENAME })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('tab', { name: '智能切片' })).toHaveAttribute('data-state', 'active')
+  await expect(page.getByRole('tab', { name: '切片', exact: true })).toHaveAttribute('data-state', 'active')
   await expect(page.getByRole('button', { name: '收起', exact: true })).toBeVisible()
 })

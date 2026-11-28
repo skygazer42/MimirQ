@@ -8,6 +8,15 @@ function readWorkspaceFile(relativePath: string): string {
 }
 
 describe('global page title baseline', () => {
+  it('keeps the ontology lifecycle controls in the 52px title bar', () => {
+    const src = readWorkspaceFile('app/ontology/ontology-workspace.tsx')
+    const css = readWorkspaceFile('app/ontology/ontology.module.css')
+    expect(src).toContain('PageTitleIcon name="ontology"')
+    expect(src).toContain('aria-label="本体生命周期"')
+    expect(css).toContain('height: 52px')
+    expect(css).toContain('min-height: 44px')
+  })
+
   it('keeps the shared PageHeader aligned with the flat knowledge title bar', () => {
     const src = readWorkspaceFile('components/ui/page-header.tsx')
 
@@ -24,10 +33,11 @@ describe('global page title baseline', () => {
 
   it('keeps management and knowledge-ops title surfaces flat', () => {
     const src = readWorkspaceFile('components/ui/knowledge-ops-hero.tsx')
+    const header = readWorkspaceFile('components/ui/page-header.tsx')
 
     expect(src).toContain('rounded-none border-x-0 border-t-0 border-b')
-    expect(src).toContain('min-h-14')
-    expect(src).toContain('text-[19px]')
+    expect(header).toContain('min-h-14')
+    expect(header).toContain('text-[19px]')
     expect(src).not.toContain('rounded-[28px]')
     expect(src).not.toContain('blur-3xl')
     expect(src).not.toContain('text-transparent')
@@ -41,9 +51,7 @@ describe('global page title baseline', () => {
     ]
 
     for (const routeFile of routeFiles) {
-      expect(readWorkspaceFile(routeFile), routeFile).not.toContain(
-        'min-h-[95px]'
-      )
+      expect(readWorkspaceFile(routeFile), routeFile).not.toContain('min-h-[95px]')
     }
   })
 
@@ -54,21 +62,19 @@ describe('global page title baseline', () => {
       'app/datasets/[id]/tables/page.tsx',
       'app/datasets/[id]/ingestion/page.tsx',
       'app/datasets/[id]/precheck/page-client.tsx',
-      'app/datasets/[id]/workflow/page.tsx',
       'app/datasets/[id]/db-catalog/page.tsx',
     ]
 
     for (const routeFile of routeFiles) {
       const src = readWorkspaceFile(routeFile)
       expect(src, routeFile).not.toMatch(
-        /const \w+HeroCard = '[^']*(?:rounded-(?:2xl|\[26px\])|radial-gradient|shadow-\[0_)/
+        /const \w+HeroCard = '[^']*(?:rounded-(?:2xl|\[26px\])|radial-gradient|shadow-\[0_)/,
       )
     }
   })
 
   it('keeps ingestion and graph private title implementations on the same baseline', () => {
     const routeFiles = [
-      'components/knowledge/ingestion/ingestion-hero-panel.tsx',
       'app/knowledge/ingestion/page-client.tsx',
       'app/knowledge/ingestion/operation-page-client.tsx',
       'app/graph/_components/graph-page-header.tsx',
@@ -81,11 +87,11 @@ describe('global page title baseline', () => {
       expect(src, routeFile).not.toContain('text-transparent')
     }
 
-    expect(
-      readWorkspaceFile('app/knowledge/ingestion/page-client.tsx')
-    ).not.toMatch(/const INGESTION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/)
-    expect(
-      readWorkspaceFile('app/knowledge/ingestion/operation-page-client.tsx')
-    ).not.toMatch(/const OPERATION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/)
+    expect(readWorkspaceFile('app/knowledge/ingestion/page-client.tsx')).not.toMatch(
+      /const INGESTION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/,
+    )
+    expect(readWorkspaceFile('app/knowledge/ingestion/operation-page-client.tsx')).not.toMatch(
+      /const OPERATION_HERO_PANEL_CLASS =\s*'[^']*rounded-\[28px\]/,
+    )
   })
 })

@@ -1,3 +1,6 @@
+import { readNonEmptyString } from '@/lib/primitive-text'
+import { recordSchema } from '@/lib/response-schema'
+
 export type OidcProviderPublic = {
   id: string
   name?: string
@@ -16,53 +19,46 @@ export type OidcProviderServer = {
   client_auth_method?: 'basic' | 'post'
 }
 
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
+function readEnv(name: string): string | undefined {
+  return readNonEmptyString(process.env[name])
 }
 
-function trimPrimitiveString(raw: unknown): string {
-  if (typeof raw === 'string') return raw.trim()
-  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw).trim()
-  return ''
+function readProviderText(raw: unknown): string | undefined {
+  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
+  return readNonEmptyString(raw)
 }
 
-function normalizeIssuer(raw: unknown): string {
-  let issuer = trimPrimitiveString(raw)
-  while (issuer.endsWith('/')) {
-    issuer = issuer.slice(0, -1)
-  }
-  return issuer
+function normalizeIssuer(raw: unknown): string | undefined {
+  const issuer = readProviderText(raw)?.replace(/\/+$/, '')
+  return issuer === '' ? undefined : issuer
 }
 
-function normalizeProviderId(raw: unknown): string {
-  const id = trimPrimitiveString(raw)
-  if (!id) return ''
-  if (id.length > 64) return ''
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) return ''
+function normalizeProviderId(raw: unknown): string | undefined {
+  const id = readProviderText(raw)
+  if (id === undefined || id.length > 64 || !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) return undefined
   return id
 }
 
-function parseAuthParams(raw: unknown): Record<string, string> {
-  if (!raw) return {}
+export function parseOidcAuthParams(raw: unknown): Record<string, string> {
   if (typeof raw === 'string') {
     const trimmed = raw.trim()
     if (!trimmed) return {}
     const params = new URLSearchParams(trimmed.startsWith('?') ? trimmed.slice(1) : trimmed)
     const out: Record<string, string> = {}
     for (const [key, value] of params.entries()) {
-      const k = String(key || '').trim()
-      if (!k) continue
-      out[k] = String(value || '')
+      const parameterName = key.trim()
+      if (parameterName === '') continue
+      out[parameterName] = value
     }
     return out
   }
-  if (typeof raw === 'object') {
+  if (typeof raw === 'object' && raw !== null) {
     const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      const key = String(k || '').trim()
+    for (const [name, parameter] of Object.entries(raw)) {
+      const key = name.trim()
       if (!key) continue
-      const value = trimPrimitiveString(v)
-      if (!value) continue
+      const value = readProviderText(parameter)
+      if (value === undefined) continue
       out[key] = value
     }
     return out
@@ -70,35 +66,47 @@ function parseAuthParams(raw: unknown): Record<string, string> {
   return {}
 }
 
-function parseProvidersJson(raw: string): unknown[] {
-  const trimmed = String(raw || '').trim()
+function parseProvidersJson(raw: string | undefined): unknown[] {
+  const trimmed = raw?.trim()
   if (!trimmed) return []
   try {
-    const parsed = JSON.parse(trimmed) as unknown
+    const parsed: unknown = JSON.parse(trimmed)
     return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
 }
 
+function selectOidcProvider<Provider extends { id: string }>(
+  providers: readonly Provider[],
+  providerId?: string | null,
+): Provider | null {
+  const id = providerId?.trim()
+  if (id !== undefined && id !== '') return providers.find((provider) => provider.id === id) ?? null
+  return providers.length === 1 ? providers[0] : null
+}
+
 export function getOidcPublicProvidersFromEnv(): OidcProviderPublic[] {
-  const raw = readEnv('NEXT_PUBLIC_OIDC_PROVIDERS_JSON') || readEnv('NEXT_PUBLIC_OIDC_PROVIDERS')
-  const items = raw ? parseProvidersJson(raw) : []
+  if (process.env.NEXT_PUBLIC_OIDC_ENABLED?.trim().toLowerCase() === 'false') return []
+
+  const raw = readNonEmptyString(process.env.NEXT_PUBLIC_OIDC_PROVIDERS_JSON) ?? process.env.NEXT_PUBLIC_OIDC_PROVIDERS
+  const items = parseProvidersJson(raw)
   const out: OidcProviderPublic[] = []
   const seen: Set<string> = new Set()
 
   for (const it of items) {
-    if (!it || typeof it !== 'object') continue
-    const obj = it as Record<string, unknown>
+    const result = recordSchema.safeParse(it)
+    if (!result.success) continue
+    const obj = result.data
     const id = normalizeProviderId(obj.id)
     if (!id || seen.has(id)) continue
     const issuer = normalizeIssuer(obj.issuer)
-    const clientId = trimPrimitiveString(obj.client_id)
+    const clientId = readProviderText(obj.client_id)
     if (!issuer || !clientId) continue
 
-    const name = trimPrimitiveString(obj.name) || undefined
-    const scopes = trimPrimitiveString(obj.scopes) || undefined
-    const authParams = parseAuthParams(obj.auth_params)
+    const name = readProviderText(obj.name)
+    const scopes = readProviderText(obj.scopes)
+    const authParams = parseOidcAuthParams(obj.auth_params)
 
     seen.add(id)
     out.push({
@@ -113,8 +121,8 @@ export function getOidcPublicProvidersFromEnv(): OidcProviderPublic[] {
 
   // Backward compatible fallback: single-provider env vars.
   if (out.length === 0) {
-    const issuer = normalizeIssuer(readEnv('NEXT_PUBLIC_OIDC_ISSUER'))
-    const clientId = String(readEnv('NEXT_PUBLIC_OIDC_CLIENT_ID') || '').trim()
+    const issuer = normalizeIssuer(process.env.NEXT_PUBLIC_OIDC_ISSUER)
+    const clientId = process.env.NEXT_PUBLIC_OIDC_CLIENT_ID?.trim()
     if (issuer && clientId) {
       out.push({ id: 'default', issuer, client_id: clientId })
     }
@@ -123,48 +131,26 @@ export function getOidcPublicProvidersFromEnv(): OidcProviderPublic[] {
   return out
 }
 
-export function resolveOidcPublicProvider(providerId?: string | null): OidcProviderPublic | null {
-  const providers = getOidcPublicProvidersFromEnv()
-  if (providers.length === 0) return null
-
-  const pid = normalizeProviderId(providerId)
-  if (pid) {
-    return providers.find((p) => p.id === pid) ?? null
-  }
-
-  if (providers.length === 1) return providers[0]
-  return null
-}
-
 export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
-  const raw = readEnv('OIDC_PROVIDERS_JSON') || readEnv('OIDC_PROVIDERS')
-  const items = raw ? parseProvidersJson(raw) : []
+  const raw = readEnv('OIDC_PROVIDERS_JSON') ?? readEnv('OIDC_PROVIDERS')
+  const items = parseProvidersJson(raw)
   const out: OidcProviderServer[] = []
   const seen: Set<string> = new Set()
 
   for (const it of items) {
-    if (!it || typeof it !== 'object') continue
-    const obj = it as Record<string, unknown>
+    const result = recordSchema.safeParse(it)
+    if (!result.success) continue
+    const obj = result.data
     const id = normalizeProviderId(obj.id)
     if (!id || seen.has(id)) continue
     const issuer = normalizeIssuer(obj.issuer)
-    const clientId = trimPrimitiveString(obj.client_id)
+    const clientId = readProviderText(obj.client_id)
     if (!issuer || !clientId) continue
 
-    const name = trimPrimitiveString(obj.name) || undefined
-    const secret = trimPrimitiveString(obj.client_secret) || undefined
-    const rawMethod = trimPrimitiveString(obj.client_auth_method).toLowerCase()
-    const clientAuthMethod = (() => {
-    if (rawMethod === 'post') {
-        return 'post';
-    }
-    else if (rawMethod === 'basic') {
-            return 'basic';
-        }
-        else {
-            return undefined;
-        }
-})()
+    const name = readProviderText(obj.name)
+    const secret = readProviderText(obj.client_secret)
+    const rawMethod = readProviderText(obj.client_auth_method)?.toLowerCase()
+    const clientAuthMethod = rawMethod === 'post' || rawMethod === 'basic' ? rawMethod : undefined
 
     seen.add(id)
     out.push({
@@ -179,15 +165,15 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
 
   // Backward compatible fallback: single-provider env vars.
   if (out.length === 0) {
-    const issuer = normalizeIssuer(readEnv('OIDC_ISSUER') || readEnv('NEXT_PUBLIC_OIDC_ISSUER'))
-    const clientId = String(readEnv('OIDC_CLIENT_ID') || readEnv('NEXT_PUBLIC_OIDC_CLIENT_ID') || '').trim()
+    const issuer = normalizeIssuer(readEnv('OIDC_ISSUER') ?? readEnv('NEXT_PUBLIC_OIDC_ISSUER'))
+    const clientId = readEnv('OIDC_CLIENT_ID') ?? readEnv('NEXT_PUBLIC_OIDC_CLIENT_ID')
     if (issuer && clientId) {
       out.push({
         id: 'default',
         issuer,
         client_id: clientId,
-        client_secret: String(readEnv('OIDC_CLIENT_SECRET') || '').trim() || undefined,
-        client_auth_method: (String(readEnv('OIDC_CLIENT_AUTH_METHOD') || '').trim().toLowerCase() === 'post' ? 'post' : 'basic'),
+        client_secret: readEnv('OIDC_CLIENT_SECRET'),
+        client_auth_method: readEnv('OIDC_CLIENT_AUTH_METHOD')?.toLowerCase() === 'post' ? 'post' : 'basic',
       })
     }
   }
@@ -196,14 +182,5 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
 }
 
 export function resolveOidcServerProvider(providerId?: string | null): OidcProviderServer | null {
-  const providers = getOidcServerProvidersFromEnv()
-  if (providers.length === 0) return null
-
-  const pid = normalizeProviderId(providerId)
-  if (pid) {
-    return providers.find((p) => p.id === pid) ?? null
-  }
-
-  if (providers.length === 1) return providers[0]
-  return null
+  return selectOidcProvider(getOidcServerProvidersFromEnv(), providerId)
 }

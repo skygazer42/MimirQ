@@ -5,13 +5,13 @@ sidebar_position: 3
 
 # 可观测性
 
-MimirQ 基于可观测性三支柱（Metrics、Logs、Traces）构建完整的生产监控体系，帮助运维团队快速定位性能瓶颈和异常根因。
+Ragvia 基于可观测性三支柱（Metrics、Logs、Traces）构建完整的生产监控体系，帮助运维团队快速定位性能瓶颈和异常根因。
 
 ## 三支柱概览
 
 ```mermaid
 graph LR
-    APP[MimirQ API] -->|Prometheus /metrics| M[Metrics<br/>Grafana]
+    APP[Ragvia API] -->|Prometheus /metrics| M[Metrics<br/>Grafana]
     APP -->|JSON stdout| L[Logs<br/>Loki / ELK]
     APP -->|OTLP gRPC| T[Traces<br/>Jaeger]
     M --> DASH[统一 Dashboard]
@@ -21,7 +21,7 @@ graph LR
 
 ## Prometheus 指标
 
-MimirQ 在 `/metrics` 端点暴露 Prometheus 格式指标，核心指标如下：
+Ragvia 在 `/metrics` 端点暴露 Prometheus 格式指标，核心指标如下：
 
 | 指标名 | 类型 | 说明 |
 |--------|------|------|
@@ -55,7 +55,7 @@ Dashboard 包含 4 个核心面板：请求概览、RAG 管线性能、任务队
 
 ## 结构化日志
 
-MimirQ 使用 JSON 格式输出日志，便于 Loki、ELK 等系统采集和查询。
+Ragvia 使用 JSON 格式输出日志，便于 Loki、ELK 等系统采集和查询。
 
 ```json
 {
@@ -101,7 +101,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "MimirQ 5xx 错误率超过 5%"
+          summary: "Ragvia 5xx 错误率超过 5%"
 
       - alert: TaskQueueBacklog
         expr: mimirq_task_queue_depth > 500
@@ -133,7 +133,7 @@ groups:
 
 ## 分布式追踪
 
-MimirQ 通过 OpenTelemetry SDK 上报 Trace 数据，支持 Jaeger 和 OTLP 兼容的后端。
+Ragvia 通过 OpenTelemetry SDK 上报 Trace 数据，支持 Jaeger 和 OTLP 兼容的后端。
 
 ```bash
 # 环境变量配置

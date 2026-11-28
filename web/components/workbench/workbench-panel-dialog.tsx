@@ -1,29 +1,15 @@
 'use client'
 
-import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
-import { IconButton } from '@/components/ui/icon-button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type WorkbenchPanelDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  children: React.ReactNode
-
-  /**
-   * Optional trigger. If omitted, provide `triggerIcon` + `triggerLabel`.
-   */
-  trigger?: React.ReactNode
-  triggerIcon?: LucideIcon
-  triggerLabel?: string
+  children: ReactNode
 
   className?: string
 }
@@ -33,33 +19,15 @@ export function WorkbenchPanelDialog({
   onOpenChange,
   title,
   children,
-  trigger,
-  triggerIcon: TriggerIcon,
-  triggerLabel,
   className,
 }: Readonly<WorkbenchPanelDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {(() => {
-    if (trigger) {
-        return (<DialogTrigger asChild>{trigger}</DialogTrigger>);
-    }
-    else if (TriggerIcon && triggerLabel) {
-            return (<DialogTrigger asChild>
-          <IconButton label={triggerLabel} variant="ghost">
-            <TriggerIcon className="size-4"/>
-          </IconButton>
-        </DialogTrigger>);
-        }
-        else {
-            return null;
-        }
-})()}
-
       <DialogContent
+        aria-describedby={undefined}
         className={cn(
           'w-[92vw] max-w-[92vw] h-[85vh] max-h-[85vh] p-0 overflow-hidden grid grid-rows-[auto_1fr]',
-          className
+          className,
         )}
       >
         <DialogHeader className="px-4 pt-4 pb-2">

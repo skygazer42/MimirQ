@@ -9,59 +9,55 @@ export type RerankedChunkSearchResult = ChunkSearchResult & {
 }
 
 function clamp01(value: number) {
-  if (!Number.isFinite(value)) return 0
   return Math.max(0, Math.min(1, value))
 }
 
 function tokenizeLoose(text: string): string[] {
-  const s = String(text || '').toLowerCase()
+  const normalized = text.toLowerCase()
   // Tokenize alnum words and contiguous CJK blocks (best-effort, fast).
-  return s.match(/[a-z0-9]+|[\u4e00-\u9fff]+/g) ?? []
+  return normalized.match(/[a-z0-9]+|[\u4e00-\u9fff]+/g) ?? []
 }
 
-export function computeRerankSimScore(query: string, content: string): number {
-  const q = String(query || '').trim()
-  if (!q) return 0
+function computeRerankSimScore(query: string, queryTokens: readonly string[], content: string): number {
+  if (queryTokens.length === 0) return 0
 
-  const qTokens = tokenizeLoose(q).filter((t) => t.length >= 1).slice(0, 16)
-  if (!qTokens.length) return 0
-
-  const c = String(content || '')
-  const cLower = c.toLowerCase()
-  const qLower = q.toLowerCase()
-
-  const phraseHit = cLower.includes(qLower) ? 1 : 0
+  const phraseHit = content.toLowerCase().includes(query) ? 1 : 0
 
   // Keep this cheap: cap content scanned to reduce worst-case UI cost.
-  const cTokens = new Set(tokenizeLoose(c.slice(0, 4000)))
+  const contentTokens = new Set(tokenizeLoose(content.slice(0, 4000)))
   let overlap = 0
-  for (const t of qTokens) {
-    if (cTokens.has(t)) overlap += 1
+  for (const token of queryTokens) {
+    if (contentTokens.has(token)) overlap += 1
   }
-  const coverage = overlap / qTokens.length
+  const coverage = overlap / queryTokens.length
 
   // Combine: token coverage dominates, phrase hit gives a small bonus.
   return clamp01(0.8 * coverage + 0.2 * phraseHit)
 }
 
 export function rerankChunkSearchResults(
-  results: ChunkSearchResult[],
+  results: readonly ChunkSearchResult[],
   query: string,
-  chunks: ChunkPreviewItem[],
-  options?: { alpha?: number }
+  chunks: readonly ChunkPreviewItem[],
+  options?: { alpha?: number },
 ): RerankedChunkSearchResult[] {
-  const q = String(query || '').trim()
-  const alpha = clamp01(Number(options?.alpha ?? 0.65))
-  const maxRetrieval = Math.max(0, ...(results || []).map((r) => Number(r.score || 0)))
+  const normalizedQuery = query.trim().toLowerCase()
+  const requestedAlpha = options?.alpha ?? 0.65
+  if (!Number.isFinite(requestedAlpha)) throw new RangeError('Local rerank weight must be finite')
+  if (normalizedQuery === '') return []
+  const queryTokens = tokenizeLoose(normalizedQuery).slice(0, 16)
+  const alpha = clamp01(requestedAlpha)
+  const maxRetrieval = results.reduce((maximum, result) => Math.max(maximum, result.score), 0)
 
   const byIndex = new Map<number, ChunkPreviewItem>()
-  for (const chunk of chunks || []) byIndex.set(Number(chunk.index), chunk)
+  for (const chunk of chunks) byIndex.set(chunk.index, chunk)
 
-  const enriched: RerankedChunkSearchResult[] = (results || []).map((r) => {
-    const retrievalScore = Number(r.score || 0)
-    const retrievalNorm = maxRetrieval > 0 ? retrievalScore / maxRetrieval : 0
-    const chunk = byIndex.get(Number(r.index))
-    const rerankScore = computeRerankSimScore(q, String(chunk?.content ?? ''))
+  const enriched: RerankedChunkSearchResult[] = results.map((r) => {
+    const retrievalScore = r.score
+    const retrievalNorm = maxRetrieval === 0 ? 0 : retrievalScore / maxRetrieval
+    const chunk = byIndex.get(r.index)
+    if (chunk === undefined) throw new Error(`Missing chunk ${r.index} for local rerank`)
+    const rerankScore = computeRerankSimScore(normalizedQuery, queryTokens, chunk.content)
     const combined = alpha * retrievalNorm + (1 - alpha) * rerankScore
 
     return {
@@ -81,5 +77,5 @@ export function rerankChunkSearchResults(
     return a.index - b.index
   })
 
-  return q ? enriched : []
+  return enriched
 }

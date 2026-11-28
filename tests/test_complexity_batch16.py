@@ -6,9 +6,9 @@ from uuid import uuid4
 import pytest
 from langchain_core.documents import Document
 
-from app.core.config import settings
-from app.parsing.parsers.base_parser import BaseAdvancedParser
-from app.parsing.parsers.email_parser import EmailParser, _extract_body
+from app.infrastructure.config import settings
+from app.rag.ingestion.parsing.parsers.base_parser import BaseAdvancedParser
+from app.rag.ingestion.parsing.parsers.email_parser import EmailParser, _extract_body
 
 
 class _ParserForTests(BaseAdvancedParser):
@@ -219,7 +219,7 @@ def test_choose_pdf_backend_characterizes_precedence(
     magicpdf_available: bool,
     expected: str,
 ) -> None:
-    from app.parsing import routing
+    from app.rag.ingestion.parsing import routing
 
     _reset_backend_settings(monkeypatch)
     for name, value in settings_overrides.items():
@@ -244,7 +244,7 @@ def test_choose_pdf_backend_characterizes_precedence(
 def test_etl4llm_merge_partitions_characterizes_spacing_and_shifted_indexes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
+    from app.rag.ingestion.parsing.parsers.etl4llm_parser import Etl4LlmParser
 
     _configure_etl4llm(monkeypatch, ETL4LLM_FILTER_PAGE_HEADER_FOOTER=True)
     parser = Etl4LlmParser()
@@ -288,7 +288,7 @@ def test_etl4llm_merge_partitions_characterizes_spacing_and_shifted_indexes(
 
 
 def test_etl4llm_parse_characterizes_page_image_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
+    from app.rag.ingestion.parsing.parsers.etl4llm_parser import Etl4LlmParser
 
     class _FakePixmap:
         def tobytes(self, fmt: str) -> bytes:
@@ -313,18 +313,18 @@ def test_etl4llm_parse_characterizes_page_image_fallback(tmp_path: Path, monkeyp
     pdf_path.write_bytes(b"%PDF-1.4")
 
     monkeypatch.setattr(parser, "_call_api", lambda **_kwargs: {"partitions": [], "text": "Merged text"}, raising=True)
-    monkeypatch.setattr("app.parsing.parsers.etl4llm_parser.fitz.open", lambda _path: _FakePdf())
+    monkeypatch.setattr("app.rag.ingestion.parsing.parsers.etl4llm_parser.fitz.open", lambda _path: _FakePdf())
 
     document = parser.parse(pdf_path, document_id="doc-1")[0]
 
     assert document.page_content == "![page 1](images/page_0001.jpg)\n\nMerged text"
     assert document.metadata["etl4llm_page_images"] == 1
-    assert document.metadata["asset_base_dir"].endswith(".etl4llm/doc-1")
+    assert Path(document.metadata["asset_base_dir"]) == tmp_path / ".etl4llm" / "doc-1"
     assert (Path(document.metadata["asset_base_dir"]) / "images" / "page_0001.jpg").read_bytes() == b"jpg-bytes"
 
 
 def test_magicpdf_parse_prefers_service_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
+    from app.rag.ingestion.parsing.parsers.magic_pdf_parser import MagicPDFParser
 
     _configure_magicpdf(monkeypatch, MAGIC_PDF_API_URL="http://magicpdf")
     parser = MagicPDFParser()
@@ -352,7 +352,7 @@ def test_magicpdf_parse_characterizes_local_markdown_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing.parsers import magic_pdf_parser
+    from app.rag.ingestion.parsing.parsers import magic_pdf_parser
 
     artifact_root = tmp_path / "artifacts" / "run-1"
     pdf_path = tmp_path / "sample.pdf"
@@ -398,7 +398,7 @@ async def test_run_subprocess_worker_characterizes_timeout_termination_and_clean
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing import subprocess_runner
+    from app.rag.ingestion.parsing import subprocess_runner
 
     class _RunningProcess:
         pid = 321
@@ -442,7 +442,7 @@ async def test_run_subprocess_worker_preserves_log_tail_when_result_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing import subprocess_runner
+    from app.rag.ingestion.parsing import subprocess_runner
 
     class _FinishedProcess:
         pid = 654

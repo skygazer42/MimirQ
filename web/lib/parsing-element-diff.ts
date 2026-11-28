@@ -1,8 +1,7 @@
 import type { ParsingElement } from '@/lib/api/parsing'
+import { getParsingElementVisualKind, getParsingPages } from '@/lib/parsing-elements'
 
-type ElementKind = ParsingElement['kind']
-
-type ElementCountMap = Partial<Record<ElementKind, number>>
+type ElementCountMap = Record<ParsingElement['kind'], number>
 
 export type ParsingElementDiffSummary = {
   totalBase: number
@@ -15,90 +14,88 @@ export type ParsingElementDiffSummary = {
   removedImageVisualKinds: string[]
 }
 
-function normalizeText(value: string | null | undefined): string {
-  return String(value || '').replace(/\s+/g, ' ').trim()
+function normalizeElementText(text: ParsingElement['text']): string | null {
+  if (text === undefined || text === null) return null
+  return text.replace(/\s+/g, ' ').trim()
 }
 
-function uniqueSorted(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b))
-}
-
-function normalizePages(pages: number[] | null | undefined): string {
-  if (!Array.isArray(pages) || pages.length === 0) return 'na'
-  return pages
-    .filter((value) => Number.isInteger(value) && value > 0)
-    .join(',')
-}
-
-function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>): string {
+function getElementSignature(element: ParsingElement): string {
   const bbox = element.bbox
-    ? `${element.bbox.x0}:${element.bbox.y0}:${element.bbox.x1}:${element.bbox.y1}`
-    : 'na'
-  return [
-    String(element.kind || 'unknown'),
-    typeof element.page === 'number' ? String(element.page) : 'na',
-    normalizePages(element.pages),
-    String(element.visual_kind || '').trim().toLowerCase() || 'na',
-    normalizeText(element.text),
-    bbox,
-  ].join('|')
+  return JSON.stringify([
+    element.kind,
+    getParsingPages(element),
+    getParsingElementVisualKind(element)?.toLowerCase(),
+    normalizeElementText(element.text),
+    bbox === undefined || bbox === null ? null : [bbox.x0, bbox.y0, bbox.x1, bbox.y1],
+  ])
 }
 
-function incrementCount(map: ElementCountMap, kind: ElementKind) {
-  map[kind] = (map[kind] || 0) + 1
-}
-
-export function diffParsingElements(
-  base: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined,
-  compare: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined
-): ParsingElementDiffSummary {
-  const baseItems = base || []
-  const compareItems = compare || []
-  const baseSignatures = new Set(baseItems.map(elementSignature))
-  const compareSignatures = new Set(compareItems.map(elementSignature))
-  const addedByKind: ElementCountMap = {}
-  const removedByKind: ElementCountMap = {}
-  const addedSealTexts: string[] = []
-  const removedSealTexts: string[] = []
-  const addedImageVisualKinds: string[] = []
-  const removedImageVisualKinds: string[] = []
-
-  for (const element of compareItems) {
-    const signature = elementSignature(element)
-    if (baseSignatures.has(signature)) continue
-    incrementCount(addedByKind, element.kind)
-    if (element.kind === 'seal') {
-      const text = normalizeText(element.text)
-      if (text) addedSealTexts.push(text)
-    }
-    if (element.kind === 'image') {
-      const visualKind = String(element.visual_kind || '').trim().toLowerCase()
-      if (visualKind) addedImageVisualKinds.push(visualKind)
-    }
+function getUnmatchedElements(elements: readonly ParsingElement[], reference: readonly ParsingElement[]) {
+  const remainingCounts = new Map<string, number>()
+  for (const element of reference) {
+    const signature = getElementSignature(element)
+    const count = remainingCounts.get(signature)
+    remainingCounts.set(signature, count === undefined ? 1 : count + 1)
   }
 
-  for (const element of baseItems) {
-    const signature = elementSignature(element)
-    if (compareSignatures.has(signature)) continue
-    incrementCount(removedByKind, element.kind)
+  return elements.filter((element) => {
+    const signature = getElementSignature(element)
+    const count = remainingCounts.get(signature)
+    if (count === undefined) return true
+    if (count === 1) remainingCounts.delete(signature)
+    else remainingCounts.set(signature, count - 1)
+    return false
+  })
+}
+
+function summarizeElementChanges(elements: readonly ParsingElement[]) {
+  const byKind: ElementCountMap = {
+    heading: 0,
+    paragraph: 0,
+    list: 0,
+    table: 0,
+    image: 0,
+    equation: 0,
+    seal: 0,
+    unknown: 0,
+  }
+  const sealTexts: string[] = []
+  const imageVisualKinds = new Set<string>()
+
+  for (const element of elements) {
+    byKind[element.kind] += 1
     if (element.kind === 'seal') {
-      const text = normalizeText(element.text)
-      if (text) removedSealTexts.push(text)
+      const text = normalizeElementText(element.text)
+      if (text !== null && text.length > 0) sealTexts.push(text)
     }
     if (element.kind === 'image') {
-      const visualKind = String(element.visual_kind || '').trim().toLowerCase()
-      if (visualKind) removedImageVisualKinds.push(visualKind)
+      const visualKind = getParsingElementVisualKind(element)
+      if (visualKind !== null && visualKind.length > 0) imageVisualKinds.add(visualKind.toLowerCase())
     }
   }
 
   return {
-    totalBase: baseItems.length,
-    totalCompare: compareItems.length,
-    addedByKind,
-    removedByKind,
-    addedSealTexts,
-    removedSealTexts,
-    addedImageVisualKinds: uniqueSorted(addedImageVisualKinds),
-    removedImageVisualKinds: uniqueSorted(removedImageVisualKinds),
+    byKind,
+    sealTexts,
+    imageVisualKinds: Array.from(imageVisualKinds).sort((left, right) => left.localeCompare(right)),
+  }
+}
+
+export function diffParsingElements(
+  base: readonly ParsingElement[],
+  compare: readonly ParsingElement[],
+): ParsingElementDiffSummary {
+  const added = summarizeElementChanges(getUnmatchedElements(compare, base))
+  const removed = summarizeElementChanges(getUnmatchedElements(base, compare))
+
+  return {
+    totalBase: base.length,
+    totalCompare: compare.length,
+    addedByKind: added.byKind,
+    removedByKind: removed.byKind,
+    addedSealTexts: added.sealTexts,
+    removedSealTexts: removed.sealTexts,
+    addedImageVisualKinds: added.imageVisualKinds,
+    removedImageVisualKinds: removed.imageVisualKinds,
   }
 }

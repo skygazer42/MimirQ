@@ -1,0 +1,340 @@
+.studio {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  transition: background-color 150ms ease-out;
+}
+
+.studio[data-dragging='true'] {
+  background: hsl(var(--accent) / 0.035);
+  box-shadow: inset 0 0 0 1px hsl(var(--accent) / 0.45);
+}
+
+.primaryPane {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(28px, 4vw, 44px) clamp(20px, 3.5vw, 44px);
+  background-image: radial-gradient(hsl(var(--foreground) / 0.065) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.primaryInner {
+  display: flex;
+  width: 100%;
+  max-width: 420px;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  margin-bottom: 20px;
+  border: 1px solid hsl(var(--icon-knowledge) / 0.14);
+  border-radius: 14px;
+  background: hsl(var(--icon-knowledge) / 0.08);
+  color: hsl(var(--icon-knowledge));
+  box-shadow:
+    0 2px 6px hsl(var(--foreground) / 0.06),
+    0 0 0 4px hsl(var(--icon-knowledge) / 0.045);
+}
+
+.illustration > svg {
+  width: 28px;
+  height: 28px;
+}
+
+.title {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+  letter-spacing: -0.01em;
+}
+
+.description {
+  margin: 8px 0 0;
+  max-width: 380px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.actions button,
+.actions a {
+  height: 36px;
+  gap: 6px;
+  border-radius: 6px;
+  padding-inline: 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.actions svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.statusSlot {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+}
+
+.guidePane {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid hsl(var(--border));
+  padding: clamp(28px, 4vw, 44px) clamp(20px, 3.5vw, 44px);
+  background: hsl(var(--surface-2));
+}
+
+.guideInner {
+  display: flex;
+  width: 100%;
+  max-width: 380px;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.groupHeading {
+  margin: 0 0 10px;
+  color: hsl(var(--foreground));
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.stepList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stepRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 13px 0;
+}
+
+.stepRow:first-child {
+  padding-top: 8px;
+}
+
+.stepIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: 1px solid hsl(var(--icon-knowledge) / 0.14);
+  border-radius: 6px;
+  background: color-mix(in srgb, hsl(var(--icon-knowledge)) 8%, hsl(var(--card)));
+  color: hsl(var(--icon-knowledge));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stepTitle {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.stepDescription {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 19px;
+}
+
+.shortcutList {
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcutRow {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0;
+  padding: 12px 4px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.shortcutRow:hover {
+  background: hsl(var(--muted) / 0.45);
+}
+
+.shortcutIcon {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground));
+}
+
+.shortcutIcon > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.shortcutCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shortcutTitle {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.shortcutDescription {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.shortcutChevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  transition: transform 150ms ease-out;
+}
+
+.shortcutRow:hover .shortcutChevron {
+  transform: translateX(2px);
+  color: hsl(var(--foreground));
+}
+
+.footerNote {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.footerNoteLabel {
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.footerNoteValue {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 19px;
+}
+
+@media (max-width: 960px) {
+  .studio {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
+
+  .primaryPane {
+    padding: 36px 20px 28px;
+  }
+
+  .guidePane {
+    border-top: 1px solid hsl(var(--border));
+    border-left: 0;
+    padding: 24px 20px 32px;
+  }
+
+  .guideInner {
+    max-width: none;
+    gap: 24px;
+  }
+
+  .actions button,
+  .actions a {
+    min-height: 40px;
+  }
+
+  .shortcutRow {
+    min-height: 52px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio,
+  .shortcutRow,
+  .shortcutChevron {
+    transition: none;
+  }
+}

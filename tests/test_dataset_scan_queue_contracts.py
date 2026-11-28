@@ -10,6 +10,9 @@ import pytest
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 
+import app.api.v1.datasets.precheck as precheck_api
+from app.services.datasets.scan_session import CurrentThreadScanSession
+
 
 def test_scan_uniqueness_migration_retries_concurrent_indexes_safely(monkeypatch) -> None:
     fake_alembic = ModuleType("alembic")
@@ -70,6 +73,12 @@ class _ScanRunQuery:
     def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN201
         return self
 
+    def populate_existing(self):
+        return self
+
+    def one(self):
+        return self.first()
+
     def all(self) -> list[object]:
         return list(self._rows)
 
@@ -83,6 +92,16 @@ class _ScanRunQuery:
 
     def count(self) -> int:
         return len([row for row in self._rows if str(getattr(row, "status", "") or "") in {"pending", "running"}])
+
+    def update(self, values, **_kwargs) -> int:
+        updated = 0
+        for row in self._rows:
+            if row.status != "pending":
+                continue
+            for column, value in values.items():
+                setattr(row, column.key, value)
+            updated += 1
+        return updated
 
 
 class _FakeScanDB:
@@ -131,6 +150,9 @@ class _FakeScanDB:
 
     def flush(self) -> None:
         self.flush_calls += 1
+
+    def close(self) -> None:
+        pass
 
 
 class _DatasetDeleteDB:
@@ -246,34 +268,34 @@ async def test_scan_enqueue_treats_live_duplicate_job_as_success(
 async def test_create_dataset_profile_scan_run_marks_failed_when_enqueue_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.datasets as datasets_api
+    import app.api.v1.datasets.routes as datasets_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     db = _FakeScanDB(rows_by_model={datasets_api.DBDatasetProfileScanRun: []})
+    monkeypatch.setattr(datasets_api, "SessionLocal", lambda: db)
+    from app.services.runtime import retrieval_limiter
+
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", lambda: db)
     background_tasks = BackgroundTasks()
 
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,
     )
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(
-        datasets_api,
-        "_scan_run_out_from_row",
-        lambda row: {"id": row.id, "tenant_id": row.tenant_id, "dataset_id": row.dataset_id, "status": row.status},
-        raising=True,
-    )
 
     async def _reject_enqueue(**_kwargs):  # noqa: ANN202
-        raise datasets_api.TaskEnqueueRejectedError("arq did not accept dataset profile scan job")
+        from app.tasks.queue import TaskEnqueueRejectedError
+
+        raise TaskEnqueueRejectedError("arq did not accept dataset profile scan job")
 
     monkeypatch.setattr(datasets_api, "enqueue_dataset_profile_scan", _reject_enqueue, raising=True)
 
@@ -281,16 +303,14 @@ async def test_create_dataset_profile_scan_run_marks_failed_when_enqueue_is_reje
         await datasets_api.create_dataset_profile_scan_run(
             dataset_id=dataset_id,
             body=datasets_api.DatasetProfileScanRunCreateRequest(),
-            background_tasks=background_tasks,
             tenant_id=tenant_id,
             account_id="member-1",
-            db=db,
         )
 
     assert exc_info.value.status_code == 503
     rows = db.rows_by_model[datasets_api.DBDatasetProfileScanRun]
     assert len(rows) == 1
-    assert rows[0].status == "failed"
+    assert rows[0].status == "failed", vars(rows[0])
     assert "enqueue" in str(rows[0].error_message or "")
     assert rows[0].finished_at is not None
     assert background_tasks.tasks == []
@@ -300,7 +320,7 @@ async def test_create_dataset_profile_scan_run_marks_failed_when_enqueue_is_reje
 async def test_create_dataset_profile_scan_run_replaces_stale_pending_and_falls_back_to_background(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.datasets as datasets_api
+    import app.api.v1.datasets.routes as datasets_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -316,24 +336,26 @@ async def test_create_dataset_profile_scan_run_replaces_stale_pending_and_falls_
         error_message=None,
     )
     db = _FakeScanDB(rows_by_model={datasets_api.DBDatasetProfileScanRun: [stale_row]})
-    background_tasks = BackgroundTasks()
+    monkeypatch.setattr(datasets_api, "SessionLocal", lambda: db)
+    from app.services.runtime import retrieval_limiter
+
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", lambda: db)
+    submitted = []
+    monkeypatch.setattr(datasets_api.settings, "TASK_QUEUE_ENABLED", False)
+    monkeypatch.setattr(
+        datasets_api, "submit_local_scan_run", lambda operation, **scope: submitted.append((operation, scope))
+    )
 
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,
     )
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
-        raising=True,
-    )
-    monkeypatch.setattr(
-        datasets_api,
-        "_scan_run_out_from_row",
-        lambda row: {"id": row.id, "tenant_id": row.tenant_id, "dataset_id": row.dataset_id, "status": row.status},
         raising=True,
     )
 
@@ -345,26 +367,30 @@ async def test_create_dataset_profile_scan_run_replaces_stale_pending_and_falls_
     result = await datasets_api.create_dataset_profile_scan_run(
         dataset_id=dataset_id,
         body=datasets_api.DatasetProfileScanRunCreateRequest(),
-        background_tasks=background_tasks,
         tenant_id=tenant_id,
         account_id="member-1",
-        db=db,
     )
 
-    assert result["status"] == "pending"
+    assert result.status == "pending"
     assert stale_row.status == "failed"
     assert stale_row.finished_at is not None
     assert "stale" in str(stale_row.error_message or "")
     assert len(db.rows_by_model[datasets_api.DBDatasetProfileScanRun]) == 2
-    assert len(background_tasks.tasks) == 1
+    assert len(submitted) == 1
+    assert submitted[0][1] == {
+        "kind": "profile",
+        "tenant_id": tenant_id,
+        "dataset_id": dataset_id,
+        "scan_run_id": result.id,
+    }
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("module_name", "model_name", "helper_name"),
     [
-        ("app.api.v1.datasets", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs"),
-        ("app.api.v1.dataset_precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs"),
+        ("app.api.v1.datasets.routes", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs"),
+        ("app.api.v1.datasets.precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs"),
     ],
 )
 async def test_stale_pending_scan_is_preserved_when_arq_job_is_still_live(
@@ -399,7 +425,9 @@ async def test_stale_pending_scan_is_preserved_when_arq_job_is_still_live(
 
     monkeypatch.setattr(api_module, "get_task_job_status", _job_status, raising=True)
 
-    expired = await getattr(api_module, helper_name)(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    expired = await getattr(api_module, helper_name)(
+        CurrentThreadScanSession(db), tenant_id=tenant_id, dataset_id=dataset_id
+    )
 
     assert expired == 0
     assert row.status == "pending"
@@ -412,28 +440,28 @@ async def test_stale_pending_scan_is_preserved_when_arq_job_is_still_live(
     ("module_name", "model_name", "helper_name", "age", "expected_expired"),
     [
         (
-            "app.api.v1.datasets",
+            "app.api.v1.datasets.routes",
             "DBDatasetProfileScanRun",
             "_expire_stale_dataset_profile_scan_runs",
             timedelta(hours=1),
             0,
         ),
         (
-            "app.api.v1.dataset_precheck",
+            "app.api.v1.datasets.precheck",
             "DBDatasetPrecheckScanRun",
             "_expire_stale_precheck_scan_runs",
             timedelta(hours=1),
             0,
         ),
         (
-            "app.api.v1.datasets",
+            "app.api.v1.datasets.routes",
             "DBDatasetProfileScanRun",
             "_expire_stale_dataset_profile_scan_runs",
             timedelta(hours=3),
             1,
         ),
         (
-            "app.api.v1.dataset_precheck",
+            "app.api.v1.datasets.precheck",
             "DBDatasetPrecheckScanRun",
             "_expire_stale_precheck_scan_runs",
             timedelta(hours=3),
@@ -472,7 +500,9 @@ async def test_stale_pending_scan_uses_hard_expiry_when_queue_status_is_unavaila
 
     monkeypatch.setattr(api_module, "get_task_job_status", _job_status, raising=True)
 
-    expired = await getattr(api_module, helper_name)(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    expired = await getattr(api_module, helper_name)(
+        CurrentThreadScanSession(db), tenant_id=tenant_id, dataset_id=dataset_id
+    )
 
     assert expired == expected_expired
     assert row.status == ("failed" if expected_expired else "pending")
@@ -483,8 +513,8 @@ async def test_stale_pending_scan_uses_hard_expiry_when_queue_status_is_unavaila
 @pytest.mark.parametrize(
     ("module_name", "model_name", "helper_name"),
     [
-        ("app.api.v1.datasets", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs"),
-        ("app.api.v1.dataset_precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs"),
+        ("app.api.v1.datasets.routes", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs"),
+        ("app.api.v1.datasets.precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs"),
     ],
 )
 async def test_stale_running_scan_is_failed_when_job_is_not_live(
@@ -519,7 +549,9 @@ async def test_stale_running_scan_is_failed_when_job_is_not_live(
 
     monkeypatch.setattr(api_module, "get_task_job_status", _job_status, raising=True)
 
-    expired = await getattr(api_module, helper_name)(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    expired = await getattr(api_module, helper_name)(
+        CurrentThreadScanSession(db), tenant_id=tenant_id, dataset_id=dataset_id
+    )
 
     assert expired == 1
     assert row.status == "failed"
@@ -532,8 +564,8 @@ async def test_stale_running_scan_is_failed_when_job_is_not_live(
 @pytest.mark.parametrize(
     ("module_name", "model_name", "helper_name"),
     [
-        ("app.api.v1.datasets", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs"),
-        ("app.api.v1.dataset_precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs"),
+        ("app.api.v1.datasets.routes", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs"),
+        ("app.api.v1.datasets.precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs"),
     ],
 )
 async def test_stale_running_scan_is_preserved_when_arq_job_is_still_live(
@@ -568,7 +600,9 @@ async def test_stale_running_scan_is_preserved_when_arq_job_is_still_live(
 
     monkeypatch.setattr(api_module, "get_task_job_status", _job_status, raising=True)
 
-    expired = await getattr(api_module, helper_name)(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    expired = await getattr(api_module, helper_name)(
+        CurrentThreadScanSession(db), tenant_id=tenant_id, dataset_id=dataset_id
+    )
 
     assert expired == 0
     assert row.status == "running"
@@ -580,8 +614,8 @@ async def test_stale_running_scan_is_preserved_when_arq_job_is_still_live(
 @pytest.mark.parametrize(
     ("module_name", "model_name", "helper_name", "scan_kind"),
     [
-        ("app.api.v1.datasets", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs", "profile"),
-        ("app.api.v1.dataset_precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs", "precheck"),
+        ("app.api.v1.datasets.routes", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs", "profile"),
+        ("app.api.v1.datasets.precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs", "precheck"),
     ],
 )
 async def test_stale_running_scan_is_preserved_by_local_registry_when_queue_disabled(
@@ -621,7 +655,9 @@ async def test_stale_running_scan_is_preserved_by_local_registry_when_queue_disa
         scan_run_id=run_id,
     )
     try:
-        expired = await getattr(api_module, helper_name)(db, tenant_id=tenant_id, dataset_id=dataset_id)
+        expired = await getattr(api_module, helper_name)(
+            CurrentThreadScanSession(db), tenant_id=tenant_id, dataset_id=dataset_id
+        )
     finally:
         unregister_local_scan_run_active(
             kind=scan_kind,
@@ -640,7 +676,6 @@ async def test_stale_running_scan_is_preserved_by_local_registry_when_queue_disa
 async def test_create_dataset_precheck_scan_run_returns_409_on_concurrent_insert_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_precheck as precheck_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -662,6 +697,10 @@ async def test_create_dataset_precheck_scan_run_returns_409_on_concurrent_insert
         rows_by_model={precheck_api.DBDatasetPrecheckScanRun: []},
         on_insert_conflict=_inject_conflict,
     )
+    monkeypatch.setattr(precheck_api, "SessionLocal", lambda: db)
+    from app.services.runtime import retrieval_limiter
+
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", lambda: db)
     background_tasks = BackgroundTasks()
 
     monkeypatch.setattr(
@@ -681,23 +720,21 @@ async def test_create_dataset_precheck_scan_run_returns_409_on_concurrent_insert
         await precheck_api.create_dataset_precheck_scan_run(
             dataset_id=dataset_id,
             body=precheck_api.DatasetPrecheckScanRunCreateRequest(root_path="/tmp/dataset"),
-            background_tasks=background_tasks,
             tenant_id=tenant_id,
             account_id="member-1",
-            db=db,
         )
 
     assert exc_info.value.status_code == 409
     assert "pending/running" in str(exc_info.value.detail)
     assert len(db.rows_by_model[precheck_api.DBDatasetPrecheckScanRun]) == 1
-    assert db.rollback_calls == 1
+    assert db.rollback_calls == 2
     assert background_tasks.tasks == []
 
 
 def test_delete_dataset_reconciles_stale_scans_before_active_scan_guard(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.datasets as datasets_api
+    import app.api.v1.datasets.routes as datasets_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -706,13 +743,13 @@ def test_delete_dataset_reconciles_stale_scans_before_active_scan_guard(
     calls: list[str] = []
 
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: dataset,
         raising=True,
     )
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -751,7 +788,7 @@ def test_delete_dataset_reconciles_stale_scans_before_active_scan_guard(
 async def test_purge_dataset_reconciles_stale_scans_before_active_scan_guard(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.datasets as datasets_api
+    import app.api.v1.datasets.routes as datasets_api
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -760,7 +797,7 @@ async def test_purge_dataset_reconciles_stale_scans_before_active_scan_guard(
 
     monkeypatch.setattr(datasets_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        datasets_api.DatasetService,
+        datasets_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
         raising=True,

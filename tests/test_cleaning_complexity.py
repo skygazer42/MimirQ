@@ -1,7 +1,4 @@
-from app.rag.preprocessing.cleaning import (
-    build_common_line_signatures,
-    learn_common_line_candidates,
-)
+from app.rag.ingestion.governance.cleaning import build_common_line_signatures, learn_common_line_candidates
 
 
 def test_common_line_signatures_skip_structure_and_count_each_document_once() -> None:

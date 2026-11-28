@@ -1,95 +1,49 @@
+import logging
+import math
 import re
 import threading
 import time
-from collections.abc import AsyncIterator
-from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, cast
-from uuid import UUID
+from collections.abc import AsyncIterator, Sequence
+from contextlib import aclosing
+from dataclasses import dataclass, field, fields, replace
+from itertools import chain
+from typing import TYPE_CHECKING, Any
+from uuid import UUID, uuid4
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.core.config import settings
-from app.core.token_utils import num_tokens_from_string
-from app.rag.core.citations import build_citations_from_docs
-from app.rag.core.logging import get_logger
-from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
-from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
-from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
+from app.infrastructure.config import settings
+from app.infrastructure.tokens import num_tokens_from_string
+from app.query.expand import heuristic_decompose_query
+from app.rag.agents.tools.mcp_client import DocumentToolScope
+from app.rag.llm.prompts.templates import format_history_text, with_answer_semantics_system_message
+from app.rag.llm.response_parsing import parse_json_from_text
+from app.rag.retrieval.evidence.citations import build_citations_from_docs
 from app.rag.retrieval.orchestrator import run_retrieval
+from app.rag.retrieval.planning.decomposition import build_chained_query, summarize_chain_step
+from app.rag.retrieval.results import document_key
+from app.rag.runtime.graph.context import (
+    GroundedContext,
+    _build_context,
+    build_grounded_context,
+)
+from app.rag.runtime.graph.state import RagStateBuildOptions, build_rag_state
 from app.rag.workflows.crag_streaming import run_crag_streaming
-from app.rag.workflows.critic import run_critic_review
-from app.rag.workflows.self_rag import run_self_rag_reflection
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
+from app.rag.workflows.critic import CriticReview, run_critic_review
+from app.rag.workflows.self_rag import SelfRagReflection, run_self_rag_reflection
+from app.services.runtime.retrieval_limiter import run_blocking_retrieval_call_with_managed_session
 
 if TYPE_CHECKING:
-    from app.rag.engine import RAGEngine
+    from app.rag.agents.tools.mcp_client import MCPToolRegistry
+    from app.rag.runtime.engine import RAGEngine
+    from app.services.chat.enterprise_ontology import OntologyEvidence
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
-_RAG_STATE_BUILD_KEYS = {
-    "question",
-    "history",
-    "document_ids",
-    "dataset_ids",
-    "tenant_id",
-    "account_id",
-    "dataset_id",
-    "top_k",
-    "score_threshold",
-    "retrieval_mode",
-    "retrieval_profile",
-    "retrieval_contract_mode",
-    "must_recall",
-    "must_recall_expected_source_keys",
-    "must_recall_required_anchor_fields",
-    "intent_router",
-    "intent_router_policy",
-    "enable_query_alias_expansion",
-    "query_aliases",
-    "query_alias_max_queries",
-    "enable_multi_query",
-    "multi_query_count",
-    "multi_query_temperature",
-    "multi_query_max_chars",
-    "enable_hyde",
-    "enable_hierarchy_recall",
-    "hierarchy_family_collapse",
-    "hierarchy_family_aggregation",
-    "hierarchy_tree_dedup",
-    "hierarchy_parent_depth",
-    "hierarchy_sibling_window",
-    "hierarchy_overfetch_factor",
-    "enable_query_rewrite",
-    "query_rewrite_strategy",
-    "query_rewrite_temperature",
-    "query_rewrite_max_chars",
-    "sparse_retrieval_enabled",
-    "sparse_retrieval_provider",
-    "alpha",
-    "fusion_strategy",
-    "fusion_budgets",
-    "fusion_min_scores",
-    "fusion_weights",
-    "enable_weight_rerank",
-    "vector_weight",
-    "keyword_weight",
-    "mmr_lambda",
-    "enable_reranker",
-    "reranker_provider",
-    "reranker_top_n",
-    "metadata_filter",
-    "structured_output",
-    "structured_preset",
-    "visible_evidence_only",
-    "prompt_template_id",
-    "prompt_template_key",
-    "prompt_ab_experiment_key",
-    "ab_user_key",
-    "db",
-}
+_RAG_STATE_BUILD_KEYS = {item.name for item in fields(RagStateBuildOptions)}
 
 
 @dataclass(frozen=True)
@@ -128,6 +82,9 @@ class AgenticStreamRequest:
     request_id: str | None = None
     db: Any | None = None
     state_overrides: dict[str, Any] | None = None
+    ontology_enabled: bool = False
+    ontology_prepared: bool = False
+    ontology_evidence: "OntologyEvidence | None" = None
 
 
 @dataclass
@@ -150,6 +107,7 @@ class _AgenticRetrievalState:
     crag_used: bool = False
     crag_provider: str | None = None
     crag_web_results: int = 0
+    grounded_context: str | None = None
 
 
 @dataclass
@@ -159,33 +117,11 @@ class _AgenticGenerationState:
     answer_tokens: int = 0
     answer_chars: int = 0
     structured_data: dict[str, Any] | None = None
-    self_rag_reflection: dict[str, Any] | None = None
-    critic_review: dict[str, Any] | None = None
+    self_rag_reflection: SelfRagReflection | None = None
+    critic_review: CriticReview | None = None
 
 
-_AGENTIC_STREAM_REQUEST_KEYS = {
-    "question",
-    "history",
-    "conversation_id",
-    "document_ids",
-    "dataset_ids",
-    "tenant_id",
-    "account_id",
-    "dataset_id",
-    "top_k",
-    "score_threshold",
-    "retrieval_mode",
-    "retrieval_profile",
-    "structured_output",
-    "structured_preset",
-    "prompt_template_id",
-    "prompt_template_key",
-    "prompt_ab_experiment_key",
-    "ab_user_key",
-    "request_id",
-    "db",
-    "state_overrides",
-}
+_AGENTIC_STREAM_REQUEST_KEYS = {item.name for item in fields(AgenticStreamRequest)}
 
 
 def resolve_agentic_stream_request(
@@ -194,11 +130,13 @@ def resolve_agentic_stream_request(
     legacy_overrides: dict[str, Any],
 ) -> AgenticStreamRequest:
     if request is None:
+        raw_score_threshold = legacy_overrides.get("score_threshold")
+        score_threshold = 0.7 if raw_score_threshold is None else float(raw_score_threshold)
         state_overrides = {
             key: value for key, value in legacy_overrides.items() if key not in _AGENTIC_STREAM_REQUEST_KEYS
         }
         return AgenticStreamRequest(
-            question=str(legacy_overrides.get("question") or ""),
+            question=legacy_overrides["question"],
             history=legacy_overrides.get("history"),
             conversation_id=legacy_overrides.get("conversation_id"),
             document_ids=legacy_overrides.get("document_ids"),
@@ -207,7 +145,7 @@ def resolve_agentic_stream_request(
             account_id=legacy_overrides.get("account_id"),
             dataset_id=legacy_overrides.get("dataset_id"),
             top_k=int(legacy_overrides.get("top_k", 5) or 5),
-            score_threshold=float(legacy_overrides.get("score_threshold", 0.7) or 0.7),
+            score_threshold=score_threshold,
             retrieval_mode=str(legacy_overrides.get("retrieval_mode") or "hybrid"),
             retrieval_profile=legacy_overrides.get("retrieval_profile"),
             structured_output=bool(legacy_overrides.get("structured_output", False)),
@@ -218,7 +156,8 @@ def resolve_agentic_stream_request(
             ab_user_key=legacy_overrides.get("ab_user_key"),
             request_id=legacy_overrides.get("request_id"),
             db=legacy_overrides.get("db"),
-            state_overrides=state_overrides or None,
+            state_overrides=state_overrides,
+            ontology_enabled=bool(legacy_overrides.get("ontology_enabled", False)),
         )
     if not legacy_overrides:
         return request
@@ -233,21 +172,113 @@ def resolve_agentic_stream_request(
         updated_fields["state_overrides"] = state_overrides
     if not updated_fields:
         return request
-    return cast(AgenticStreamRequest, replace(request, **updated_fields))
+    return replace(request, **updated_fields)
 
 
-def get_agentic_tool_registry() -> Any:
-    from app.rag.tools.mcp_client import get_mcp_registry
-    from app.rag.tools.mcp_tools import register_default_tools
+def get_agentic_tool_registry() -> "MCPToolRegistry":
+    from app.rag.agents.tools.mcp_client import get_mcp_registry
+    from app.rag.agents.tools.mcp_tools import register_default_tools
 
     registry = get_mcp_registry()
     return register_default_tools(registry)
 
 
-def get_multi_agent_runner(*, engine: "RAGEngine | None" = None) -> Any:
-    from app.rag.agents.multi_agent import get_multi_agent_runner as _get_multi_agent_runner
+def build_agentic_rag_state(
+    stream_request: AgenticStreamRequest,
+    *,
+    history: list[dict[str, Any]],
+) -> dict[str, Any]:
+    base_state_kwargs = {
+        key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
+    }
+    base_state_kwargs.update(
+        {
+            "question": stream_request.question,
+            "history": history,
+            "document_ids": stream_request.document_ids,
+            "dataset_ids": stream_request.dataset_ids,
+            "tenant_id": stream_request.tenant_id,
+            "account_id": stream_request.account_id,
+            "dataset_id": stream_request.dataset_id,
+            "top_k": stream_request.top_k,
+            "score_threshold": stream_request.score_threshold,
+            "retrieval_mode": stream_request.retrieval_mode,
+            "retrieval_profile": stream_request.retrieval_profile,
+            "structured_output": stream_request.structured_output,
+            "structured_preset": stream_request.structured_preset,
+            "prompt_template_id": stream_request.prompt_template_id,
+            "prompt_template_key": stream_request.prompt_template_key,
+            "prompt_ab_experiment_key": stream_request.prompt_ab_experiment_key,
+            "ab_user_key": stream_request.ab_user_key,
+            "db": stream_request.db,
+            "request_id": stream_request.request_id,
+        }
+    )
+    state = build_rag_state(**base_state_kwargs)
+    if stream_request.ontology_enabled:
+        state["ontology_enabled"] = True
+    if stream_request.ontology_prepared:
+        from app.services.chat.enterprise_ontology import attach_ontology_evidence
 
-    return _get_multi_agent_runner(engine=engine)
+        state = attach_ontology_evidence(state, stream_request.ontology_evidence)
+    return state
+
+
+async def prepare_agentic_ontology(request: AgenticStreamRequest) -> AgenticStreamRequest:
+    if not request.ontology_enabled or request.ontology_prepared:
+        return request
+    from app.services.chat.enterprise_ontology import prepare_ontology_evidence
+
+    evidence = await run_blocking_retrieval_call_with_managed_session(
+        prepare_ontology_evidence,
+        request_db=request.db,
+        tenant_id=request.tenant_id,
+        account_id=request.account_id,
+        dataset_id=request.dataset_id,
+        document_ids=request.document_ids,
+        question=request.question,
+        history=request.history,
+        conversation_id=request.conversation_id,
+    )
+    return replace(request, ontology_prepared=True, ontology_evidence=evidence)
+
+
+def build_agentic_grounded_context(
+    docs: list[Document],
+    *,
+    ontology_context: dict[str, Any],
+    question: str,
+    tool_context_blocks: Sequence[str] = (),
+) -> GroundedContext | None:
+    if not ontology_context:
+        return None
+    tool_docs = [
+        Document(
+            page_content=block,
+            metadata={"source": "Agent tool", "ontology_evidence": True, "ontology_observation": True},
+        )
+        for block in tool_context_blocks
+    ]
+    return build_grounded_context([*docs, *tool_docs], ontology_context=ontology_context, query=question)
+
+
+def _normalized_plan_queries(items: list[Any], *, limit: int) -> list[str]:
+    queries: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        query = " ".join(item.split())
+        if not query:
+            continue
+        key = query.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        queries.append(query)
+        if len(queries) >= limit:
+            break
+    return queries
 
 
 class AgenticRAGRunner:
@@ -266,29 +297,15 @@ class AgenticRAGRunner:
         try:
             plan_chain = (
                 self._engine.decompose_prompt
-                | planner_llm.bind(temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2))
+                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
                 | StrOutputParser()
             )
             raw = await plan_chain.ainvoke({"query": question, "n": max_steps})
             data, _meta = parse_json_from_text(raw, expected="array")
             if isinstance(data, list):
-                steps: list[AgenticPlanStep] = []
-                seen: set[str] = set()
-                for item in data:
-                    if not isinstance(item, str):
-                        continue
-                    query = " ".join(str(item or "").split()).strip()
-                    if not query:
-                        continue
-                    key = query.casefold()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    steps.append(AgenticPlanStep(query=query, rationale="llm_decomposition"))
-                    if len(steps) >= max_steps:
-                        break
-                if steps:
-                    return steps
+                queries = _normalized_plan_queries(data, limit=max_steps)
+                if queries:
+                    return [AgenticPlanStep(query=query, rationale="llm_decomposition") for query in queries]
         except Exception as exc:
             logger.debug("Ignoring agentic LLM decomposition failure: %s", exc)
 
@@ -300,8 +317,8 @@ class AgenticRAGRunner:
     def _merge_docs(self, docs: list[Document], new_docs: list[Document]) -> list[Document]:
         merged: list[Document] = []
         seen: set[str] = set()
-        for doc in list(docs or []) + list(new_docs or []):
-            key = self._engine._doc_key(doc)
+        for doc in chain(docs, new_docs):
+            key = document_key(doc)
             if key in seen:
                 continue
             seen.add(key)
@@ -314,18 +331,19 @@ class AgenticRAGRunner:
             return False
         citations = result.get("citations") or []
         metrics = result.get("metrics") or {}
-        min_citations = max(1, int(getattr(settings, "RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN", 1) or 1))
-        min_top_score = float(getattr(settings, "RAG_AGENTIC_REFLECT_TOP_SCORE_MIN", 0.35) or 0.35)
+        min_citations = max(1, settings.RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN)
+        min_top_score = settings.RAG_AGENTIC_REFLECT_TOP_SCORE_MIN
         if len(citations) >= min_citations:
             return True
         try:
-            return float(metrics.get("top_relevance_score") or 0.0) >= min_top_score
-        except Exception:
+            score = float(metrics.get("top_relevance_score") or 0.0)
+            return math.isfinite(score) and score >= min_top_score
+        except (OverflowError, TypeError, ValueError):
             return False
 
     @staticmethod
     def _extract_math_expression(question: str) -> str | None:
-        candidates = re.findall(r"[-+/*().\d\s]{5,}", question or "")
+        candidates = re.findall(r"[-+/*().\d\s]{5,}", question)
         for candidate in candidates:
             expr = " ".join(candidate.split()).strip(" =?")
             if not expr:
@@ -343,12 +361,11 @@ class AgenticRAGRunner:
         question: str,
         document_ids: list[UUID] | None,
         dataset_id: UUID | None,
-        account_id: str | None,
     ) -> list[AgenticToolInvocation]:
-        if not bool(getattr(settings, "RAG_AGENTIC_TOOLS_ENABLED", False)):
+        if not settings.RAG_AGENTIC_TOOLS_ENABLED:
             return []
 
-        question_norm = " ".join((question or "").split())
+        question_norm = " ".join((question).split())
         question_lower = question_norm.casefold()
         invocations: list[AgenticToolInvocation] = []
 
@@ -389,7 +406,6 @@ class AgenticRAGRunner:
             args: dict[str, Any] = {
                 "document_id": str(document_ids[0]),
                 "dataset_id": str(dataset_id),
-                "account_id": account_id,
             }
             if page_match:
                 args["page"] = int(page_match.group(1))
@@ -415,7 +431,7 @@ class AgenticRAGRunner:
         return deduped
 
     @staticmethod
-    def _format_tool_context(tool_name: str, data: Any) -> str:
+    def _format_tool_context(tool_name: str, data: Any) -> str | None:
         if isinstance(data, dict):
             if tool_name == "calculate":
                 if data.get("success"):
@@ -424,47 +440,18 @@ class AgenticRAGRunner:
             if tool_name == "get_current_time":
                 return f"[Tool: get_current_time]\nCurrent datetime: {data.get('datetime') or data.get('date') or data}"
             if tool_name == "get_document_content":
-                content = str(data.get("content") or "").strip()
+                content = data.get("content")
+                if content is not None:
+                    content = content.strip()
                 if not content:
                     return f"[Tool: get_document_content]\nError: {data.get('error') or 'No content returned'}"
                 return f"[Tool: get_document_content]\n{content}"
-        text = str(data or "").strip()
+        if data is None:
+            return None
+        text = str(data).strip()
         if not text:
             return ""
         return f"[Tool: {tool_name}]\n{text}"
-
-    @staticmethod
-    def _build_base_state(
-        stream_request: AgenticStreamRequest,
-        *,
-        history: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        base_state_kwargs = {
-            key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
-        }
-        base_state_kwargs.update(
-            {
-                "question": stream_request.question,
-                "history": history,
-                "document_ids": stream_request.document_ids,
-                "dataset_ids": stream_request.dataset_ids,
-                "tenant_id": stream_request.tenant_id,
-                "account_id": stream_request.account_id,
-                "dataset_id": stream_request.dataset_id,
-                "top_k": stream_request.top_k,
-                "score_threshold": stream_request.score_threshold,
-                "retrieval_mode": stream_request.retrieval_mode,
-                "retrieval_profile": stream_request.retrieval_profile,
-                "structured_output": stream_request.structured_output,
-                "structured_preset": stream_request.structured_preset,
-                "prompt_template_id": stream_request.prompt_template_id,
-                "prompt_template_key": stream_request.prompt_template_key,
-                "prompt_ab_experiment_key": stream_request.prompt_ab_experiment_key,
-                "ab_user_key": stream_request.ab_user_key,
-                "db": stream_request.db,
-            }
-        )
-        return build_rag_state(**base_state_kwargs)
 
     @staticmethod
     def _build_route_event(
@@ -497,57 +484,75 @@ class AgenticRAGRunner:
         document_ids: list[UUID] | None,
         dataset_id: UUID | None,
         account_id: str | None,
+        tenant_id: UUID | None,
+        dataset_ids: list[UUID] | None,
         state: _AgenticRetrievalState,
     ) -> AsyncIterator[dict[str, Any]]:
         tool_invocations = self._plan_tool_invocations(
             question=question,
             document_ids=document_ids,
             dataset_id=dataset_id,
-            account_id=account_id,
         )
         if not tool_invocations:
             return
+        scope: DocumentToolScope | None = None
+        if tenant_id is not None and account_id is not None:
+            requested_datasets = frozenset(dataset_ids) if dataset_ids is not None else None
+            if requested_datasets is None and dataset_id is not None:
+                requested_datasets = frozenset({dataset_id})
+            scope = DocumentToolScope(
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_ids=requested_datasets,
+                document_ids=frozenset(document_ids) if document_ids is not None else None,
+            )
         try:
             registry = get_agentic_tool_registry()
-            for invocation in tool_invocations:
-                yield {
-                    "type": "agentic_step",
-                    "data": {
-                        "step": "tool_call",
-                        "tool": invocation.name,
-                        "rationale": invocation.rationale,
-                    },
-                }
-                result = await registry.call_tool(invocation.name, invocation.arguments)
-                success = bool(getattr(result, "success", False))
-                data = getattr(result, "data", None)
-                error = getattr(result, "error", None)
-                metadata = dict(getattr(result, "metadata", None) or {})
-                state.tool_metrics.append(
-                    {
-                        "name": invocation.name,
-                        "success": success,
-                        "backend": metadata.get("backend"),
-                        "error": str(error)[:200] if error else None,
-                    }
-                )
-                if success:
-                    context_block = self._format_tool_context(invocation.name, data)
-                    if context_block:
-                        state.tool_context_blocks.append(context_block)
-                yield {
-                    "type": "agentic_step",
-                    "data": {
-                        "step": "tool_result",
-                        "tool": invocation.name,
-                        "success": success,
-                        "error": str(error)[:200] if error else None,
-                    },
-                }
         except Exception:
             state.tool_metrics.append(
                 {"name": "registry_init", "success": False, "backend": None, "error": "tool_registry_failed"}
             )
+            return
+        for invocation in tool_invocations:
+            tool_call_id = str(uuid4())
+            yield {
+                "type": "agentic_step",
+                "data": {
+                    "step": "tool_call",
+                    "tool": invocation.name,
+                    "tool_call_id": tool_call_id,
+                    "arguments": invocation.arguments,
+                    "rationale": invocation.rationale,
+                },
+            }
+            result = await registry.call_tool(invocation.name, invocation.arguments, scope=scope)
+            success = bool(result.success)
+            data = result.data
+            error = result.error
+            metadata = dict(result.metadata)
+            error_preview = str(error)[:200] if error else None
+            state.tool_metrics.append(
+                {
+                    "name": invocation.name,
+                    "success": success,
+                    "backend": metadata.get("backend"),
+                    "error": error_preview,
+                }
+            )
+            if success:
+                context_block = self._format_tool_context(invocation.name, data)
+                if context_block:
+                    state.tool_context_blocks.append(context_block)
+            yield {
+                "type": "agentic_step",
+                "data": {
+                    "step": "tool_result",
+                    "tool": invocation.name,
+                    "tool_call_id": tool_call_id,
+                    "success": success,
+                    "error": error_preview,
+                },
+            }
 
     async def _stream_retrieval_phase(
         self,
@@ -565,7 +570,7 @@ class AgenticRAGRunner:
                 "type": "agentic_step",
                 "data": {
                     "step": "retrieving",
-                    "round": int(round_idx),
+                    "round": round_idx,
                     "query": retrieval_query,
                     "rationale": step.rationale,
                 },
@@ -606,18 +611,18 @@ class AgenticRAGRunner:
         retrieval_result: dict[str, Any],
         state: _AgenticRetrievalState,
     ) -> tuple[dict[str, Any], str] | None:
-        if not bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)):
+        if not settings.RAG_CRAG_STREAMING_ENABLED:
             return None
         crag_result = await run_crag_streaming(
             question=question,
             query_for_retrieval=retrieval_query,
             retrieval_result=retrieval_result,
         )
-        context_block = str(crag_result.get("context_block") or "")
+        context_block = crag_result["context_block"]
         if not bool(crag_result.get("used")) or not context_block.strip():
             return None
         state.crag_used = True
-        state.crag_provider = str(crag_result.get("provider") or "").strip() or None
+        state.crag_provider = crag_result.get("provider")
         state.crag_web_results = int(crag_result.get("web_result_count") or 0)
         return (
             {
@@ -640,7 +645,7 @@ class AgenticRAGRunner:
     ) -> list[Any]:
         citations = build_citations_from_docs(
             retrieval_state.collected_docs,
-            retrieval_elapsed_sec=float(retrieval_state.retrieval_elapsed_total or 0.0),
+            retrieval_elapsed_sec=retrieval_state.retrieval_elapsed_total,
             retrieval_mode=str(
                 (retrieval_state.final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode
             ),
@@ -663,7 +668,8 @@ class AgenticRAGRunner:
         state: _AgenticGenerationState,
     ) -> AsyncIterator[dict[str, Any]]:
         if not retrieval_state.collected_docs and not retrieval_state.tool_context_blocks:
-            self._apply_abstain_generation(state)
+            state.full_response = _UNABLE_TO_ANSWER_MESSAGE
+            state.generation_elapsed = 0.0
             yield {"type": "token", "data": {"content": state.full_response}}
             state.answer_tokens = num_tokens_from_string(state.full_response)
             state.answer_chars = len(state.full_response)
@@ -676,45 +682,47 @@ class AgenticRAGRunner:
             if prompt_template_content
             else self._engine.prompt_template
         )
-        history_text = _build_history_text(history)
-        context = self._build_generation_context(
-            docs=retrieval_state.collected_docs,
-            question=question,
-            tool_context_blocks=retrieval_state.tool_context_blocks,
-        )
+        if base_state.get("ontology_context"):
+            prompt_template = with_answer_semantics_system_message(prompt_template)
+        history_text = format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
+        context = retrieval_state.grounded_context
+        if context is None:
+            context = self._build_generation_context(
+                docs=retrieval_state.collected_docs,
+                question=question,
+                tool_context_blocks=retrieval_state.tool_context_blocks,
+            )
         generation_inputs = {
             "context": context,
             "history": history_text,
             "question": question,
-            "format_instructions": str(base_state.get("format_instructions") or ""),
+            "format_instructions": base_state["format_instructions"],
         }
         gen_start = time.time()
         chain = prompt_template | llm | StrOutputParser()
-        async for token in chain.astream(generation_inputs):
-            if not token:
-                continue
-            token_text = token if isinstance(token, str) else str(token)
-            state.full_response += token_text
-            yield {"type": "token", "data": {"content": token_text}}
+        async with aclosing(chain.astream(generation_inputs)) as stream_events:
+            async for token in stream_events:
+                if not token:
+                    continue
+                token_text = token if isinstance(token, str) else str(token)
+                state.full_response += token_text
+                yield {"type": "token", "data": {"content": token_text}}
         state.generation_elapsed = time.time() - gen_start
         state.answer_tokens = num_tokens_from_string(state.full_response)
         state.answer_chars = len(state.full_response)
-        state.structured_data = self._parse_structured_data(
-            full_response=state.full_response,
-            structured_output=structured_output,
-        )
-        async for event in self._stream_review_phase(
-            question=question,
-            citations=citations,
-            collected_docs=retrieval_state.collected_docs,
-            generation_state=state,
-        ):
-            yield event
-
-    @staticmethod
-    def _apply_abstain_generation(state: _AgenticGenerationState) -> None:
-        state.full_response = _UNABLE_TO_ANSWER_MESSAGE
-        state.generation_elapsed = 0.0
+        state.structured_data = None
+        if structured_output:
+            state.structured_data, _meta = parse_json_from_text(state.full_response, expected="object")
+        async with aclosing(
+            self._stream_review_phase(
+                question=question,
+                citations=citations,
+                collected_docs=retrieval_state.collected_docs,
+                generation_state=state,
+            )
+        ) as stream_events:
+            async for event in stream_events:
+                yield event
 
     @staticmethod
     def _build_generation_context(
@@ -731,13 +739,6 @@ class AgenticRAGRunner:
             return f"{tool_context}\n\n[Retrieved Materials]\n{context}"
         return tool_context
 
-    @staticmethod
-    def _parse_structured_data(*, full_response: str, structured_output: bool) -> dict[str, Any] | None:
-        if not structured_output:
-            return None
-        structured_data, _meta = parse_json_from_text(full_response, expected="object")
-        return structured_data
-
     async def _stream_review_phase(
         self,
         *,
@@ -746,17 +747,10 @@ class AgenticRAGRunner:
         collected_docs: list[Document],
         generation_state: _AgenticGenerationState,
     ) -> AsyncIterator[dict[str, Any]]:
-        if not (
-            bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False))
-            or bool(getattr(settings, "RAG_CRITIC_ENABLED", False))
-        ):
+        if not (settings.RAG_SELF_RAG_ENABLED or settings.RAG_CRITIC_ENABLED):
             return
         evidence_text = "\n".join(
-            [
-                str(getattr(doc, "page_content", "") or "").strip()
-                for doc in (collected_docs or [])
-                if str(getattr(doc, "page_content", "") or "").strip()
-            ]
+            [doc.page_content.strip() for doc in (collected_docs or []) if doc.page_content.strip()]
         )
         generation_state.self_rag_reflection = run_self_rag_reflection(
             question=question,
@@ -768,11 +762,11 @@ class AgenticRAGRunner:
             "type": "agentic_step",
             "data": {
                 "step": "self_reflect",
-                "verdict": generation_state.self_rag_reflection.get("verdict"),
-                "need_retrieval": generation_state.self_rag_reflection.get("need_retrieval"),
+                "verdict": generation_state.self_rag_reflection["verdict"],
+                "need_retrieval": generation_state.self_rag_reflection["need_retrieval"],
             },
         }
-        if not bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+        if not settings.RAG_CRITIC_ENABLED:
             return
         generation_state.critic_review = run_critic_review(
             question=question,
@@ -784,8 +778,8 @@ class AgenticRAGRunner:
             "type": "agentic_step",
             "data": {
                 "step": "critic_review",
-                "verdict": generation_state.critic_review.get("verdict"),
-                "citation_missing": generation_state.critic_review.get("citation_missing"),
+                "verdict": generation_state.critic_review["verdict"],
+                "citation_missing": generation_state.critic_review["citation_missing"],
             },
         }
 
@@ -802,56 +796,49 @@ class AgenticRAGRunner:
         retrieval_state: _AgenticRetrievalState,
         generation_state: _AgenticGenerationState,
     ) -> dict[str, Any]:
-        critic_review = generation_state.critic_review or {}
-        self_rag_reflection = generation_state.self_rag_reflection or {}
+        critic_review = generation_state.critic_review
+        self_rag_reflection = generation_state.self_rag_reflection
         return {
+            **retrieval_state.final_result.get("metrics", {}),
             "elapsed_sec": round(time.time() - t_start, 3),
-            "retrieval_elapsed_sec": round(float(retrieval_state.retrieval_elapsed_total or 0.0), 3),
-            "generation_elapsed_sec": round(float(generation_state.generation_elapsed or 0.0), 3),
+            "retrieval_elapsed_sec": round(retrieval_state.retrieval_elapsed_total, 3),
+            "generation_elapsed_sec": round(generation_state.generation_elapsed, 3),
             "retrieval_mode": str(
                 (retrieval_state.final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode
             ),
             "complexity_score": round(float(complexity_score), 3),
             "agentic_used": True,
-            "agentic_rounds": int(retrieval_state.rounds_executed),
-            "agentic_planned_steps": int(len(plan_steps)),
+            "agentic_rounds": retrieval_state.rounds_executed,
+            "agentic_planned_steps": len(plan_steps),
             "agentic_queries": [step.query for step in plan_steps[:max_rounds]],
             "agentic_route_reason": f"complexity {complexity_score:.1f} >= threshold {threshold}",
             "model_route": model_route,
             "abstain_triggered": bool(retrieval_state.final_result.get("abstain_triggered")),
             "abstain_reason": retrieval_state.final_result.get("abstain_reason"),
-            "docs_returned": int(len(retrieval_state.collected_docs)),
+            "docs_returned": len(retrieval_state.collected_docs),
             "agentic_tools_used": int(sum(1 for item in retrieval_state.tool_metrics if item.get("success"))),
             "agentic_tool_calls": retrieval_state.tool_metrics,
-            "agentic_crag_used": bool(retrieval_state.crag_used),
+            "agentic_crag_used": retrieval_state.crag_used,
             "agentic_crag_provider": retrieval_state.crag_provider,
-            "agentic_crag_web_results": int(retrieval_state.crag_web_results),
+            "agentic_crag_web_results": retrieval_state.crag_web_results,
             "agentic_self_rag_used": bool(generation_state.self_rag_reflection is not None),
-            "agentic_self_rag_verdict": self_rag_reflection.get("verdict")
-            if generation_state.self_rag_reflection
-            else None,
+            "agentic_self_rag_verdict": self_rag_reflection["verdict"] if self_rag_reflection is not None else None,
             "agentic_self_rag_need_retrieval": (
-                bool(self_rag_reflection.get("need_retrieval"))
-                if generation_state.self_rag_reflection is not None
-                else None
+                self_rag_reflection["need_retrieval"] if self_rag_reflection is not None else None
             ),
             "agentic_critic_used": bool(generation_state.critic_review is not None),
-            "agentic_critic_verdict": critic_review.get("verdict") if generation_state.critic_review else None,
+            "agentic_critic_verdict": critic_review["verdict"] if critic_review is not None else None,
             "agentic_critic_citation_missing": (
-                bool(critic_review.get("citation_missing")) if generation_state.critic_review is not None else None
+                critic_review["citation_missing"] if critic_review is not None else None
             ),
             "agentic_critic_supported_claims": (
-                int(critic_review.get("supported_claims") or 0) if generation_state.critic_review is not None else None
+                critic_review["supported_claims"] if critic_review is not None else None
             ),
-            "agentic_critic_total_claims": (
-                int(critic_review.get("total_claims") or 0) if generation_state.critic_review is not None else None
-            ),
+            "agentic_critic_total_claims": (critic_review["total_claims"] if critic_review is not None else None),
             "agentic_critic_style_issue_count": (
-                len(critic_review.get("style_issues") or []) if generation_state.critic_review is not None else None
+                len(critic_review["style_issues"]) if critic_review is not None else None
             ),
-            "agentic_critic_reason_codes": (
-                list(critic_review.get("reason_codes") or []) if generation_state.critic_review is not None else []
-            ),
+            "agentic_critic_reason_codes": (list(critic_review["reason_codes"]) if critic_review is not None else []),
         }
 
     async def stream(
@@ -859,12 +846,13 @@ class AgenticRAGRunner:
         *,
         request: AgenticStreamRequest | None = None,
         **_kwargs: Any,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         stream_request = resolve_agentic_stream_request(
             request=request,
             legacy_overrides=_kwargs,
         )
         t_start = time.time()
+        stream_request = await prepare_agentic_ontology(stream_request)
         question = stream_request.question
         history = list(stream_request.history or [])
         conversation_id = stream_request.conversation_id
@@ -874,18 +862,26 @@ class AgenticRAGRunner:
         retrieval_mode = stream_request.retrieval_mode
         structured_output = stream_request.structured_output
         complexity_score = self._engine._score_question_complexity(question, history)
-        threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
+        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_rounds = max(1, int(getattr(settings, "RAG_AGENTIC_MAX_RETRIEVE_ROUNDS", 3) or 3))
+        max_rounds = max(1, settings.RAG_AGENTIC_MAX_RETRIEVE_ROUNDS)
         plan_steps = await self._plan(question=question, llm=llm, max_steps=max_rounds)
 
-        if bool(getattr(settings, "RAG_MULTI_AGENT_ENABLED", False)) and len(plan_steps) > 1:
+        if settings.RAG_MULTI_AGENT_ENABLED and len(plan_steps) > 1:
+            from app.rag.agents.multi_agent import MultiAgentPlanStep, get_multi_agent_runner
+
             runner = get_multi_agent_runner(engine=self._engine)
-            async for event in runner.stream(request=stream_request):
-                yield event
+            async with aclosing(
+                runner.stream(
+                    request=stream_request,
+                    plan_steps=[MultiAgentPlanStep(query=step.query, rationale=step.rationale) for step in plan_steps],
+                )
+            ) as stream_events:
+                async for event in stream_events:
+                    yield event
             return
 
-        base_state = self._build_base_state(stream_request, history=history)
+        base_state = build_agentic_rag_state(stream_request, history=history)
         yield self._build_route_event(
             llm=llm,
             complexity_score=complexity_score,
@@ -900,30 +896,48 @@ class AgenticRAGRunner:
             final_result={
                 "docs": [],
                 "citations": [],
-                "metrics": {"retrieval_mode": str(base_state.get("retrieval_mode") or "")},
+                "metrics": {"retrieval_mode": base_state["retrieval_mode"]},
                 "abstain_triggered": True,
                 "abstain_reason": "no_rounds",
             }
         )
-        async for event in self._stream_tool_phase(
-            question=question,
-            document_ids=document_ids,
-            dataset_id=dataset_id,
-            account_id=account_id,
-            state=retrieval_state,
-        ):
-            yield event
+        async with aclosing(
+            self._stream_tool_phase(
+                question=question,
+                document_ids=document_ids,
+                dataset_id=dataset_id,
+                account_id=account_id,
+                tenant_id=stream_request.tenant_id,
+                dataset_ids=stream_request.dataset_ids,
+                state=retrieval_state,
+            )
+        ) as stream_events:
+            async for event in stream_events:
+                yield event
 
-        async for event in self._stream_retrieval_phase(
-            question=question,
-            plan_steps=plan_steps,
-            max_rounds=max_rounds,
-            base_state=base_state,
-            request_db=stream_request.db,
-            state=retrieval_state,
-        ):
-            yield event
+        async with aclosing(
+            self._stream_retrieval_phase(
+                question=question,
+                plan_steps=plan_steps,
+                max_rounds=max_rounds,
+                base_state=base_state,
+                request_db=stream_request.db,
+                state=retrieval_state,
+            )
+        ) as stream_events:
+            async for event in stream_events:
+                yield event
 
+        grounded = build_agentic_grounded_context(
+            retrieval_state.collected_docs,
+            ontology_context=base_state.get("ontology_context", {}),
+            question=question,
+            tool_context_blocks=retrieval_state.tool_context_blocks,
+        )
+        if grounded is not None:
+            retrieval_state.collected_docs = grounded.documents
+            retrieval_state.grounded_context = grounded.text
+            retrieval_state.final_result["metrics"]["generation_context"] = grounded.trace
         citations = self._build_citations(
             question=question,
             retrieval_mode=retrieval_mode,
@@ -932,17 +946,20 @@ class AgenticRAGRunner:
         yield {"type": "citations", "data": citations}
 
         generation_state = _AgenticGenerationState()
-        async for event in self._stream_generation_phase(
-            base_state=base_state,
-            history=history,
-            question=question,
-            llm=llm,
-            citations=citations,
-            retrieval_state=retrieval_state,
-            structured_output=structured_output,
-            state=generation_state,
-        ):
-            yield event
+        async with aclosing(
+            self._stream_generation_phase(
+                base_state=base_state,
+                history=history,
+                question=question,
+                llm=llm,
+                citations=citations,
+                retrieval_state=retrieval_state,
+                structured_output=structured_output,
+                state=generation_state,
+            )
+        ) as stream_events:
+            async for event in stream_events:
+                yield event
 
         metrics = self._build_metrics(
             t_start=t_start,
@@ -960,8 +977,8 @@ class AgenticRAGRunner:
             "type": "done",
             "data": {
                 "conversation_id": str(conversation_id) if conversation_id else None,
-                "total_tokens": int(generation_state.answer_tokens),
-                "total_chars": int(generation_state.answer_chars),
+                "total_tokens": generation_state.answer_tokens,
+                "total_chars": generation_state.answer_chars,
                 "citations_count": len(citations),
                 "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                 "route": "agentic",
@@ -970,6 +987,7 @@ class AgenticRAGRunner:
                 "metrics": metrics,
                 "structured": bool(generation_state.structured_data),
                 "structured_data": generation_state.structured_data,
+                **({"ontology_action": base_state["ontology_action"]} if "ontology_action" in base_state else {}),
             },
         }
 
@@ -985,7 +1003,7 @@ def get_agentic_runner(*, engine: "RAGEngine | None" = None) -> AgenticRAGRunner
     if _AGENTIC_RUNNER is None:
         with _AGENTIC_LOCK:
             if _AGENTIC_RUNNER is None:
-                from app.rag.engine import get_rag_engine
+                from app.rag.runtime.engine import get_rag_engine
 
                 _AGENTIC_RUNNER = AgenticRAGRunner(engine=get_rag_engine())
     return _AGENTIC_RUNNER
@@ -1003,6 +1021,6 @@ __all__ = [
     "AgenticRAGRunner",
     "get_agentic_runner",
     "get_agentic_tool_registry",
-    "get_multi_agent_runner",
+    "build_agentic_rag_state",
     "reset_agentic_runner",
 ]

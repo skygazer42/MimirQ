@@ -1,0 +1,16 @@
+{
+  "schemaVersion":1,
+  "lang":"zh",
+  "project":"Ragvia · 审计日志布局对比",
+  "round":"审计 01",
+  "nativeViewport":"1600x1000",
+  "brief":"沿用雾灰／墨色、Manrope 与 Noto Sans SC。五版共用20条设计排版记录，比较筛选、事件阅读和资源追查的布局；保留导出与清理工具的按需入口。原始日志没有统一成功／失败、严重性或前后差异字段，候选不虚构这些信息。当前真实页有47条日志，另作结构参照。本轮为静态首屏，选定后应用到正式页面。",
+  "candidates":[
+    {"id":"a-table","name":"A · 管理宽表","source":"a-table.html","concept":"记录优先，以连续宽表横向对照时间、操作者、动作与资源。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["紧凑筛选","连续记录宽表","明细按需展开"]},
+    {"id":"b-inbox","name":"B · 事件收件箱","source":"b-inbox.html","concept":"保留事件队列，展开当前记录，在连续阅读中核对操作者、请求与明细。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["紧凑事件队列","宽阅读面","原始明细直接可见"]},
+    {"id":"c-timeline","name":"C · 时间流水","source":"c-timeline.html","concept":"沿日期和时刻串起操作，在时间次序中核对当前记录。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["日期与时刻","连续事件流水","当前记录阅读列"]},
+    {"id":"d-resource","name":"D · 资源索引","source":"d-resource.html","concept":"先定位当前页中的资源对象，再对照同一资源的操作记录与明细。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["当前页资源索引","同一资源的记录","下方明细"]},
+    {"id":"e-query","name":"E · 筛选工作台","source":"e-query.html","concept":"把精确筛选独立成栏，结果与当前记录共享宽工作区。","typography":"Manrope / Noto Sans SC；20px 标题、14px 正文、13px 操作、12px 元信息","palette":["#F6F7F8","#20262E","#FFFFFF","#DCE1E6","#476F8B","#3D7771","#805E18","#75658F"],"traits":["独立筛选条件栏","宽结果表","下方当前事件"]},
+    {"id":"current","name":"当前页面 · 参照","source":"current.png","kind":"image","baseline":true,"nativeViewport":"1280x720","concept":"当前实际页面有47条记录，筛选与清理工具占据大部分首屏，仅作现状结构参照。","traits":["真实运行页面","原有嵌套布局","1280×720 基线"]}
+  ]
+}

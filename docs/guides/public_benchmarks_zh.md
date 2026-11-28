@@ -27,7 +27,7 @@
 
 目标：
 - **B 引用可信/可核验**：每条 claim 都带有 gold evidence 指针（`page_title + sentence_id`）
-- 在 MimirQ 中我们把 wiki 页面切成 “sentence-per-chunk”，再把 evidence 指针对齐到 `reference_sources.chunk_id`
+- 在 Ragvia 中我们把 wiki 页面切成 “sentence-per-chunk”，再把 evidence 指针对齐到 `reference_sources.chunk_id`
 
 实现方式（开源友好）：
 - 不导入全量 wiki（太大）
@@ -221,7 +221,7 @@ python scripts/run_nightly_ablations.py \
 ## 8) 常见坑（中文 + Milvus + embeddings）
 
 1. **换 embedding 模型就要重建向量**  
-   MimirQ 会在检索侧做 `embedding_space_hash` guard，避免不同 embedding space 混用导致 silent 退化。
+   Ragvia 会在检索侧做 `embedding_space_hash` guard，避免不同 embedding space 混用导致 silent 退化。
 
 2. **只跑检索回归时不需要 LLM**  
    保持 `--metrics ""`（retrieval-only gate），并设置 `RERANKER_PROVIDER=none`，就能把 nightly 做成纯检索回归。

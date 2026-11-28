@@ -1,0 +1,128 @@
+{
+  "scope": "All original app/rag Python files and every current declaration, including removed/moved/new declarations and verified necessary caller deltas.",
+  "status": "complete_with_recorded_integration_limits",
+  "verified_at": "2026-11-17T00:20:44.858259+00:00",
+  "original_files": 666,
+  "original_declarations": 7475,
+  "current_files": 661,
+  "current_declarations": 7425,
+  "file_dispositions": {
+    "已符合标准": 202,
+    "完成调整": 459,
+    "完成调整（删除或合并）": 5
+  },
+  "individual_named_decisions": 7615,
+  "source_manifest_sha256": "0277e46a4ebada0788a05c5104dd46610e3cc6200a0f3e046afbc7969e247098",
+  "checks": {
+    "scope": "Currently sealed reviewed files; in-progress files are deliberately not reported as checked.",
+    "reviewed_files": 666,
+    "live_python_files_checked": 661,
+    "removed_reviewed_files": 5,
+    "memory_compile_errors": [],
+    "checks": {
+      "ruff_check": {
+        "exit_code": 0,
+        "stdout": "All checks passed!\n",
+        "stderr": ""
+      },
+      "ruff_format_check": {
+        "exit_code": 0,
+        "stdout": "661 files already formatted\n",
+        "stderr": ""
+      }
+    },
+    "rag_import_bindings": 3072,
+    "rag_import_binding_errors": [],
+    "star_imports_to_classify": [],
+    "explicit_lazy_registry_exports_checked": 78,
+    "lazy_registry_errors": [],
+    "protected_tests_checked": 746,
+    "protected_tests_changed": [],
+    "env_unchanged": true,
+    "hash_changes_during_check": [],
+    "limits": [
+      "No runtime imports or evaluation of third-party SDK/model code. Import bindings are source-level only; explicit lazy __all__ is accepted.",
+      "No pytest, application lifespan, model/provider/business HTTP/DB/Docker or Git mutation."
+    ]
+  },
+  "coverage": {
+    "reviewed_files_audited": 666,
+    "original_declarations_audited": 7475,
+    "original_names_without_direct_decision": 0,
+    "current_names_without_direct_decision": 0,
+    "note": "Named-direct match is deliberately conservative: moved/renamed/current delta names need explicit mapping before final coverage closure."
+  },
+  "independent_reviews": [
+    {
+      "path": "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rag-guidelines-parsing-b8-independent-review-20261117.json",
+      "sha256": "9ef131e9ac6ca8ad6ce442987a5ca1a01ff874e354f1ad49b0fe4c4e60f1d3e3",
+      "status": "complete_independent_review_one_audit_finding_fixed_and_verified",
+      "scope": null
+    },
+    {
+      "path": "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rag-guidelines-tracing-independent-review-20261117.json",
+      "sha256": "594fcd2bef24891cb9d999a3ea9b236e9d1ef41977a3c8f0910f53c6d7ff8d87",
+      "status": "complete_no_unresolved_actionable_findings",
+      "scope": null
+    },
+    {
+      "path": "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rag-guidelines-plugins-kg-independent-review-20261117.json",
+      "sha256": "09069a470a5db46ea9f814c337ccd432eac34fa778fe9bad9dad9e60cdaa67cf",
+      "status": "complete_independent_high_risk_sample_no_new_blocking_defect",
+      "scope": null
+    }
+  ],
+  "outside_callers": {
+    "files": {
+      "app/api/v1/pipelines/support/clean_preview.py": "7681a2bb73adc76ce9c34bad4afd732b2f4db3fa866eed9bd41b307e16c2f5c1",
+      "app/api/v1/pipelines/support/auto_annotations.py": "8791943ceea0b50d12f3e7e30d48e04cf4bad8ec57301ea10c355fbb782f3b3c",
+      "app/api/v1/documents/chunk_preview.py": "7b9c157997d8a2645c171e2e581837e2c9eeccaae7e8dbc6f85fa62a05962bb0",
+      "app/api/v1/documents/preview.py": "a822e99500a9fff92e753a3b8979c41fa5395ef835994fb32d879fe76d2fbfaf",
+      "app/services/parsing/docling.py": "28b62aa9e111652010fe496718447c48fd915f43a046040588cecf6574cb5da5",
+      "app/api/v1/conversations/feedback.py": "019ed7eaeafdf5077b22fbe0a855f6cb64196bd8de5f4bdc43abba54ba23bb87",
+      "app/api/v1/pipelines/parsing.py": "4677e045ab326623f21d9e53f55c0eee81e4ded7383ed7ab8b03ec743511df7f",
+      "app/api/schemas/pipelines/preview.py": "3644e2195431b00327f6e90236bea16f2ad9231f3faa56fa603a908d78f478cc",
+      "app/infrastructure/http/client.py": "0bccdd65cf3fbdbf214327d1a68424d2f7247240d55058690ffe80c4b03b36f1",
+      "app/main.py": "c214d9d5de6b96aa70a9ce7b755c30ea26ed3775832684589e0f2575f8c3b235"
+    },
+    "ruff": "passed",
+    "python311_memory_compile": "passed"
+  },
+  "behavior_verification": {
+    "tracing": {
+      "normal_output_pairs": 80,
+      "finite_assertions": 519
+    },
+    "preprocessing_b8": {
+      "finite_assertions": 1145
+    },
+    "ambient_cleanup": {
+      "finite_assertions": 74
+    },
+    "enrichment_callers": {
+      "caller_assertions": 18,
+      "actual_callee_mocktransport_assertions": 22
+    },
+    "other_batches": "Named per-batch evidence is linked from the full coverage ledger and individual declaration decisions; group counts use each batch own unit and are not summed as a single homogeneous test count."
+  },
+  "failure_policy": "Actual optional provider/diagnostic failures keep visible audit or warnings and original content; mandatory internal/authorization/persistence/cleanup contracts stay explicit. Normal no-result and unknown measurement remain distinct.",
+  "limitations": [
+    "No pytest or tests edits. No actual model/OCR provider, business HTTP, DB/Redis, Docker or app lifespan execution; finite fake/source ports and guarded imports prove only their stated contracts.",
+    "Local NLTK and tokenizer vocabulary resources are absent; actual tokenization needs the deployment dependencies and does not fabricate an empty working dictionary.",
+    "Chart vendor raw payload compatibility retained; unrecognized vendor contents were not inferred to be successful normalized chart series.",
+    "Existing identity readers trim outer key whitespace; significant trailing-space business IDs were not established as supported. Generator delimiter injectivity is not claimed as an all-input end-to-end identity guarantee.",
+    "Static import bindings cover explicit source imports and the actual lazy chunker export registry, not arbitrary runtime-generated calls."
+  ],
+  "git": {
+    "branch": "feat/ragvia-ui",
+    "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+    "head_unchanged": true,
+    "writes_by_this_goal": false,
+    "preexisting_or_external_index_changes": "Preserved without attribution; the workspace/index was not reset."
+  },
+  "protected_files": {
+    "tests_checked": 746,
+    "tests_changed": [],
+    "env_unchanged": true
+  }
+}

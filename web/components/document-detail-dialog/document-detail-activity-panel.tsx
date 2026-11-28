@@ -1,39 +1,56 @@
 'use client'
 
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Ban, Calendar, CheckCircle2, Copy, FileText, GitBranch, Loader2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
+import type { Virtualizer } from '@tanstack/react-virtual'
+import {
+  Ban,
+  Calendar,
+  CheckCircle2,
+  Copy,
+  FileText,
+  GitBranch,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Save,
+  Search,
+  X,
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
+import { HighlightedText } from '@/components/ui/highlighted-text'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { lineageApi } from '@/lib/api'
+import { lineageApi } from '@/lib/api/lineage'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatDate } from '@/lib/utils'
-import type { Document, DocumentChunk, DocumentTimelineItem, DocumentVersionList } from '@/types'
+import type { Document, DocumentTimelineItem, DocumentVersionList } from '@/types/documents'
+import type { DocumentChunk } from '@/types/processing'
 
 const ACTIVE_PIPELINE_VALUE = '__active__'
 
-type VirtualItemLike = {
-  key: string | number | bigint
-  index: number
-  start: number
-}
-
-type VirtualizerLike = {
-  getTotalSize: () => number
-  getVirtualItems: () => VirtualItemLike[]
-  measureElement: (node: Element | null) => void
-}
+type DocumentDetailVirtualizer = Pick<
+  Virtualizer<HTMLDivElement, Element>,
+  'getTotalSize' | 'getVirtualItems' | 'measureElement'
+>
 
 type DocumentDetailActivityPanelProps = Readonly<{
   activeView: 'chunks' | 'timeline'
@@ -59,9 +76,9 @@ type DocumentDetailActivityPanelProps = Readonly<{
   onClose: () => void
   isSearching: boolean
   chunkError: string | null
-  chunkRowVirtualizer: VirtualizerLike
+  chunkRowVirtualizer: DocumentDetailVirtualizer
   canMutateChunks: boolean
-  chunkOpWorkingId: string | null
+  pendingChunkIds: ReadonlySet<string>
   onBeginEditChunk: (chunk: DocumentChunk) => void
   onToggleChunkDisabled: (chunk: DocumentChunk) => void
   onReembedChunk: (chunk: DocumentChunk) => void
@@ -77,95 +94,173 @@ type DocumentDetailActivityPanelProps = Readonly<{
   timelineTotal: number
   isLoadingTimeline: boolean
   timelineError: string | null
-  docError: string | null
   onLoadTimeline: () => void
-  timelineRowVirtualizer: VirtualizerLike
+  timelineRowVirtualizer: DocumentDetailVirtualizer
 }>
 
-function highlightText(text: string, query: string) {
-  const needle = query.trim()
-  if (!needle) return text
-
-  const haystackLower = text.toLowerCase()
-  const needleLower = needle.toLowerCase()
-  const nodes: Array<string | ReactNode> = []
-  let cursor = 0
-
-  while (cursor < text.length) {
-    const matchAt = haystackLower.indexOf(needleLower, cursor)
-    if (matchAt === -1) {
-      nodes.push(text.slice(cursor))
-      break
-    }
-
-    if (matchAt > cursor) {
-      nodes.push(text.slice(cursor, matchAt))
-    }
-
-    const matched = text.slice(matchAt, matchAt + needle.length)
-    nodes.push(
-      <mark key={`${matchAt}-${matched.length}`} className="rounded bg-primary/15 px-0.5 text-foreground">
-        {matched}
-      </mark>
-    )
-
-    cursor = matchAt + needle.length
-  }
-
-  return nodes
+type ChunkLineageButtonProps = {
+  chunkId: string
 }
 
-function prettyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
-
-function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
+function ChunkLineageButton({ chunkId }: Readonly<ChunkLineageButtonProps>) {
   const [open, setOpen] = useState(false)
-  const lineageQuery = useQuery({
-    queryKey: queryKeys.lineage.chunk(chunkId),
-    enabled: open,
-    queryFn: () => lineageApi.getChunkLineage(chunkId),
-  })
-  const error = lineageQuery.error
-    ? formatApiError(lineageQuery.error, '加载 Chunk 血缘失败')
-    : null
-
-  useEffect(() => {
-    if (!error) return
-    toast.error(error)
-  }, [error])
 
   return (
-    <>
-      <IconButton
-        label="查看 Chunk 血缘"
-        variant="ghost"
-        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-        onClick={() => setOpen(true)}
-      >
-        {lineageQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-4 w-4" />}
-      </IconButton>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <IconButton
+          label="查看切片血缘"
+          variant="ghost"
+          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+        >
+          <GitBranch className="size-4" aria-hidden="true" />
+        </IconButton>
+      </DialogTrigger>
+      {open && <ChunkLineageDialog key={chunkId} chunkId={chunkId} />}
+    </Dialog>
+  )
+}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GitBranch className="h-4 w-4 text-info" />
-              Chunk Lineage
-            </DialogTitle>
-            <DialogDescription className="font-mono text-xs">chunk_id={chunkId}</DialogDescription>
-          </DialogHeader>
-          {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
-          <pre className={cn('max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs', 'whitespace-pre-wrap break-words')}>
-            {lineageQuery.isFetching ? 'Loading...' : prettyJson(lineageQuery.data ?? { message: '暂无 Chunk 血缘数据' })}
-          </pre>
-        </DialogContent>
-      </Dialog>
-    </>
+function ChunkLineageDialog({ chunkId }: Readonly<ChunkLineageButtonProps>) {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const lineageQuery = useQuery({
+    queryKey: [...queryKeys.lineage.chunk(chunkId), sessionKey],
+    queryFn: ({ signal }) => lineageApi.getChunkLineage(chunkId, { signal }),
+  })
+  const reading = lineageQuery.fetchStatus !== 'idle'
+
+  return (
+    <DialogContent className="flex max-h-[90dvh] max-w-3xl flex-col overflow-hidden border-border bg-background/95 shadow-strong sm:rounded-2xl">
+      <DialogHeader className="min-w-0 shrink-0 pr-8">
+        <DialogTitle className="flex items-center gap-2">
+          <GitBranch className="size-4 text-info" aria-hidden="true" />
+          切片血缘
+        </DialogTitle>
+        <DialogDescription className="font-mono text-xs [overflow-wrap:anywhere]">切片 ID：{chunkId}</DialogDescription>
+      </DialogHeader>
+      {reading && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {lineageQuery.isPaused
+            ? '血缘读取已暂停'
+            : lineageQuery.isLoading
+              ? '正在读取血缘信息…'
+              : '正在刷新血缘信息…'}
+        </p>
+      )}
+      {lineageQuery.isError && !reading && (
+        <div className="space-y-2">
+          <p role="alert" className="text-sm text-destructive">
+            {formatApiError(lineageQuery.error, '加载切片血缘失败')}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void lineageQuery.refetch({ cancelRefetch: false })}
+          >
+            重新加载
+          </Button>
+        </div>
+      )}
+      {lineageQuery.data !== undefined && (
+        <pre className="min-h-0 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-muted/20 p-3 text-xs [overflow-wrap:anywhere]">
+          {JSON.stringify(lineageQuery.data, null, 2)}
+        </pre>
+      )}
+    </DialogContent>
+  )
+}
+
+function ActivityListSkeleton({ label }: Readonly<{ label: string }>) {
+  return (
+    <div role="status" className="space-y-3">
+      <span className="sr-only">{label}</span>
+      {[0, 1, 2].map((index) => (
+        <div key={index} aria-hidden="true" className="rounded-xl border border-border/60 bg-card p-4">
+          <div className="flex gap-2">
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-5 w-40" />
+          </div>
+          <Skeleton className="mt-3 h-3 w-full" />
+          <Skeleton className="mt-2 h-3 w-2/3" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+type TimelineEventCardProps = Readonly<{
+  event: DocumentTimelineItem
+  onCopyText: (text: string) => void
+}>
+
+function TimelineEventCard({ event, onCopyText }: TimelineEventCardProps) {
+  const t = useTranslations('DocumentDetailDialog')
+  const fields = [
+    { key: 'stage', label: t('timeline.meta.stage'), value: event.stage },
+    { key: 'status', label: t('timeline.meta.status'), value: event.status },
+    {
+      key: 'progress',
+      label: t('timeline.meta.progress'),
+      value: event.progress === null || event.progress === undefined ? null : `${event.progress}%`,
+    },
+    { key: 'request_id', label: t('timeline.meta.requestId'), value: event.request_id },
+    { key: 'actor_id', label: t('timeline.meta.actorId'), value: event.actor_id },
+  ]
+  const details = event.details === undefined ? [] : Object.entries(event.details)
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+              {formatDate(event.created_at)}
+            </span>
+            <span className="break-all font-mono text-xs text-foreground/90">{event.action}</span>
+            {event.source === 'synthetic' ? (
+              <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+                {t('timeline.synthetic')}
+              </span>
+            ) : null}
+          </div>
+          <dl className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {fields.map(({ key, label, value }) =>
+              value === null || value === undefined || value.length === 0 ? null : (
+                <div key={key} className="flex min-w-0 gap-1 break-all">
+                  <dt>{label}:</dt>
+                  <dd>{value}</dd>
+                </div>
+              ),
+            )}
+          </dl>
+        </div>
+        <IconButton
+          label={t('timeline.actions.copyEvent')}
+          variant="ghost"
+          className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={() => onCopyText(JSON.stringify(event, null, 2))}
+        >
+          <Copy className="h-4 w-4" aria-hidden="true" />
+        </IconButton>
+      </div>
+      {details.length > 0 ? (
+        <dl className="mt-3 flex flex-wrap gap-2">
+          {details.map(([key, value]) => {
+            const text = typeof value === 'string' ? value : JSON.stringify(value)
+            return (
+              <div
+                key={key}
+                className="min-w-0 max-w-full rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground"
+              >
+                <dt className="break-all font-medium">{key}</dt>
+                <dd className="whitespace-pre-wrap break-all">{text}</dd>
+              </div>
+            )
+          })}
+        </dl>
+      ) : null}
+    </div>
   )
 }
 
@@ -195,7 +290,7 @@ export function DocumentDetailActivityPanel({
   chunkError,
   chunkRowVirtualizer,
   canMutateChunks,
-  chunkOpWorkingId,
+  pendingChunkIds,
   onBeginEditChunk,
   onToggleChunkDisabled,
   onReembedChunk,
@@ -211,22 +306,17 @@ export function DocumentDetailActivityPanel({
   timelineTotal,
   isLoadingTimeline,
   timelineError,
-  docError,
   onLoadTimeline,
   timelineRowVirtualizer,
 }: DocumentDetailActivityPanelProps) {
   const commonT = useTranslations('Common')
   const documentsT = useTranslations('Documents')
   const t = useTranslations('DocumentDetailDialog')
+  const versionItems = versions?.items
 
-  const renderChunksContent = () => {
-    if ((isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0)) {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
-          <p className="text-sm">{documentsT('loadingChunks')}</p>
-        </div>
-      )
+  function renderChunksContent() {
+    if ((isLoadingDoc && detail === null) || (isLoadingChunks && chunks.length === 0)) {
+      return <ActivityListSkeleton label={documentsT('loadingChunks')} />
     }
 
     if (loadError && chunks.length === 0) {
@@ -290,7 +380,7 @@ export function DocumentDetailActivityPanel({
         >
           {chunkRowVirtualizer.getVirtualItems().map((virtualRow) => {
             const chunk = chunks[virtualRow.index]
-            if (!chunk) return null
+            if (chunk === undefined) return null
 
             return (
               <li
@@ -310,7 +400,7 @@ export function DocumentDetailActivityPanel({
                   className={cn(
                     'group rounded-xl border border-border/60 bg-card p-4 transition-colors',
                     'hover:border-primary/25 hover:shadow-soft/30',
-                    chunk.disabled_at ? 'opacity-70' : null
+                    chunk.disabled_at ? 'opacity-70' : null,
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -323,7 +413,9 @@ export function DocumentDetailActivityPanel({
                           P.{chunk.page_number}
                         </span>
                       ) : null}
-                      <span className="text-muted-foreground">{t('chunks.charCount', { count: (chunk.content || '').length })}</span>
+                      <span className="text-muted-foreground">
+                        {t('chunks.charCount', { count: chunk.content.length })}
+                      </span>
                       {chunk.disabled_at ? (
                         <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
                           {t('chunks.disabledBadge')}
@@ -336,7 +428,7 @@ export function DocumentDetailActivityPanel({
                         variant="ghost"
                         className="h-9 w-9 text-muted-foreground hover:text-foreground"
                         onClick={() => onBeginEditChunk(chunk)}
-                        disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                        disabled={!canMutateChunks || pendingChunkIds.has(chunk.id)}
                       >
                         <Pencil className="h-4 w-4" />
                       </IconButton>
@@ -345,7 +437,7 @@ export function DocumentDetailActivityPanel({
                         variant="ghost"
                         className="h-9 w-9 text-muted-foreground hover:text-foreground"
                         onClick={() => onToggleChunkDisabled(chunk)}
-                        disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                        disabled={!canMutateChunks || pendingChunkIds.has(chunk.id)}
                       >
                         {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
                       </IconButton>
@@ -354,7 +446,7 @@ export function DocumentDetailActivityPanel({
                         variant="ghost"
                         className="h-9 w-9 text-muted-foreground hover:text-foreground"
                         onClick={() => onReembedChunk(chunk)}
-                        disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}
+                        disabled={!canMutateChunks || Boolean(chunk.disabled_at) || pendingChunkIds.has(chunk.id)}
                       >
                         <RefreshCw className="h-4 w-4" />
                       </IconButton>
@@ -363,8 +455,8 @@ export function DocumentDetailActivityPanel({
                         label={t('chunks.actions.copy')}
                         variant="ghost"
                         className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                        onClick={() => onCopyText(chunk.content || '')}
-                        disabled={chunkOpWorkingId === chunk.id}
+                        onClick={() => onCopyText(chunk.content)}
+                        disabled={pendingChunkIds.has(chunk.id)}
                       >
                         <Copy className="h-4 w-4" />
                       </IconButton>
@@ -374,23 +466,30 @@ export function DocumentDetailActivityPanel({
                   {editingChunkId === chunk.id ? (
                     <div className="mt-3 space-y-2">
                       <Textarea
+                        aria-label={t('chunks.editContentLabel', { index: chunk.chunk_index })}
                         value={editingChunkContent}
                         onChange={(e) => onEditingChunkContentChange(e.target.value)}
                         className="min-h-[140px] font-mono text-xs"
-                        disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                        disabled={!canMutateChunks || pendingChunkIds.has(chunk.id)}
                       />
                       <div className="flex items-center justify-end gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={onCancelEditChunk} disabled={chunkOpWorkingId === chunk.id}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={onCancelEditChunk}
+                          disabled={pendingChunkIds.has(chunk.id)}
+                        >
                           {commonT('cancel')}
                         </Button>
                         <Button
                           type="button"
                           size="sm"
                           onClick={onSaveEditChunk}
-                          disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
+                          disabled={!canMutateChunks || pendingChunkIds.has(chunk.id)}
                           className="gap-2"
                         >
-                          {chunkOpWorkingId === chunk.id ? (
+                          {pendingChunkIds.has(chunk.id) ? (
                             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                           ) : (
                             <Save className="h-4 w-4" />
@@ -401,7 +500,12 @@ export function DocumentDetailActivityPanel({
                     </div>
                   ) : (
                     <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
-                      {highlightText(chunk.content || '', chunkQuery)}
+                      <HighlightedText
+                        content={chunk.content}
+                        query={chunkQuery}
+                        maxMatches={Number.POSITIVE_INFINITY}
+                        markClassName="rounded bg-primary/15 px-0.5 text-foreground"
+                      />
                     </div>
                   )}
                 </div>
@@ -422,22 +526,17 @@ export function DocumentDetailActivityPanel({
     )
   }
 
-  const renderTimelineContent = () => {
+  function renderTimelineContent() {
     if (isLoadingTimeline && timelineItems.length === 0) {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
-          <p className="text-sm">{documentsT('loadingTimeline')}</p>
-        </div>
-      )
+      return <ActivityListSkeleton label={documentsT('loadingTimeline')} />
     }
 
-    if ((timelineError || docError) && timelineItems.length === 0) {
+    if (timelineError !== null && timelineItems.length === 0) {
       return (
         <div className="mx-auto max-w-2xl py-10">
           <Alert variant="destructive">
             <AlertTitle>{t('alerts.loadFailedTitle')}</AlertTitle>
-            <AlertDescription>{timelineError || docError}</AlertDescription>
+            <AlertDescription>{timelineError}</AlertDescription>
           </Alert>
           <div className="mt-4 flex items-center justify-end gap-2">
             <Button variant="outline" onClick={onLoadTimeline}>
@@ -477,11 +576,8 @@ export function DocumentDetailActivityPanel({
           style={{ height: `${timelineRowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
         >
           {timelineRowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const ev = timelineItems[virtualRow.index]
-            if (!ev) return null
-
-            const detailPairs = Object.entries(ev.details || {}).slice(0, 12)
-            const hasDetails = detailPairs.length > 0
+            const timelineEvent = timelineItems[virtualRow.index]
+            if (timelineEvent === undefined) return null
 
             return (
               <li
@@ -497,80 +593,7 @@ export function DocumentDetailActivityPanel({
                 }}
                 className="pb-3"
               >
-                <div className={cn('group rounded-xl border border-border/60 bg-card p-4 transition-colors', 'hover:border-primary/25 hover:shadow-soft/30')}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                          {formatDate(ev.created_at)}
-                        </span>
-                        <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
-                        {ev.source === 'synthetic' ? (
-                          <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-                            {t('timeline.synthetic')}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        {ev.stage ? <span>{t('timeline.meta.stage')}: {ev.stage}</span> : null}
-                        {ev.status ? <span>{t('timeline.meta.status')}: {ev.status}</span> : null}
-                        {typeof ev.progress === 'number' ? <span>{t('timeline.meta.progress')}: {ev.progress}%</span> : null}
-                        {ev.request_id ? (
-                          <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-                            {t('timeline.meta.requestId')}: {ev.request_id}
-                          </span>
-                        ) : null}
-                        {ev.actor_id ? (
-                          <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-                            {t('timeline.meta.actorId')}: {ev.actor_id}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <IconButton
-                      label={t('timeline.actions.copyEvent')}
-                      variant="ghost"
-                      className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                      onClick={() =>
-                        onCopyText(
-                          JSON.stringify(
-                            {
-                              id: ev.id,
-                              action: ev.action,
-                              created_at: ev.created_at,
-                              stage: ev.stage,
-                              status: ev.status,
-                              progress: ev.progress,
-                              request_id: ev.request_id,
-                              actor_id: ev.actor_id,
-                              details: ev.details,
-                            },
-                            null,
-                            2
-                          )
-                        )
-                      }
-                    >
-                      <Copy className="h-4 w-4" />
-                    </IconButton>
-                  </div>
-
-                  {hasDetails ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {detailPairs.map(([key, value]) => (
-                        <span
-                          key={`${ev.id}:${key}`}
-                          className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground"
-                          title={`${key}: ${String(value)}`}
-                        >
-                          {key}: {String(value)}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                <TimelineEventCard event={timelineEvent} onCopyText={onCopyText} />
               </li>
             )
           })}
@@ -581,7 +604,7 @@ export function DocumentDetailActivityPanel({
 
   return (
     <Panel padding="none" className="flex-1 min-h-0 overflow-hidden rounded-2xl">
-      <div className="flex items-center gap-3 border-b border-border/60 bg-background/40 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 bg-background/40 px-4 py-3">
         <div
           className="inline-flex h-10 items-center rounded-md bg-muted p-1 text-muted-foreground"
           role="tablist"
@@ -596,7 +619,7 @@ export function DocumentDetailActivityPanel({
             tabIndex={activeView === 'chunks' ? 0 : -1}
             className={cn(
               'inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none',
-              activeView === 'chunks' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
+              activeView === 'chunks' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground',
             )}
             onClick={() => onActiveViewChange('chunks')}
             onKeyDown={onViewTabKeyDown}
@@ -612,7 +635,7 @@ export function DocumentDetailActivityPanel({
             tabIndex={activeView === 'timeline' ? 0 : -1}
             className={cn(
               'inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none',
-              activeView === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
+              activeView === 'timeline' ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground',
             )}
             onClick={() => onActiveViewChange('timeline')}
             onKeyDown={onViewTabKeyDown}
@@ -626,6 +649,7 @@ export function DocumentDetailActivityPanel({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={chunkQuery}
+              aria-label={t('search.placeholder')}
               onChange={(e) => onChunkQueryChange(e.target.value)}
               placeholder={t('search.placeholder')}
               className="h-10 pl-9"
@@ -635,17 +659,17 @@ export function DocumentDetailActivityPanel({
           <div className="flex-1 text-sm text-muted-foreground">{t('timeline.description')}</div>
         )}
 
-        {activeView === 'chunks' && versions?.items?.length ? (
+        {activeView === 'chunks' && versionItems !== undefined && versionItems.length > 0 ? (
           <Select value={viewPipelineHash} onValueChange={onViewPipelineHashChange}>
-            <SelectTrigger className="hidden h-10 w-[220px] sm:flex">
+            <SelectTrigger aria-label={t('versions.selectPlaceholder')} className="h-10 w-full sm:w-[220px]">
               <SelectValue placeholder={t('versions.selectPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ACTIVE_PIPELINE_VALUE}>{t('versions.active')}</SelectItem>
-              {versions.items.map((version) => (
+              {versionItems.map((version) => (
                 <SelectItem key={version.pipeline_hash} value={version.pipeline_hash}>
-                  {version.active ? t('versions.activeTag') : t('versions.historyTag')} {version.pipeline_hash.slice(0, 10)}… ·{' '}
-                  {t('versions.chunkCount', { count: version.chunk_count })}
+                  {version.active ? t('versions.activeTag') : t('versions.historyTag')}{' '}
+                  {version.pipeline_hash.slice(0, 10)}… · {t('versions.chunkCount', { count: version.chunk_count })}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -675,7 +699,7 @@ export function DocumentDetailActivityPanel({
             onClick={onLoadTimeline}
             disabled={isLoadingTimeline}
           >
-            {isLoadingTimeline ? (
+            {isLoadingTimeline && timelineItems.length > 0 ? (
               <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
             ) : (
               <RefreshCw className="h-4 w-4" />

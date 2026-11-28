@@ -29,7 +29,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/mimirq
       SECRET_KEY: ci-answer-quality-secret-key-0123456789
       DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
-      VECTOR_BACKEND: faiss
+      VECTOR_BACKEND: memory
       TASK_QUEUE_ENABLED: "false"
       EMBEDDING_CACHE_ENABLED: "false"
       MINIO_ENABLED: "false"
@@ -62,7 +62,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --retries 10 --timeout 120 \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
             -r requirements-dev.txt
 
       - name: Require explicit real-provider configuration

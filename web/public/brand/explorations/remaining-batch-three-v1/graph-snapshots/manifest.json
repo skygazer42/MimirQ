@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/graph-snapshots/a.html",
+      "name": "A 差异阅读",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 差异阅读"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/graph-snapshots/b.html",
+      "name": "B 版本目录",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 版本目录"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/graph-snapshots/c.html",
+      "name": "C 双画布对照",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 双画布对照"
+      ]
+    }
+  ]
+}

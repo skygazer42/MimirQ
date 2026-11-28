@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api.schemas.document import (
+import app.services.documents.access as document_access_service
+from app.api.schemas.documents.document import (
     DocumentChunkCreateRequest,
     DocumentChunkReembedRequest,
     DocumentChunkUpdateRequest,
@@ -118,11 +119,11 @@ def _chunk(*, tenant_id: uuid.UUID, document_id: uuid.UUID, chunk_id: uuid.UUID 
 def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.documents as documents_module
-    from app.rag import retriever as retriever_module
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
+    from app.rag.retrieval import corpus
 
-    chunk_routes = importlib.import_module("app.api.v1.document_chunks_write")
+    chunk_routes = importlib.import_module("app.api.v1.documents.chunks_write")
+    chunk_operations = importlib.import_module("app.services.documents.chunks")
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -157,49 +158,44 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         lambda: pytest.fail("routes must not call the default vector store directly"),
         raising=True,
     )
-    monkeypatch.setattr(chunk_routes.documents_module, "Indexer", _FakeIndexer, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(chunk_operations, "Indexer", _FakeIndexer, raising=False)
+    monkeypatch.setattr(chunk_operations.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        documents_module, "_assert_document_writable_for_chunk_ops", lambda *_a, **_k: None, raising=True
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
+        lambda *_a, **_k: None,
+        raising=True,
     )
-    monkeypatch.setattr(chunk_routes.documents_module, "audit_log_event", lambda *_a, **_k: None, raising=False)
+    monkeypatch.setattr(chunk_operations, "audit_log_event", lambda *_a, **_k: None, raising=False)
     monkeypatch.setattr(
-        documents_module, "_normalize_index_consistency_strictness", lambda **_k: "best_effort", raising=True
+        chunk_operations, "_normalize_index_consistency_strictness", lambda **_k: "best_effort", raising=True
     )
-    monkeypatch.setattr(documents_module, "_build_index_channel_result", lambda **kwargs: kwargs, raising=True)
+    monkeypatch.setattr(chunk_operations, "_build_index_channel_result", lambda **kwargs: kwargs, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        chunk_operations,
         "_build_chunk_index_operation_result",
         lambda **kwargs: {"success": True, **kwargs},
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_persist_chunk_index_operation_result", lambda **_kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_record_chunk_index_drift", _noop_drift, raising=True)
+    monkeypatch.setattr(chunk_operations, "_persist_chunk_index_operation_result", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(chunk_operations, "_record_chunk_index_drift", _noop_drift, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        chunk_operations,
         "_resolve_active_doc_pipeline_key",
         lambda doc_id, _meta: f"{doc_id}:active",
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_get_document_for_chunk_ops", lambda *_a, **_k: document, raising=True)
+    monkeypatch.setattr(document_access_service, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        chunk_operations,
         "_get_chunk_for_chunk_ops",
         lambda *_a, **_k: existing_chunk,
         raising=True,
     )
-    retriever_cls = type(retriever_module.hybrid_retriever)
     monkeypatch.setattr(
-        retriever_cls,
-        "remove_from_bm25_index_by_metadata_filter",
-        lambda _self, **_kwargs: None,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        retriever_cls,
-        "upsert_bm25_documents",
-        lambda _self, *_args, **_kwargs: None,
-        raising=False,
+        corpus,
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None, upsert=lambda *_a, **_k: None),
     )
 
     create_db = _QueuedDB(
@@ -282,8 +278,8 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         account_id=account_id,
         db=reembed_db,
     )
-    assert reembed_result["reembedded"] == 1
-    assert reembed_result["conflicts"] == []
+    assert reembed_result.reembedded == 1
+    assert reembed_result.conflicts == []
     assert [call["op"] for call in helper_calls] == ["delete", "upsert"]
     assert helper_calls[0]["metadata_filter"] == {"chunk_id": {"$eq": str(existing_chunk.id)}}
 
@@ -292,12 +288,13 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
     pg_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import document_versions
-    from app.models.dataset import Dataset, DatasetPermissionEnum
-    from app.models.document import Document as DBDocument
-    from app.models.document import DocumentChunk
-    from app.rag import retriever as retriever_module
-    from app.services import indexer as indexer_module
+    from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+    from app.api.v1.documents import versions as document_versions
+    from app.models.datasets.records import Dataset
+    from app.models.documents.records import Document as DBDocument
+    from app.models.documents.records import DocumentChunk
+    from app.rag.ingestion.indexing import indexer as indexer_module
+    from app.rag.retrieval import corpus
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -366,17 +363,12 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
         raising=True,
     )
     monkeypatch.setattr(document_versions, "Indexer", _FakeIndexer, raising=True)
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_versions.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         document_versions, "assert_document_writable_for_lifecycle", lambda *_a, **_k: None, raising=True
     )
     monkeypatch.setattr(document_versions, "audit_log_event", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(
-        retriever_module.hybrid_retriever,
-        "remove_from_bm25_index_by_metadata_filter",
-        lambda **_kwargs: None,
-        raising=True,
-    )
+    monkeypatch.setattr(corpus, "get_corpus_index", lambda: SimpleNamespace(remove=lambda **_kwargs: None))
 
     response = document_versions.delete_document_version(
         document_id=document_id,
@@ -405,10 +397,10 @@ def test_retention_cleanup_routes_vector_cleanup_through_indexer_helper(
     pg_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.models.document import Document as DBDocument
-    from app.models.document import DocumentChunk
-    from app.services import indexer as indexer_module
-    from app.services import retention_policy as rp
+    from app.models.documents.records import Document as DBDocument
+    from app.models.documents.records import DocumentChunk
+    from app.rag.ingestion.indexing import indexer as indexer_module
+    from app.services.retention import policy as rp
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()

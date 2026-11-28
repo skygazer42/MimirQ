@@ -1,11 +1,14 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import type { DocumentPipelineOptions } from '@/types'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import {
   DEFAULT_DOCUMENT_PIPELINE_OPTIONS,
+  getUnsupportedDocumentPipelineOptionKeys,
   normalizeDocumentPipelineOptions,
+  readPipelineOptionsImport,
 } from '@/lib/document-pipeline-options'
 
 const STORAGE_KEY = 'mimirq_pipeline_options'
@@ -19,134 +22,122 @@ type PipelineOptionsContextValue = {
   enabled: boolean
   options: DocumentPipelineOptions
   setEnabled: (value: boolean) => void
+  applyOptions: (options: DocumentPipelineOptions, enabled?: boolean) => void
   updateOption: <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => void
   reset: () => void
   exportJson: () => string
-  importJson: (jsonText: string) => { ok: boolean; error?: string }
+  importJson: (jsonText: string) => { ok: true } | { ok: false; error: string }
 }
 
 const PipelineOptionsContext = createContext<PipelineOptionsContextValue | null>(null)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-const normalizeState = (raw: unknown): PipelineOptionsState => {
-  const record =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {}
-  const enabled = typeof record.enabled === 'boolean' ? record.enabled : false
+function normalizeState(raw: Record<string, unknown>): PipelineOptionsState {
   return {
-    enabled,
-    options: normalizeDocumentPipelineOptions(record.options),
+    enabled:
+      raw.enabled === true &&
+      isRecord(raw.options) &&
+      getUnsupportedDocumentPipelineOptionKeys(raw.options).length === 0,
+    options: normalizeDocumentPipelineOptions(raw.options),
   }
 }
 
-export function PipelineOptionsProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+export function PipelineOptionsProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [state, setState] = useState<PipelineOptionsState>({
     enabled: false,
     options: { ...DEFAULT_DOCUMENT_PIPELINE_OPTIONS },
   })
+  const [storageLoaded, setStorageLoaded] = useState(false)
 
   useEffect(() => {
-    const stored = readClientStorage(STORAGE_KEY)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored)
-      setState(normalizeState(parsed))
-    } catch {
-      // ignore corrupted storage
-    }
-  }, [])
-
-  useEffect(() => {
-    writeClientStorage(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
-
-  useEffect(() => {
-    if (globalThis.window === undefined) return
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY || !event.newValue) return
+    function restoreOptions(json: string) {
+      let parsed: unknown
       try {
-        const parsed = JSON.parse(event.newValue)
-        setState(normalizeState(parsed))
+        parsed = JSON.parse(json)
       } catch {
-        // ignore
+        return
       }
+
+      if (!isRecord(parsed)) return
+      const restored = normalizeState(parsed)
+      if (parsed.enabled === true && !restored.enabled) {
+        toast.error('旧管线配置无效，已清理并关闭覆盖，请检查后重新启用', { id: STORAGE_KEY })
+      }
+      setState(restored)
+    }
+
+    const stored = readClientStorage(STORAGE_KEY)
+    if (stored !== null) restoreOptions(stored)
+    setStorageLoaded(true)
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY && event.newValue !== null) restoreOptions(event.newValue)
     }
     globalThis.window.addEventListener('storage', onStorage)
     return () => globalThis.window.removeEventListener('storage', onStorage)
   }, [])
 
-  const value = useMemo<PipelineOptionsContextValue>(() => ({
-    enabled: state.enabled,
-    options: state.options,
-    setEnabled: (value) => {
-      setState((prev) => ({ ...prev, enabled: value }))
-    },
-    updateOption: (key, value) => {
-      setState((prev) => ({
-        ...prev,
-        options: {
-          ...prev.options,
-          [key]: value,
-        },
-      }))
-    },
-    reset: () => {
-      setState({
-        enabled: false,
-        options: { ...DEFAULT_DOCUMENT_PIPELINE_OPTIONS },
-      })
-    },
-    exportJson: () => JSON.stringify({ enabled: state.enabled, options: state.options }, null, 2),
-    importJson: (jsonText: string) => {
-      const raw = (jsonText || '').trim()
-      if (!raw) return { ok: false, error: 'Empty JSON' }
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(raw)
-      } catch {
-        return { ok: false, error: 'Invalid JSON' }
-      }
+  useEffect(() => {
+    if (!storageLoaded) return
+    writeClientStorage(STORAGE_KEY, JSON.stringify(state))
+  }, [state, storageLoaded])
 
-      // Accept either:
-      // - { enabled, options }
-      // - { ...options }
-      try {
-        if (isRecord(parsed) && ('options' in parsed || 'enabled' in parsed)) {
-          const enabled =
-            typeof parsed.enabled === 'boolean' ? parsed.enabled : state.enabled
-          const optionsRaw = parsed.options ?? {}
-          setState({
-            enabled,
-            options: normalizeDocumentPipelineOptions(optionsRaw),
-          })
-          return { ok: true }
-        }
+  const applyOptions = useCallback((options: DocumentPipelineOptions, enabled?: boolean) => {
+    setState((current) => ({ options, enabled: enabled ?? current.enabled }))
+  }, [])
 
+  const value = useMemo<PipelineOptionsContextValue>(
+    () => ({
+      enabled: state.enabled,
+      options: state.options,
+      applyOptions,
+      setEnabled: (value) => {
+        setState((prev) => ({ ...prev, enabled: value }))
+      },
+      updateOption: (key, value) => {
         setState((prev) => ({
           ...prev,
-          options: normalizeDocumentPipelineOptions(parsed),
+          options: {
+            ...prev.options,
+            [key]: value,
+          },
         }))
-        return { ok: true }
-      } catch {
-        return { ok: false, error: 'Invalid options shape' }
-      }
-    },
-  }), [state])
+      },
+      reset: () => {
+        setState({
+          enabled: false,
+          options: { ...DEFAULT_DOCUMENT_PIPELINE_OPTIONS },
+        })
+      },
+      exportJson: () => JSON.stringify({ enabled: state.enabled, options: state.options }, null, 2),
+      importJson: (jsonText: string) => {
+        const raw = jsonText.trim()
+        if (!raw) return { ok: false, error: 'Empty JSON' }
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          return { ok: false, error: 'Invalid JSON' }
+        }
 
-  return (
-    <PipelineOptionsContext.Provider value={value}>
-      {children}
-    </PipelineOptionsContext.Provider>
+        const result = readPipelineOptionsImport(parsed)
+        if (!result.ok) return result
+        applyOptions(result.options, result.enabled)
+        return { ok: true }
+      },
+    }),
+    [applyOptions, state],
   )
+
+  return <PipelineOptionsContext.Provider value={value}>{children}</PipelineOptionsContext.Provider>
 }
 
 export function usePipelineOptions() {
   const ctx = useContext(PipelineOptionsContext)
-  if (!ctx) {
+  if (ctx === null) {
     throw new Error('usePipelineOptions must be used within PipelineOptionsProvider')
   }
   return ctx

@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 import {
   applyStoredThemeAppearance,
   getSurfaceThemeMeta,
-  getThemeColorTokens,
   normalizeSurfaceTheme,
   normalizeThemeColor,
   normalizeThemeColorCookie,
@@ -17,6 +16,7 @@ import {
   SURFACE_THEMES,
   SURFACE_THEME_COOKIE_KEY,
   SURFACE_THEME_STORAGE_KEY,
+  THEME_ACCENT_COLORS,
   THEME_COLOR_COOKIE_KEY,
   THEME_COLOR_STORAGE_KEY,
 } from './theme-surface'
@@ -29,52 +29,53 @@ function createStorage(values: Record<string, string>): Pick<Storage, 'getItem'>
   }
 }
 
-function hslTokenToColor(value: string) {
+const css = fs.readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8')
+const rootCss = /:root\s*\{([\s\S]*?)\n\s*\}/u.exec(css)?.[1] ?? ''
+
+function tokenColor(rule: string, name: string) {
+  const value = new RegExp(`${name}:\\s*([^;]+);`, 'u').exec(rule)?.[1]
+  if (value === undefined) throw new Error(`Missing CSS token: ${name}`)
   return chroma(`hsl(${value})`)
 }
 
 describe('theme surface appearance', () => {
-  it('keeps the default Ocean app canvas calm with a readable structure border', () => {
-    const css = fs.readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8')
-
-    expect(css).toContain('--background: 200 50% 97.6%')
-    expect(css).toContain('--secondary: 199 42% 96.2%')
-    expect(css).toContain('--muted: 199 38% 96%')
-    expect(css).toContain('--surface-2: 198 40% 96.7%')
-    expect(css).toContain('--border: 203 22% 84%')
-    expect(css).toContain('--sidebar-border: 203 22% 84%')
+  it('keeps default work surfaces neutral and supporting text readable', () => {
+    for (const name of ['--background', '--secondary', '--muted', '--sidebar-background', '--surface-2']) {
+      const surface = tokenColor(rootCss, name)
+      expect(surface.get('lch.c')).toBeLessThan(2.5)
+      expect(chroma.contrast(tokenColor(rootCss, '--muted-foreground'), surface)).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(
+      chroma.contrast(tokenColor(rootCss, '--foreground'), tokenColor(rootCss, '--background')),
+    ).toBeGreaterThanOrEqual(4.5)
     expect(css).toContain('--app-background-base: hsl(var(--background))')
     expect(css).toContain('--app-orb-primary-opacity: 0')
     expect(css).toContain('--app-orb-secondary-opacity: 0')
     expect(css).toContain('background-image: none')
   })
 
-  it('keeps the default ocean primary anchored in deep navy for hierarchy', () => {
+  it('keeps the default primary anchored in the approved Ragvia ink', () => {
     const ocean = getSurfaceThemeMeta('ocean')
-    expect(ocean.defaultPrimary).toBe('#0f172a')
+    expect(ocean.defaultPrimary).toBe('#20262e')
 
-    const tokens = getThemeColorTokens(ocean.defaultPrimary)
     expect(
-      chroma.contrast(
-        hslTokenToColor(tokens?.['--primary'] || ''),
-        hslTokenToColor(tokens?.['--primary-foreground'] || '')
-      )
+      chroma.contrast(tokenColor(rootCss, '--primary'), tokenColor(rootCss, '--primary-foreground')),
     ).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('recognizes the professional neutral-white surface preset', () => {
+  it('recognizes current surface presets and normalizes an old preset', () => {
     expect(normalizeSurfaceTheme('neutral')).toBe('neutral')
-    expect(normalizeSurfaceTheme('deepsea')).toBe('deepsea')
+    expect(normalizeSurfaceTheme('deepsea')).toBe('ocean')
   })
 
   it('keeps theme previews aligned with valid surface and primary colors', () => {
-    expect(SURFACE_THEMES).toHaveLength(5)
+    expect(SURFACE_THEMES).toHaveLength(4)
     for (const theme of SURFACE_THEMES) {
       expect(chroma.valid(theme.previewSurface)).toBe(true)
       expect(chroma.valid(theme.defaultPrimary)).toBe(true)
     }
-    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#f6fafc')
-    expect(getSurfaceThemeMeta('deepsea').previewSurface).toBe('#f7f9ff')
+    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#ffffff')
+    expect(getSurfaceThemeMeta('classic').previewSurface).toBe('#f6f7f8')
   })
 
   it('keeps surface defaults free from stale inline accent overrides', () => {
@@ -87,7 +88,7 @@ describe('theme surface appearance', () => {
       createStorage({ [SURFACE_THEME_STORAGE_KEY]: 'neutral' }),
       root,
       null,
-      { notify: false }
+      { notify: false },
     )
 
     expect(appearance).toMatchObject({
@@ -111,29 +112,19 @@ describe('theme surface appearance', () => {
     expect(normalizeThemeColor('not-a-color')).toBeNull()
 
     const appearance = applyStoredThemeAppearance(storage, root, null, { notify: false })
-    const primary = root.style.getPropertyValue('--primary')
-    const foreground = root.style.getPropertyValue('--primary-foreground')
-
     expect(appearance.colorOverride).toBe('#18181b')
-    expect(chroma.contrast(hslTokenToColor(primary), hslTokenToColor(foreground))).toBeGreaterThanOrEqual(4.5)
-
-    const skyTokens = getThemeColorTokens('#0ea5e9')
+    expect(root.dataset.themeColor).toBe('18181b')
+    const graphite = /html\[data-theme-color='18181b'\]\s*\{([^}]+)\}/u.exec(css)?.[1] ?? ''
     expect(
-      chroma.contrast(
-        hslTokenToColor(skyTokens?.['--primary'] || ''),
-        hslTokenToColor(skyTokens?.['--primary-foreground'] || '')
-      )
+      chroma.contrast(tokenColor(graphite, '--primary'), tokenColor(graphite, '--primary-foreground')),
     ).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('exposes sanitized color tokens for first-paint server rendering', () => {
-    expect(getThemeColorTokens('invalid')).toBeNull()
-
-    const tokens = getThemeColorTokens('#e11d48')
-    expect(tokens?.['--primary']).toBeTruthy()
-    expect(tokens?.['--primary-foreground']).toBeTruthy()
-    expect(tokens?.['--primary-50']).toBeTruthy()
-    expect(tokens?.['--primary-900']).toBeTruthy()
+  it('defines stylesheet rules for each allowed accent', () => {
+    expect(normalizeThemeColor('#e11d48')).toBeNull()
+    for (const { value } of THEME_ACCENT_COLORS) {
+      expect(css).toContain(`html[data-theme-color='${value.slice(1)}']`)
+    }
   })
 
   it('persists a preset surface without turning its default color into an override', () => {
@@ -171,10 +162,10 @@ describe('theme surface appearance', () => {
       },
     }
 
-    persistThemeAppearance('classic', '#e11d48', storage, cookieTarget)
+    persistThemeAppearance('classic', '#c85a32', storage, cookieTarget)
 
-    expect(cookieWrites).toContainEqual(expect.stringContaining(`${THEME_COLOR_COOKIE_KEY}=e11d48`))
-    expect(normalizeThemeColorCookie('e11d48')).toBe('#e11d48')
+    expect(cookieWrites).toContainEqual(expect.stringContaining(`${THEME_COLOR_COOKIE_KEY}=c85a32`))
+    expect(normalizeThemeColorCookie('c85a32')).toBe('#c85a32')
     expect(normalizeThemeColorCookie('not-hex')).toBeNull()
   })
 })

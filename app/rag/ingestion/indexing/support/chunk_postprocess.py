@@ -1,0 +1,464 @@
+"""Chunk post-processing helpers: truncation, sampling, offset rebasing, small-chunk merging."""
+
+from typing import Any
+
+from langchain_core.documents import Document
+
+from app.rag.ingestion.indexing.support.assets import _chunk_has_asset
+
+
+def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
+    if k <= 0:
+        return []
+    if k >= len(indices):
+        return list(indices)
+    if k == 1:
+        return [indices[len(indices) // 2]]
+
+    n = len(indices)
+    picked: list[int] = []
+    seen: set[int] = set()
+    for i in range(k):
+        pos = round(i * (n - 1) / (k - 1))
+        pos = max(0, min(n - 1, pos))
+        idx = indices[pos]
+        if idx in seen:
+            continue
+        seen.add(idx)
+        picked.append(idx)
+    if len(picked) < k:
+        for idx in indices:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            picked.append(idx)
+            if len(picked) >= k:
+                break
+    return picked[:k]
+
+
+def _chunk_asset_indices(chunks: list[Document]) -> list[int]:
+    asset_indices: list[int] = []
+    for idx, chunk in enumerate(chunks):
+        meta = chunk.metadata
+        if _chunk_has_asset(meta):
+            asset_indices.append(idx)
+    return asset_indices
+
+
+def _chunk_has_record_identity(chunk: Document) -> bool:
+    return _record_identity_key(chunk.metadata) is not None
+
+
+def _should_skip_near_dedup_for_chunk(chunk: Document) -> bool:
+    meta = chunk.metadata
+    return _chunk_has_asset(meta) or _chunk_has_record_identity(chunk)
+
+
+def _truncate_head_chunks(
+    chunks: list[Document],
+    *,
+    max_chunks: int,
+    asset_indices: list[int],
+) -> tuple[list[Document], dict[str, Any]]:
+    kept_chunks = chunks[:max_chunks]
+    asset_kept = sum(1 for chunk in kept_chunks if _chunk_has_asset(chunk.metadata))
+    return kept_chunks, {
+        "strategy": "head",
+        "asset_total": len(asset_indices),
+        "asset_kept": asset_kept,
+    }
+
+
+def _truncate_asset_uniform_chunks(
+    chunks: list[Document],
+    *,
+    max_chunks: int,
+    asset_indices: list[int],
+) -> tuple[list[Document], dict[str, Any]]:
+    must_keep = [0]
+    for idx in asset_indices:
+        if idx not in must_keep:
+            must_keep.append(idx)
+    if len(must_keep) > max_chunks:
+        must_keep = must_keep[:max_chunks]
+
+    keep_set = set(must_keep)
+    remaining_slots = max_chunks - len(must_keep)
+    if remaining_slots > 0:
+        candidate_indices = [i for i in range(len(chunks)) if i not in keep_set]
+        keep_set |= set(_uniform_sample_indices(candidate_indices, remaining_slots))
+
+    return [chunks[i] for i in range(len(chunks)) if i in keep_set], {
+        "strategy": "asset_uniform",
+        "asset_total": len(asset_indices),
+        "asset_kept": sum(1 for idx in asset_indices if idx in keep_set),
+    }
+
+
+def _truncate_chunks_for_limit(
+    chunks: list[Document],
+    *,
+    max_chunks: int,
+    strategy: str,
+) -> tuple[list[Document], dict[str, Any]]:
+    if max_chunks <= 0 or not chunks or len(chunks) <= max_chunks:
+        return chunks, {"strategy": (strategy or "head").strip().lower() or "head", "asset_total": 0, "asset_kept": 0}
+    if any(_chunk_has_record_identity(chunk) for chunk in chunks):
+        asset_indices = _chunk_asset_indices(chunks)
+        return chunks, {
+            "strategy": "record_identity_preserved",
+            "asset_total": len(asset_indices),
+            "asset_kept": len(asset_indices),
+            "truncation_skipped": True,
+        }
+
+    strategy_norm = (strategy or "head").strip().lower() or "head"
+    asset_indices = _chunk_asset_indices(chunks)
+    if strategy_norm not in {"head", "asset_uniform"}:
+        strategy_norm = "head"
+    if strategy_norm == "head":
+        return _truncate_head_chunks(chunks, max_chunks=max_chunks, asset_indices=asset_indices)
+    return _truncate_asset_uniform_chunks(chunks, max_chunks=max_chunks, asset_indices=asset_indices)
+
+
+def _ensure_ingest_page_indices(documents: list[Document]) -> None:
+    """
+    Ensure each parsed Document has a stable per-document index for offset rebasing.
+
+    Why:
+    - Many parsers (e.g. PDF) emit multiple Documents.
+    - Most chunkers compute start/end offsets relative to each `doc.page_content`.
+    - We persist parsed markdown by joining docs; to highlight chunks reliably,
+      we need global offsets (joined-text coordinates).
+    """
+    for i, doc in enumerate(documents):
+        meta = dict(doc.metadata)
+        meta.setdefault("page_index", i + 1)  # 1-based (align with chunk-preview)
+        doc.metadata = meta
+
+
+def _joined_text_total_characters(
+    documents: list[Document],
+    *,
+    join_separator: str = "\n\n",
+) -> int:
+    """Return the joined-text length used for persisted parsed content offsets."""
+    if not documents:
+        return 0
+    return sum(len(doc.page_content) for doc in documents) + len(join_separator) * (len(documents) - 1)
+
+
+def _document_page_index(doc: Document, index: int) -> int:
+    meta = doc.metadata
+    try:
+        value = meta.get("page_index")
+        return int(value) if value is not None else index + 1
+    except (OverflowError, TypeError, ValueError):
+        return index + 1
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (OverflowError, TypeError, ValueError):
+        return None
+
+
+def _chunk_page_index(chunk: Document) -> int | None:
+    return _optional_int(chunk.metadata.get("page_index"))
+
+
+def _build_page_start_offsets(
+    documents: list[Document],
+    *,
+    join_separator: str,
+) -> dict[int, int]:
+    sep_len = len(join_separator)
+    page_start: dict[int, int] = {}
+    cursor = 0
+    last_index = len(documents) - 1
+    for index, doc in enumerate(documents):
+        # A few parsers can emit multiple Documents for one physical page.  A
+        # chunk only carries the page index, so the first document is the only
+        # deterministic base we can preserve; later duplicates must not move
+        # every chunk on that page to the final fragment's offset.
+        page_start.setdefault(_document_page_index(doc, index), cursor)
+        cursor += len(doc.page_content)
+        if index < last_index:
+            cursor += sep_len
+    return page_start
+
+
+def _rebase_single_chunk_offsets(chunk: Document, *, page_start: dict[int, int]) -> Document:
+    meta = dict(chunk.metadata)
+    page_index = _optional_int(meta.get("page_index"))
+    start_i = _optional_int(meta.get("start_char_local", meta.get("start_char")))
+    end_i = _optional_int(meta.get("end_char_local", meta.get("end_char")))
+    if start_i is not None and start_i < 0:
+        start_i = None
+    if end_i is not None and end_i < 0:
+        end_i = None
+    if start_i is not None and end_i is not None and end_i < start_i:
+        start_i = end_i = None
+    meta["start_char_local"] = start_i
+    meta["end_char_local"] = end_i
+    if page_index is None or page_index not in page_start:
+        meta["start_char"] = None
+        meta["end_char"] = None
+        meta.pop("start_char_base", None)
+        meta["offsets_rebased"] = False
+        meta["offset_rebase_error"] = "page_base_unavailable"
+    else:
+        base = page_start[page_index]
+        meta["start_char_base"] = base
+        meta["start_char"] = base + start_i if start_i is not None else None
+        meta["end_char"] = base + end_i if end_i is not None else None
+        meta["offsets_rebased"] = start_i is not None and end_i is not None
+        if meta["offsets_rebased"]:
+            meta.pop("offset_rebase_error", None)
+        else:
+            meta["offset_rebase_error"] = "local_span_unavailable"
+    return Document(page_content=chunk.page_content, metadata=meta, id=chunk.id)
+
+
+def _rebase_chunk_offsets_by_page_index(
+    *,
+    documents: list[Document],
+    chunks: list[Document],
+    join_separator: str = "\n\n",
+) -> list[Document]:
+    """
+    Convert chunk start/end offsets from per-Document coordinates to joined-text coordinates.
+
+    - Assumes chunk metadata contains `page_index` and local `start_char`/`end_char`.
+    - Uses the same join separator as persisted parsed content ("\\n\\n").
+    """
+    if not documents or not chunks:
+        return chunks
+
+    page_start = _build_page_start_offsets(documents, join_separator=join_separator)
+    return [_rebase_single_chunk_offsets(chunk, page_start=page_start) for chunk in chunks]
+
+
+def _build_page_text_lookup(
+    documents: list[Document],
+    *,
+    join_separator: str,
+) -> tuple[dict[int, str], dict[int, int]]:
+    sep_len = len(join_separator)
+    page_text: dict[int, str] = {}
+    page_base: dict[int, int] = {}
+    cursor = 0
+    last_index = len(documents) - 1
+    for index, doc in enumerate(documents):
+        page_index = _document_page_index(doc, index)
+        page_text.setdefault(page_index, doc.page_content)
+        page_base.setdefault(page_index, cursor)
+        cursor += len(doc.page_content)
+        if index < last_index:
+            cursor += sep_len
+    return page_text, page_base
+
+
+def _chunk_mergeable(chunk: Document) -> bool:
+    meta = chunk.metadata
+    if _chunk_has_asset(meta):
+        return False
+    return not (meta.get("chunk_role") or meta.get("parent_id"))
+
+
+def _record_identity_key(meta: dict[str, Any]) -> str | None:
+    record_identity = meta.get("_record_identity")
+    if not isinstance(record_identity, dict):
+        return None
+    key = record_identity["key"].strip()
+    if not key:
+        raise ValueError("Record identity key must not be empty")
+    return key
+
+
+def _local_chunk_range(meta: dict[str, Any], *, base: int) -> tuple[int, int] | None:
+    # Prefer explicitly stored locals (set by offset rebase stage).
+    start_local = meta.get("start_char_local")
+    end_local = meta.get("end_char_local")
+    start_i = _optional_int(start_local)
+    end_i = _optional_int(end_local)
+
+    if start_i is None or end_i is None:
+        sg = _optional_int(meta.get("start_char"))
+        eg = _optional_int(meta.get("end_char"))
+        if sg is None or eg is None:
+            return None
+        start_i = max(0, sg - base)
+        end_i = max(start_i, eg - base)
+
+    if end_i < start_i:
+        return None
+    return start_i, end_i
+
+
+_STALE_CHUNK_CONTENT_METADATA_KEYS = (
+    "content_hash",
+    "content_hash_algo",
+    "content_len",
+    "simhash64",
+    "simhash_algo",
+    "chunk_quality",
+    "chunk_semantic_role",
+    "chunk_type",
+    "structure",
+)
+
+
+def _explicit_retrieval_text(chunk: Document) -> str:
+    retrieval_text = chunk.metadata.get("_retrieval_text")
+    return retrieval_text.strip() if isinstance(retrieval_text, str) else ""
+
+
+def _refresh_merged_chunk_content_metadata(
+    meta: dict[str, Any],
+    *,
+    first: Document,
+    second: Document,
+    merged_content: str,
+) -> None:
+    for key in _STALE_CHUNK_CONTENT_METADATA_KEYS:
+        meta.pop(key, None)
+
+    first_retrieval = _explicit_retrieval_text(first)
+    second_retrieval = _explicit_retrieval_text(second)
+    if first_retrieval or second_retrieval:
+        pieces = (first_retrieval or first.page_content.strip(), second_retrieval or second.page_content.strip())
+        meta["_retrieval_text"] = "\n\n".join(text for text in pieces if text)
+        meta["_retrieval_display_content"] = merged_content
+    else:
+        meta.pop("_retrieval_text", None)
+        meta.pop("_retrieval_display_content", None)
+
+
+def _merge_two_small_chunks(
+    first: Document,
+    second: Document,
+    *,
+    page_index: int,
+    page_text: dict[int, str],
+    page_base: dict[int, int],
+) -> Document | None:
+    text = page_text[page_index]
+    base = page_base[page_index]
+    if _record_identity_key(first.metadata) != _record_identity_key(second.metadata):
+        return None
+
+    first_meta = dict(first.metadata)
+    first_range = _local_chunk_range(first_meta, base=base)
+    second_range = _local_chunk_range(second.metadata, base=base)
+    if first_range is None or second_range is None:
+        return None
+
+    start_local = max(0, min(min(first_range[0], second_range[0]), len(text)))
+    end_local = max(start_local, min(max(first_range[1], second_range[1]), len(text)))
+    first_meta["page_index"] = page_index
+    first_meta.setdefault("start_char_base", base)
+    first_meta["start_char_local"] = start_local
+    first_meta["end_char_local"] = end_local
+    first_meta["start_char"] = base + start_local
+    first_meta["end_char"] = base + end_local
+    first_meta["offsets_rebased"] = True
+    first_meta["merged_small_chunks"] = int(first_meta.get("merged_small_chunks") or 0) + 1
+    merged_content = text[start_local:end_local]
+    _refresh_merged_chunk_content_metadata(
+        first_meta,
+        first=first,
+        second=second,
+        merged_content=merged_content,
+    )
+
+    return Document(page_content=merged_content, metadata=first_meta, id=first.id)
+
+
+def _merge_small_chunks_by_min_chars(
+    *,
+    documents: list[Document],
+    chunks: list[Document],
+    min_chars: int,
+    join_separator: str = "\n\n",
+) -> list[Document]:
+    """
+    Merge very short text chunks with neighbors to reduce over-fragmentation.
+
+    Design goals:
+    - Keep merge bounded within the same `page_index` (stable highlighting).
+    - Preserve assets (image/table) and parent/child semantics by skipping those chunks.
+    - Use original per-page text slice when offsets are available (so content matches offsets).
+    """
+    min_chars = max(0, int(min_chars or 0))
+    if min_chars <= 0 or not documents or not chunks:
+        return chunks
+
+    page_text, page_base = _build_page_text_lookup(documents, join_separator=join_separator)
+
+    out: list[Document] = []
+    pending: Document | None = None
+    pending_page: int | None = None
+
+    for chunk in chunks:
+        page_index = _chunk_page_index(chunk)
+        if pending is not None and page_index != pending_page:
+            out.append(pending)
+            pending = None
+            pending_page = None
+
+        mergeable = page_index is not None and page_index in page_text and _chunk_mergeable(chunk)
+        content_len = len(chunk.page_content.strip())
+
+        if not mergeable:
+            if pending is not None:
+                out.append(pending)
+            out.append(chunk)
+            pending = None
+            pending_page = None
+            continue
+
+        if pending is not None:
+            merged = _merge_two_small_chunks(
+                pending,
+                chunk,
+                page_index=page_index,
+                page_text=page_text,
+                page_base=page_base,
+            )
+            if merged is not None:
+                out.append(merged)
+            else:
+                out.extend([pending, chunk])
+            pending = None
+            pending_page = None
+            continue
+
+        if content_len >= min_chars:
+            out.append(chunk)
+            continue
+
+        # Small chunk: merge into previous if possible, otherwise buffer and merge into next.
+        if out:
+            previous = out[-1]
+            if _chunk_page_index(previous) == page_index and _chunk_mergeable(previous):
+                merged = _merge_two_small_chunks(
+                    previous,
+                    chunk,
+                    page_index=page_index,
+                    page_text=page_text,
+                    page_base=page_base,
+                )
+                if merged is not None:
+                    out[-1] = merged
+                    continue
+
+        pending = chunk
+        pending_page = page_index
+
+    if pending is not None:
+        out.append(pending)
+
+    return out

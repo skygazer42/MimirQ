@@ -3,7 +3,7 @@
 import argparse
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,7 @@ DEFAULT_TEMPLATE = REPO_ROOT / "docs" / "templates" / "retrieval_debt_audit_temp
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def _safe_json(path: Path) -> dict[str, Any]:
@@ -28,12 +28,12 @@ def _safe_json(path: Path) -> dict[str, Any]:
 def _age_days(path: Path, now: datetime) -> int | None:
     if not path.exists():
         return None
-    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     delta = now - mtime
     return max(0, int(delta.total_seconds() // 86400))
 
 
-def _render_threshold_staleness(*, now: datetime, stale_days: int) -> tuple[str, dict[str, Any]]:
+def _render_threshold_staleness(*, now: datetime, stale_days: int) -> tuple[str, dict[str, int]]:
     files = [
         REPO_ROOT / "ci" / "retrieval_thresholds.v2.json",
         REPO_ROOT / "ci" / "release_gate_budgets.v1.json",
@@ -57,7 +57,7 @@ def _render_threshold_staleness(*, now: datetime, stale_days: int) -> tuple[str,
     return "\n".join(lines), {"files_checked": checked, "stale_files": stale_count}
 
 
-def _render_flaky_tests() -> tuple[str, dict[str, Any]]:
+def _render_flaky_tests() -> tuple[str, dict[str, int]]:
     tests_dir = REPO_ROOT / "tests"
     if not tests_dir.exists():
         return "No tests directory found.", {"files_with_signals": 0, "signal_count": 0}
@@ -91,8 +91,8 @@ def _render_flaky_tests() -> tuple[str, dict[str, Any]]:
     return "\n".join(lines), {"files_with_signals": len(by_file), "signal_count": len(hits)}
 
 
-def _render_unstable_profiles() -> tuple[str, dict[str, Any]]:
-    path = REPO_ROOT / "app" / "rag" / "core" / "retrieval_profiles.py"
+def _render_unstable_profiles() -> tuple[str, dict[str, int]]:
+    path = REPO_ROOT / "app" / "rag" / "retrieval" / "configuration" / "profiles.py"
     if not path.exists():
         return "Profile definition file not found.", {"profiles_flagged": 0}
 
@@ -104,7 +104,7 @@ def _render_unstable_profiles() -> tuple[str, dict[str, Any]]:
     if "coverage80" in text:
         rows.append(("coverage80", "very high fanout (top_k>=80), sensitive to timeout/recall tradeoff"))
     if "hybrid_ce" in text:
-        rows.append(("hybrid_ce", "depends on cross-encoder reranker availability/versioning"))
+        rows.append(("hybrid_ce", "depends on configured reranker availability/versioning"))
 
     if not rows:
         return "No profile risk signals detected.", {"profiles_flagged": 0}
@@ -127,7 +127,7 @@ def _extract_int(text: str, pattern: str) -> int | None:
 
 def _hierarchy_profile_checks(path: Path) -> tuple[list[tuple[str, str, str]], int]:
     if not path.exists():
-        return [("hierarchy_profiles_present", "warn", "retrieval_profiles.py missing")], 1
+        return [("hierarchy_profiles_present", "warn", f"{path.name} missing")], 1
 
     text = path.read_text(encoding="utf-8", errors="ignore")
     has_profiles = all(
@@ -161,7 +161,7 @@ def _hierarchy_profile_checks(path: Path) -> tuple[list[tuple[str, str, str]], i
 def _hierarchy_anchor_check(path: Path) -> tuple[tuple[str, str, str], int]:
     name = "must_recall_anchor_excludes_hierarchy_context"
     if not path.exists():
-        return (name, "warn", "orchestrator.py missing"), 1
+        return (name, "warn", f"{path.name} missing"), 1
     text = path.read_text(encoding="utf-8", errors="ignore")
     ok = bool(re.search(r"exclude_retrieval_role_prefixes\s*=\s*\[\s*[\"']hierarchy_[\"']\s*\]", text))
     observed = (
@@ -182,7 +182,7 @@ def _hierarchy_eval_check(path: Path) -> tuple[tuple[str, str, str], int]:
     return (name, "ok" if ok else "warn", observed), 0 if ok else 1
 
 
-def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
+def _render_hierarchy_recall_audit() -> tuple[str, dict[str, int]]:
     """
     Best-effort structural audit for hierarchy-aware recall overlay.
 
@@ -191,15 +191,15 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
     - Keep it deterministic: scan source files for expected knobs and guardrails.
     """
 
-    profiles_path = REPO_ROOT / "app" / "rag" / "core" / "retrieval_profiles.py"
+    profiles_path = REPO_ROOT / "app" / "rag" / "retrieval" / "configuration" / "profiles.py"
     checks, risk_signals = _hierarchy_profile_checks(profiles_path)
 
-    orchestrator_path = REPO_ROOT / "app" / "rag" / "retrieval" / "orchestrator.py"
-    anchor_check, anchor_risks = _hierarchy_anchor_check(orchestrator_path)
+    requirements_path = REPO_ROOT / "app" / "rag" / "retrieval" / "stages" / "requirements.py"
+    anchor_check, anchor_risks = _hierarchy_anchor_check(requirements_path)
     checks.append(anchor_check)
     risk_signals += anchor_risks
 
-    eval_path = REPO_ROOT / "app" / "rag" / "evaluation" / "evidence_retrieve_gate.py"
+    eval_path = REPO_ROOT / "app" / "rag" / "evaluation" / "regression" / "evidence_retrieve_gate.py"
     eval_check, eval_risks = _hierarchy_eval_check(eval_path)
     checks.append(eval_check)
     risk_signals += eval_risks
@@ -207,10 +207,10 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
     lines = ["| check | status | observed |", "|---|---|---|"]
     for name, status, observed in checks:
         lines.append(f"| {name} | {status} | {observed} |")
-    return "\n".join(lines), {"risk_signals": int(risk_signals), "checks": int(len(checks))}
+    return "\n".join(lines), {"risk_signals": risk_signals, "checks": len(checks)}
 
 
-def _render_todo_hotspots() -> tuple[str, dict[str, Any]]:
+def _render_todo_hotspots() -> tuple[str, dict[str, int]]:
     roots = [REPO_ROOT / "app", REPO_ROOT / "scripts", REPO_ROOT / "tests", REPO_ROOT / "docs"]
     marker = re.compile(r"\\b(TODO|FIXME|HACK)\\b", flags=re.IGNORECASE)
     counts: dict[str, int] = {}
@@ -240,21 +240,21 @@ def _render_todo_hotspots() -> tuple[str, dict[str, Any]]:
 
 def _build_summary(
     *,
-    threshold_stats: dict[str, Any],
-    flaky_stats: dict[str, Any],
-    profile_stats: dict[str, Any],
-    hierarchy_stats: dict[str, Any],
-    todo_stats: dict[str, Any],
+    threshold_stats: dict[str, int],
+    flaky_stats: dict[str, int],
+    profile_stats: dict[str, int],
+    hierarchy_stats: dict[str, int],
+    todo_stats: dict[str, int],
 ) -> str:
     return "\n".join(
         [
             "| category | value |",
             "|---|---:|",
-            f"| stale_threshold_files | {int(threshold_stats.get('stale_files') or 0)} |",
-            f"| flaky_signal_files | {int(flaky_stats.get('files_with_signals') or 0)} |",
-            f"| unstable_profiles_flagged | {int(profile_stats.get('profiles_flagged') or 0)} |",
-            f"| hierarchy_risk_signals | {int(hierarchy_stats.get('risk_signals') or 0)} |",
-            f"| todo_hotspot_files | {int(todo_stats.get('files_with_todo') or 0)} |",
+            f"| stale_threshold_files | {threshold_stats['stale_files']} |",
+            f"| flaky_signal_files | {flaky_stats['files_with_signals']} |",
+            f"| unstable_profiles_flagged | {profile_stats['profiles_flagged']} |",
+            f"| hierarchy_risk_signals | {hierarchy_stats['risk_signals']} |",
+            f"| todo_hotspot_files | {todo_stats['files_with_todo']} |",
         ]
     )
 
@@ -304,11 +304,11 @@ def generate_report(*, out_path: Path, template_path: Path, stale_days: int) -> 
         todo_stats=todo_stats,
     )
     action_queue = _build_action_queue(
-        stale_files=int(threshold_stats.get("stale_files") or 0),
-        flaky_files=int(flaky_stats.get("files_with_signals") or 0),
-        unstable_profiles=int(profile_stats.get("profiles_flagged") or 0),
-        hierarchy_risk_signals=int(hierarchy_stats.get("risk_signals") or 0),
-        todo_files=int(todo_stats.get("files_with_todo") or 0),
+        stale_files=threshold_stats["stale_files"],
+        flaky_files=flaky_stats["files_with_signals"],
+        unstable_profiles=profile_stats["profiles_flagged"],
+        hierarchy_risk_signals=hierarchy_stats["risk_signals"],
+        todo_files=todo_stats["files_with_todo"],
     )
 
     rendered = (

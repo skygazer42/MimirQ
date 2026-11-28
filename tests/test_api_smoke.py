@@ -2,6 +2,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 import pytest
 
 from scripts import api_smoke
@@ -53,7 +54,13 @@ class _SmokeHarness:
         self.openapi_paths = openapi_paths or set()
         self.disable_probe_sweep = disable_probe_sweep
         self.stream_ok = stream_ok
-        self._responses: dict[tuple[str, str], deque[_ResponseSpec]] = {}
+        self._responses: dict[tuple[str, str], deque[_ResponseSpec]] = {
+            ("POST", "/api/v1/observability/perf-suite/run"): deque(
+                [_ResponseSpec(payload={"current_report": {"cases": [
+                    {"name": name, "ok_count": 1} for name in ("health", "ready", "meta")
+                ]}})]
+            ),
+        }
 
         for key, value in (responses or {}).items():
             specs = value if isinstance(value, list) else [value]
@@ -62,7 +69,6 @@ class _SmokeHarness:
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(api_smoke, "load_openapi_paths", lambda *_args, **_kwargs: set(self.openapi_paths))
         monkeypatch.setattr(api_smoke.httpx, "Client", _ClientStub)
-        monkeypatch.setattr(api_smoke, "parse_json", self.parse_json)
         monkeypatch.setattr(
             api_smoke.SmokeRunner,
             "call",
@@ -86,13 +92,6 @@ class _SmokeHarness:
         )
         if self.disable_probe_sweep:
             monkeypatch.setattr(api_smoke, "probe_uncovered_openapi_endpoints", lambda *_args, **_kwargs: None)
-
-    def parse_json(self, response: Any) -> dict[str, Any]:
-        if isinstance(response, _ResponseSpec):
-            return response.payload
-        if isinstance(response, dict):
-            return response
-        return {}
 
     def _next_spec(self, method: str, path_template: str) -> _ResponseSpec:
         key = (method.upper(), path_template)
@@ -138,7 +137,7 @@ class _SmokeHarness:
         ok = status in set(expected)
         note = "" if ok else f"unexpected status {status}: {spec.payload!r}"
         runner.results.append(api_smoke.CallResult(method.upper(), path_template, status, ok, note))
-        return spec
+        return httpx.Response(status, json=spec.payload)
 
     def probe(self, runner, method: str, path_template: str, path: str, expected, **kwargs) -> bool:
         runner.mark(method, path_template)
@@ -463,6 +462,9 @@ def test_main_reports_failures_and_missing_endpoints(monkeypatch: pytest.MonkeyP
     harness = _SmokeHarness(
         responses={
             ("GET", "/health"): _ResponseSpec(status=500, payload={"detail": "boom"}),
+            ("POST", "/api/v1/observability/perf-suite/run"): _ResponseSpec(
+                payload={"current_report": {"cases": [{"name": "health", "ok_count": 1}]}}
+            ),
         },
         openapi_paths={("GET", "/uncovered")},
         disable_probe_sweep=True,
@@ -485,7 +487,8 @@ def test_main_reports_failures_and_missing_endpoints(monkeypatch: pytest.MonkeyP
     output = capsys.readouterr().out
     assert exit_code == 1
     assert "Calls:" in output
-    assert "Failures: 1" in output
+    assert "Failures: 2" in output
     assert "Missing: 1" in output
     assert "- GET /health: unexpected status 500" in output
+    assert "- POST /api/v1/observability/perf-suite/run: performance probes that reached the API: ['health']" in output
     assert "- GET /uncovered" in output

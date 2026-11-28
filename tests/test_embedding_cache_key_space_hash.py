@@ -1,5 +1,3 @@
-
-
 def test_embed_cache_key_includes_embedding_space_hash(monkeypatch):  # noqa: ANN001
     """
     Cache keys must change when the embedding "space" changes (e.g. base_url swap),

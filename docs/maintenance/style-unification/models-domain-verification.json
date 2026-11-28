@@ -1,0 +1,627 @@
+{
+  "schema": "ragvia.orm_domain_aggregates_verification.v1",
+  "date": "2026-11-15",
+  "branch": "feat/ragvia-ui",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "scope": {
+    "models_name_retained_for_SQLAlchemy": true,
+    "models_root_python_before": 29,
+    "models_root_python_after": [
+      "__init__.py",
+      "audit_log.py",
+      "registry.py"
+    ],
+    "domain_packages": [
+      "connectors",
+      "conversations",
+      "datasets",
+      "documents",
+      "evaluation",
+      "identity",
+      "knowledge_graph",
+      "pipelines",
+      "templates"
+    ],
+    "ORM_entity_leaf_modules_before": 27,
+    "ORM_entity_leaf_modules_after": 19,
+    "entity_maintenance_points_removed": 8,
+    "models_total_python_before": 29,
+    "models_total_python_after": 30,
+    "new_docstring_only_package_markers": 9,
+    "retired_leaf_paths": [
+      "app/models/chat.py",
+      "app/models/chunk_preset.py",
+      "app/models/connector_config.py",
+      "app/models/connector_run.py",
+      "app/models/conversation_summary.py",
+      "app/models/dataset.py",
+      "app/models/dataset_category.py",
+      "app/models/dataset_precheck_scan.py",
+      "app/models/dataset_profile_scan.py",
+      "app/models/db_catalog.py",
+      "app/models/document.py",
+      "app/models/document_index_channel.py",
+      "app/models/evaluation.py",
+      "app/models/evidence.py",
+      "app/models/governance_profile.py",
+      "app/models/group_permissions.py",
+      "app/models/index_drift_item.py",
+      "app/models/ingest_dead_letter.py",
+      "app/models/ingestion_run.py",
+      "app/models/knowledge_graph.py",
+      "app/models/message_feedback.py",
+      "app/models/prompt_template.py",
+      "app/models/rag_config_template.py",
+      "app/models/tenant.py",
+      "app/models/tenant_group.py",
+      "app/models/user.py"
+    ],
+    "current_app_python": 1172,
+    "resources": 152,
+    "current_app_files": 1324,
+    "API_v1_python": 102,
+    "API_schema_python": 56
+  },
+  "composition_targets": {
+    "identity/accounts.py": [
+      [
+        "user",
+        null
+      ]
+    ],
+    "identity/workspaces.py": [
+      [
+        "tenant",
+        null
+      ],
+      [
+        "tenant_group",
+        null
+      ]
+    ],
+    "conversations/chat.py": [
+      [
+        "chat",
+        null
+      ],
+      [
+        "conversation_summary",
+        null
+      ],
+      [
+        "message_feedback",
+        null
+      ]
+    ],
+    "datasets/records.py": [
+      [
+        "dataset",
+        [
+          "Dataset"
+        ]
+      ],
+      [
+        "dataset_category",
+        null
+      ]
+    ],
+    "datasets/access.py": [
+      [
+        "dataset",
+        [
+          "DatasetPermissionEnum",
+          "DatasetPermission"
+        ]
+      ],
+      [
+        "group_permissions",
+        [
+          "DatasetGroupPermission"
+        ]
+      ]
+    ],
+    "datasets/scans.py": [
+      [
+        "dataset_precheck_scan",
+        null
+      ],
+      [
+        "dataset_profile_scan",
+        null
+      ]
+    ],
+    "datasets/catalog.py": [
+      [
+        "db_catalog",
+        null
+      ]
+    ],
+    "documents/records.py": [
+      [
+        "document",
+        [
+          "Document",
+          "DocumentChunk",
+          "DocumentParsedContent"
+        ]
+      ],
+      [
+        "document_index_channel",
+        null
+      ]
+    ],
+    "documents/access.py": [
+      [
+        "document",
+        [
+          "DocumentPermission"
+        ]
+      ],
+      [
+        "group_permissions",
+        [
+          "DocumentGroupPermission"
+        ]
+      ]
+    ],
+    "documents/ingestion.py": [
+      [
+        "ingestion_run",
+        null
+      ],
+      [
+        "ingest_dead_letter",
+        null
+      ]
+    ],
+    "documents/indexing.py": [
+      [
+        "index_drift_item",
+        null
+      ]
+    ],
+    "connectors/configs.py": [
+      [
+        "connector_config",
+        null
+      ]
+    ],
+    "connectors/runs.py": [
+      [
+        "connector_run",
+        null
+      ]
+    ],
+    "pipelines/profiles.py": [
+      [
+        "chunk_preset",
+        null
+      ],
+      [
+        "governance_profile",
+        null
+      ]
+    ],
+    "templates/versions.py": [
+      [
+        "prompt_template",
+        null
+      ],
+      [
+        "rag_config_template",
+        null
+      ]
+    ],
+    "evaluation/results.py": [
+      [
+        "evaluation",
+        null
+      ]
+    ],
+    "evaluation/evidence.py": [
+      [
+        "evidence",
+        null
+      ]
+    ],
+    "knowledge_graph/entities.py": [
+      [
+        "knowledge_graph",
+        null
+      ]
+    ]
+  },
+  "symbol_mapping": {
+    "app.models.user": {
+      "User": [
+        "app.models.identity.accounts",
+        "User"
+      ]
+    },
+    "app.models.tenant": {
+      "Tenant": [
+        "app.models.identity.workspaces",
+        "Tenant"
+      ],
+      "TenantMember": [
+        "app.models.identity.workspaces",
+        "TenantMember"
+      ]
+    },
+    "app.models.tenant_group": {
+      "TenantGroup": [
+        "app.models.identity.workspaces",
+        "TenantGroup"
+      ],
+      "TenantGroupMember": [
+        "app.models.identity.workspaces",
+        "TenantGroupMember"
+      ]
+    },
+    "app.models.chat": {
+      "Conversation": [
+        "app.models.conversations.chat",
+        "Conversation"
+      ],
+      "Message": [
+        "app.models.conversations.chat",
+        "Message"
+      ]
+    },
+    "app.models.conversation_summary": {
+      "ConversationSummary": [
+        "app.models.conversations.chat",
+        "ConversationSummary"
+      ]
+    },
+    "app.models.message_feedback": {
+      "MessageFeedback": [
+        "app.models.conversations.chat",
+        "MessageFeedback"
+      ]
+    },
+    "app.models.dataset": {
+      "Dataset": [
+        "app.models.datasets.records",
+        "Dataset"
+      ],
+      "DatasetPermissionEnum": [
+        "app.models.datasets.access",
+        "DatasetPermissionEnum"
+      ],
+      "DatasetPermission": [
+        "app.models.datasets.access",
+        "DatasetPermission"
+      ]
+    },
+    "app.models.dataset_category": {
+      "DatasetCategory": [
+        "app.models.datasets.records",
+        "DatasetCategory"
+      ],
+      "DatasetCategoryMembership": [
+        "app.models.datasets.records",
+        "DatasetCategoryMembership"
+      ]
+    },
+    "app.models.group_permissions": {
+      "DatasetGroupPermission": [
+        "app.models.datasets.access",
+        "DatasetGroupPermission"
+      ],
+      "DocumentGroupPermission": [
+        "app.models.documents.access",
+        "DocumentGroupPermission"
+      ]
+    },
+    "app.models.dataset_precheck_scan": {
+      "DatasetPrecheckScanRun": [
+        "app.models.datasets.scans",
+        "DatasetPrecheckScanRun"
+      ]
+    },
+    "app.models.dataset_profile_scan": {
+      "DatasetProfileScanRun": [
+        "app.models.datasets.scans",
+        "DatasetProfileScanRun"
+      ]
+    },
+    "app.models.db_catalog": {
+      "DbCatalogTable": [
+        "app.models.datasets.catalog",
+        "DbCatalogTable"
+      ],
+      "DbCatalogColumn": [
+        "app.models.datasets.catalog",
+        "DbCatalogColumn"
+      ],
+      "DbProfileSnapshot": [
+        "app.models.datasets.catalog",
+        "DbProfileSnapshot"
+      ]
+    },
+    "app.models.document": {
+      "DELETE_ORPHAN_CASCADE": [
+        "app.models.documents.records",
+        "DELETE_ORPHAN_CASCADE"
+      ],
+      "Document": [
+        "app.models.documents.records",
+        "Document"
+      ],
+      "DocumentChunk": [
+        "app.models.documents.records",
+        "DocumentChunk"
+      ],
+      "DocumentParsedContent": [
+        "app.models.documents.records",
+        "DocumentParsedContent"
+      ],
+      "DocumentPermission": [
+        "app.models.documents.access",
+        "DocumentPermission"
+      ]
+    },
+    "app.models.document_index_channel": {
+      "DocumentIndexChannel": [
+        "app.models.documents.records",
+        "DocumentIndexChannel"
+      ]
+    },
+    "app.models.ingestion_run": {
+      "IngestionRun": [
+        "app.models.documents.ingestion",
+        "IngestionRun"
+      ],
+      "IngestionRunDocument": [
+        "app.models.documents.ingestion",
+        "IngestionRunDocument"
+      ]
+    },
+    "app.models.ingest_dead_letter": {
+      "IngestDeadLetter": [
+        "app.models.documents.ingestion",
+        "IngestDeadLetter"
+      ]
+    },
+    "app.models.index_drift_item": {
+      "IndexDriftItem": [
+        "app.models.documents.indexing",
+        "IndexDriftItem"
+      ]
+    },
+    "app.models.connector_config": {
+      "ConnectorConfig": [
+        "app.models.connectors.configs",
+        "ConnectorConfig"
+      ]
+    },
+    "app.models.connector_run": {
+      "ConnectorRun": [
+        "app.models.connectors.runs",
+        "ConnectorRun"
+      ],
+      "ConnectorRunDocument": [
+        "app.models.connectors.runs",
+        "ConnectorRunDocument"
+      ]
+    },
+    "app.models.chunk_preset": {
+      "ChunkPreset": [
+        "app.models.pipelines.profiles",
+        "ChunkPreset"
+      ]
+    },
+    "app.models.governance_profile": {
+      "GovernanceProfile": [
+        "app.models.pipelines.profiles",
+        "GovernanceProfile"
+      ]
+    },
+    "app.models.prompt_template": {
+      "PromptTemplate": [
+        "app.models.templates.versions",
+        "PromptTemplate"
+      ]
+    },
+    "app.models.rag_config_template": {
+      "RagConfigTemplate": [
+        "app.models.templates.versions",
+        "RagConfigTemplate"
+      ]
+    },
+    "app.models.evaluation": {
+      "RagasEvaluationRun": [
+        "app.models.evaluation.results",
+        "RagasEvaluationRun"
+      ],
+      "RagasEvaluationItem": [
+        "app.models.evaluation.results",
+        "RagasEvaluationItem"
+      ],
+      "RagasRegressionCase": [
+        "app.models.evaluation.results",
+        "RagasRegressionCase"
+      ],
+      "RagasRegressionRun": [
+        "app.models.evaluation.results",
+        "RagasRegressionRun"
+      ],
+      "RagasRegressionItem": [
+        "app.models.evaluation.results",
+        "RagasRegressionItem"
+      ],
+      "KGSearchDiagnosticsRun": [
+        "app.models.evaluation.results",
+        "KGSearchDiagnosticsRun"
+      ]
+    },
+    "app.models.evidence": {
+      "EvidenceSuite": [
+        "app.models.evaluation.evidence",
+        "EvidenceSuite"
+      ],
+      "EvidenceItem": [
+        "app.models.evaluation.evidence",
+        "EvidenceItem"
+      ]
+    },
+    "app.models.knowledge_graph": {
+      "KG_ENTITIES_ID_FK": [
+        "app.models.knowledge_graph.entities",
+        "KG_ENTITIES_ID_FK"
+      ],
+      "_default_tenant": [
+        "app.models.knowledge_graph.entities",
+        "_default_tenant"
+      ],
+      "KgEntity": [
+        "app.models.knowledge_graph.entities",
+        "KgEntity"
+      ],
+      "KgSourceEvent": [
+        "app.models.knowledge_graph.entities",
+        "KgSourceEvent"
+      ],
+      "KgEventEntity": [
+        "app.models.knowledge_graph.entities",
+        "KgEventEntity"
+      ],
+      "KgRelation": [
+        "app.models.knowledge_graph.entities",
+        "KgRelation"
+      ],
+      "KgEntityAlias": [
+        "app.models.knowledge_graph.entities",
+        "KgEntityAlias"
+      ],
+      "KgEntityResolutionAction": [
+        "app.models.knowledge_graph.entities",
+        "KgEntityResolutionAction"
+      ],
+      "KgEntityRedirect": [
+        "app.models.knowledge_graph.entities",
+        "KgEntityRedirect"
+      ],
+      "KgPredicateOntology": [
+        "app.models.knowledge_graph.entities",
+        "KgPredicateOntology"
+      ]
+    }
+  },
+  "checks": {
+    "migrated_full_declaration_AST_comparisons": 56,
+    "full_declaration_AST_equal": true,
+    "AuditLog_original_bytes_preserved": true,
+    "expected_caller_AST_comparisons": 210,
+    "expected_caller_nonimport_AST_equal": true,
+    "explicit_bootstrap_import_only_adjustments": [
+      "scripts/backfill_kg_event_vector_metadata.py",
+      "scripts/replay_index_drift.py"
+    ],
+    "app_AST311_compile": 1172,
+    "production_import_sources_including_root_main": 1334,
+    "missing_import_bindings": 0,
+    "all_app_Ruff_format_passed": true,
+    "Ruff_format_source_count": 1172,
+    "necessary_script_Ruff_format_passed": true,
+    "necessary_script_count": 15,
+    "cold_ORM": {
+      "tables": 53,
+      "mappers": 53,
+      "registered_leaf_modules": 19,
+      "ORM_snapshot_equal_including_ENUM_values_and_order": true,
+      "dataset_enum_single_definition_identity": true,
+      "scope": "Real cold ORM import, mapper resolution and PostgreSQL DDL compilation; no connections, queries, schema migrations or app lifecycle"
+    },
+    "full_cold_OpenAPI_equal": true,
+    "OpenAPI_paths": 358,
+    "OpenAPI_schemas": 671,
+    "OpenAPI_canonical_sha256": "721b11d381dca811c87db81af3e91136b63135ded87095531794a79e643955fe",
+    "frozen_tests": 610,
+    "changed_tests": 0,
+    "pytest_run": false,
+    "resources_byte_identical": 152,
+    "ignored_app_source_files": [],
+    "git_diff_check_exit": 0,
+    "notes": {
+      "format_verified": 242,
+      "format_exit": 0,
+      "archive_exit": 0,
+      "tree_exit": 1,
+      "unchanged_missing_historical_links": 10
+    }
+  },
+  "independent_review": {
+    "open_findings": 0,
+    "resolved_new_cold_mapper_gaps": [
+      "scripts/backfill_kg_event_vector_metadata.py",
+      "scripts/replay_index_drift.py"
+    ],
+    "reviewed_process_entry_points": 22,
+    "reviewed_previously_registry_free_CLI": 6,
+    "parse_only_child_kept_without_ORM_bootstrap": true
+  },
+  "current_ledgers": {
+    "app_rows": 1324,
+    "status_counts": {
+      "adjusted": 1002,
+      "conforms": 170,
+      "preserved": 152
+    },
+    "layout_historical_rows": 1167,
+    "nonapp_coverage_records_byte_preserved": 3998,
+    "csv_sha256": {
+      "app-review.csv": "13d9dd3324d1a9e819747194a696d9b857a2b4a6c67c82eac6896cd4cbf409de",
+      "api-v1-review.csv": "800b6b3e8245932a6c734269b125580ab066fc2ae10a47580b6de0db4a731747",
+      "coverage.csv": "db2403e41596735929333d9001f1fc8fe80cb8ced8862953c7b0fb04c7951ffe",
+      "layout-review.csv": "49635abfc1699d7c752a3b06bb95005dc86341732e2db492360049da55bf3a02"
+    }
+  },
+  "git": {
+    "new_staging_performed": false,
+    "original_staged_paths": [
+      "app/third_party/__init__.py",
+      "app/third_party/integrated_pipeline/__init__.py",
+      "app/third_party/integrated_pipeline/bridge.py",
+      "app/third_party/integrated_pipeline/chunkers/__init__.py",
+      "app/third_party/integrated_pipeline/chunkers/book.py",
+      "app/third_party/integrated_pipeline/chunkers/email.py",
+      "app/third_party/integrated_pipeline/chunkers/laws.py",
+      "app/third_party/integrated_pipeline/chunkers/naive.py",
+      "app/third_party/integrated_pipeline/common/__init__.py",
+      "app/third_party/integrated_pipeline/common/constants.py",
+      "app/third_party/integrated_pipeline/common/file_utils.py",
+      "app/third_party/integrated_pipeline/common/token_utils.py",
+      "app/third_party/integrated_pipeline/nlp/__init__.py",
+      "app/third_party/integrated_pipeline/nlp/rag_tokenizer.py",
+      "app/third_party/integrated_pipeline/stubs/__init__.py",
+      "app/third_party/integrated_pipeline/stubs/file_utils.py",
+      "app/third_party/integrated_pipeline/stubs/llm_service.py"
+    ],
+    "original_index_records_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "current_index_records_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "staged_records_unchanged": true,
+    "committed": false,
+    "pushed": false
+  },
+  "source_tree_sha256": "f265f943208c73f8a245b68a1c980dfd1b43180ecd243e22b278658e4f563419",
+  "limits": [
+    "Cold model import/mapper/DDL and OpenAPI export do not run database queries, schema migrations, transactions, real HTTP, workers, model inference or application lifecycle",
+    "Existing Python tests retain old/private module imports; no pytest or frozen-test migration",
+    "Entity leaf imports are not a guarantee of complete mapper registration; database process entry points load registry explicitly",
+    "Prior manifests describe their original worktree; this manifest contains the current source fingerprint"
+  ],
+  "local_evidence_sha256": {
+    "codex-models-packages-opening-20261115.json": "78d81af3b46f45d75922cf56d88f5dc5518078f30524d4bfd6e9b67914baff2d",
+    "codex-model-domains-plan-20261115.json": "74e064b325fc94a84db13c97eff0970501973fd31d5af35efefe6308e37c535c",
+    "codex-model-domains-static-20261115.json": "f1cb20400519e29d8c323a0db688013315aee7fa6935694c6b77634cf198469d",
+    "codex-model-domains-runtime-20261115.json": "1a0a5b9494e1e0dcf81b1233e7b4e8f70f136aec02f381f07d6be17a50429fb6",
+    "codex-model-domains-bootstrap-before-20261115.json": "d9dadddf6b782ce1f5320a24aac8338b28fba3ece7bcc30aa882ca436b26e988",
+    "codex-model-domains-preaudit-20261115.json": "2f4b451a3d30aff7d7fbfb85ab1672dcea3fa014cb0958fa103da353f01fa08d",
+    "codex-model-domains-independent-review-20261115.json": "f860eb23aae6bc5e7c3f24f7f9142a8a8fdb718fc28fce997c73e4fe6ddfecfc",
+    "codex-model-domains-doc-references-20261115.json": "adc9c1fd524f9fea3e67e3623e057db15b4b6f7387c34863a813d93decf31c6e",
+    "codex-model-domains-ledgers-20261115.json": "ba925d78969c8dd1e659fea89b8778da6bdc350984c171d19fb9409b9e09e34c",
+    "codex-model-domains-final-checks-20261115.json": "36b7f310fff56dee34b22c3bcf680ae3ca2803656dbaafcb83d7797c27c25d79"
+  }
+}

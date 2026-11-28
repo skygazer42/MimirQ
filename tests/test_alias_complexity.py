@@ -71,7 +71,7 @@ def test_extract_alias_candidates_preserves_method_order_quotes_and_deduplicatio
             a="统一身份认证",
             b="SSO",
             method="zh_abbr",
-            quote="统一身份认证,简称 SSO",
+            quote="统一身份认证，简称 SSO",
         ),
         AliasCandidate(
             a="Large Language Model",

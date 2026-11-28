@@ -1,2 +1,1 @@
-export { default } from '@/components/datasets/datasets-page'
-
+export { DatasetsPage as default } from '@/components/datasets/datasets-page'

@@ -148,6 +148,7 @@ def test_answer_quality_workflow_is_real_provider_nightly_and_pr_ci_is_determini
     assert "vars.RAG_EVAL_LLM_API_BASE" in nightly
     assert "vars.RAG_EVAL_LLM_MODEL" in nightly
     assert "Require explicit real-provider configuration" in nightly
+    assert "-r requirements-dev.txt" in nightly
     assert "--use-llm-judge" in nightly
     assert "scripts/build_answer_quality_summary.py" in nightly
     assert "scripts/answer_quality_gate.py" in nightly

@@ -1,0 +1,222 @@
+"""
+Ansible playbook aware chunking strategy.
+
+Targets Ansible YAML playbooks (typically a top-level list of plays) and splits
+by play blocks (each top-level `- name:` / `- hosts:` entry) while preserving
+character offsets.
+"""
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.ingestion.chunking.base import BaseChunker
+from app.rag.ingestion.chunking.utils.source_lines import apply_splitter_span
+from app.rag.ingestion.chunking.utils.source_lines import iter_source_lines as _iter_lines
+
+
+@dataclass(frozen=True)
+class _PlayBlock:
+    start: int
+    end: int
+    index: int
+    name: str | None
+    hosts: str | None
+
+
+_PLAY_START_RE = re.compile(r"(?m)^(?P<indent>\s*)-\s*(?:name|hosts)\s*:\s*")
+_TASKS_RE = re.compile(r"(?m)^\s*tasks\s*:\s*")
+
+
+def _is_tasks_key_line(line: str) -> bool:
+    s = (line).lstrip()
+    if s.startswith("-"):
+        s = s[1:].lstrip()
+    if not s.lower().startswith("tasks"):
+        return False
+    rest = s[5:].lstrip()
+    return rest.startswith(":")
+
+
+def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
+    """
+    Parse a simple inline YAML key/value, supporting both:
+      - name: Value
+        hosts: all
+      name: Value
+      hosts: all
+    """
+    raw = (line).rstrip("\r\n")
+    if not raw.strip():
+        return None
+
+    s = raw.lstrip()
+    if s.startswith("-"):
+        s = s[1:].lstrip()
+
+    low = s.lower()
+    key_low = (key).strip().lower()
+    if not key_low or not low.startswith(key_low):
+        return None
+
+    i = len(key_low)
+    n = len(s)
+    while i < n and s[i].isspace():
+        i += 1
+    if i >= n or s[i] != ":":
+        return None
+    i += 1
+    val = s[i:].strip()
+    return val or None
+
+
+def _extract_play_fields(header: str) -> tuple[str | None, str | None]:
+    name = None
+    hosts = None
+    for ln in header.splitlines():
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        if _is_tasks_key_line(ln):
+            break
+        if name is None:
+            name = _parse_yaml_inline_key_value(ln, key="name")
+        if hosts is None:
+            hosts = _parse_yaml_inline_key_value(ln, key="hosts")
+        if name is not None and hosts is not None:
+            break
+    return name[:120] if name else None, hosts[:120] if hosts else None
+
+
+def _build_play_blocks(text: str) -> list[_PlayBlock]:
+    lines = _iter_lines(text)
+    idxs: list[int] = []
+    for i, ln in enumerate(lines):
+        plain = ln.plain
+        if not plain.strip() or plain.lstrip().startswith("#"):
+            continue
+        m = _PLAY_START_RE.match(plain)
+        if not m:
+            continue
+        indent = len(m.group("indent"))
+        if indent != 0:
+            continue
+        idxs.append(i)
+
+    if not idxs:
+        return []
+
+    blocks: list[_PlayBlock] = []
+    for j, i in enumerate(idxs):
+        start = lines[i].start
+        end = lines[idxs[j + 1]].start if j + 1 < len(idxs) else len(text)
+        end = max(start, min(end, len(text)))
+        name, hosts = _extract_play_fields(text[start : min(end, start + 2000)])
+        blocks.append(
+            _PlayBlock(
+                start=start,
+                end=end,
+                index=j,
+                name=name,
+                hosts=hosts,
+            )
+        )
+    return blocks
+
+
+def _append_split_documents(
+    out: list[Document],
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+    *,
+    offset_base: int = 0,
+    extra_meta: dict[str, Any] | None = None,
+) -> None:
+    for split_doc in split_docs:
+        local_start = split_doc.metadata.pop("start_index", None)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_doc.metadata)
+        meta["chunk_strategy"] = "ansible_playbook"
+        apply_splitter_span(meta, start_index=local_start, content=split_doc.page_content, base_offset=offset_base)
+        meta.setdefault("doc_type_kwd", "ansible")
+        if extra_meta:
+            meta.update(extra_meta)
+        meta["chunk_index"] = len(out)
+        out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+
+def _play_block_meta(block: _PlayBlock, block_count: int) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "ansible_play_index": block.index,
+        "ansible_play_count": block_count,
+    }
+    if block.name:
+        meta["ansible_play_name"] = block.name
+    if block.hosts:
+        meta["ansible_hosts"] = block.hosts
+    return meta
+
+
+def looks_like_ansible_playbook(text: str) -> bool:
+    if not text or len(text) < 60:
+        return False
+    head = text[:20000].lower()
+    if "hosts:" not in head:
+        return False
+    if not _TASKS_RE.search(text[:200000]):
+        return False
+    blocks = _build_play_blocks(text)
+    return len(blocks) >= 1
+
+
+class AnsiblePlaybookChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
+
+        for doc in documents:
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
+            if not text.strip():
+                continue
+
+            blocks = _build_play_blocks(text)
+            if not blocks:
+                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+                _append_split_documents(out, split_docs, base_meta, extra_meta={"ansible_playbook_fallback": True})
+                continue
+
+            first = blocks[0]
+            if first.start > 0:
+                pre = text[: first.start]
+                if pre.strip():
+                    split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
+                    _append_split_documents(out, split_docs, base_meta, extra_meta={"ansible_playbook_preamble": True})
+
+            for blk in blocks:
+                blk_text = text[blk.start : blk.end]
+                if not blk_text.strip():
+                    continue
+                split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
+                _append_split_documents(
+                    out,
+                    split_docs,
+                    base_meta,
+                    offset_base=blk.start,
+                    extra_meta=_play_block_meta(blk, len(blocks)),
+                )
+
+        return out

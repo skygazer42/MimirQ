@@ -9,9 +9,9 @@
   --ifm-background-color: #fff;
   --ifm-background-surface-color: #f7f9f7;
   --ifm-navbar-height: 4.25rem;
-  --ifm-font-family-base: "Aptos", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --ifm-heading-font-family: "Aptos Display", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --ifm-font-family-monospace: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --ifm-font-family-base: 'Aptos', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ifm-heading-font-family: 'Aptos Display', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ifm-font-family-monospace: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   --ifm-heading-font-weight: 650;
   --ifm-code-font-size: 90%;
   --ifm-line-height-base: 1.75;
@@ -29,7 +29,7 @@
   --mimirq-ink: #17211c;
   --mimirq-ink-soft: #34413a;
   --mimirq-muted: #627068;
-  --mimirq-faint: #8a958f;
+  --mimirq-faint: #66746b;
 }
 
 [data-theme='dark'] {
@@ -55,7 +55,7 @@
   --mimirq-ink: #edf3ef;
   --mimirq-ink-soft: #cbd5cf;
   --mimirq-muted: #9eaaa3;
-  --mimirq-faint: #77837c;
+  --mimirq-faint: #839087;
 }
 
 html {
@@ -170,7 +170,7 @@ a {
 
 /* Documentation shell */
 .theme-doc-sidebar-container {
-  border-right: 1px solid var(--mimirq-line) !important;
+  --ifm-toc-border-color: var(--mimirq-line);
   background: var(--mimirq-canvas);
 }
 
@@ -192,7 +192,9 @@ a {
   border-radius: 0.5rem;
   color: var(--mimirq-muted);
   line-height: 1.45;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
 .menu__link:hover {
@@ -366,16 +368,18 @@ a {
   box-shadow: none;
 }
 
-.alert--info {
+.alert--info,
+.alert--success {
   --ifm-alert-background-color: var(--mimirq-surface);
-  --ifm-alert-border-color: #4086b8;
   --ifm-alert-foreground-color: var(--mimirq-ink-soft);
 }
 
+.alert--info {
+  --ifm-alert-border-color: #4086b8;
+}
+
 .alert--success {
-  --ifm-alert-background-color: var(--mimirq-surface);
   --ifm-alert-border-color: var(--mimirq-accent);
-  --ifm-alert-foreground-color: var(--mimirq-ink-soft);
 }
 
 .theme-doc-toc-desktop {
@@ -387,7 +391,7 @@ a {
   font-size: 0.79rem;
 }
 
-.table-of-contents::before {
+.theme-doc-toc-desktop .table-of-contents::before {
   display: block;
   margin-bottom: 0.8rem;
   color: var(--mimirq-faint);
@@ -397,12 +401,11 @@ a {
   content: '在此页面';
 }
 
-html[lang='en'] .table-of-contents::before {
+html[lang='en'] .theme-doc-toc-desktop .table-of-contents::before {
   content: 'ON THIS PAGE';
 }
 
 .table-of-contents__link {
-  display: block;
   padding: 0.2rem 0;
   color: var(--mimirq-faint);
   line-height: 1.5;
@@ -411,7 +414,6 @@ html[lang='en'] .table-of-contents::before {
 .table-of-contents__link:hover,
 .table-of-contents__link--active {
   color: var(--mimirq-accent-strong);
-  text-decoration: none;
 }
 
 .breadcrumbs {
@@ -442,7 +444,9 @@ html[lang='en'] .table-of-contents::before {
   border: 1px solid var(--mimirq-line);
   border-radius: 0.7rem;
   background: var(--mimirq-paper);
-  transition: border-color 150ms ease, background-color 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
 }
 
 .pagination-nav__link:hover {
@@ -515,10 +519,6 @@ html[lang='en'] .table-of-contents::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
   *,
   *::before,
   *::after {

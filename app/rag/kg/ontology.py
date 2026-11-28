@@ -11,7 +11,6 @@ Design:
   then the extractor's built-in defaults.
 """
 
-
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -19,30 +18,26 @@ from sqlalchemy.orm import Session
 
 
 def load_enabled_predicates(db: Session, *, tenant_id: UUID) -> list[str]:
-    """Return enabled predicate keys from kg_predicate_ontology (best-effort)."""
-    try:
-        from app.rag.kg.models import KgPredicateOntology  # noqa: WPS433
+    """Return enabled predicate keys; persistence failures remain visible."""
+    from app.models.knowledge_graph.entities import KgPredicateOntology  # noqa: WPS433
 
-        rows = (
-            db.query(KgPredicateOntology)
-            .filter_by(tenant_id=tenant_id, is_enabled=True)
-            .order_by(KgPredicateOntology.predicate.asc())
-            .all()
-        )
-        out: list[str] = []
-        seen: set[str] = set()
-        for r in rows:
-            key = str(getattr(r, "predicate", "") or "").strip()
-            if not key:
-                continue
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(key)
-        return out
-    except Exception:
-        # Must be fail-open to preserve backward-compatible extraction behavior.
-        return []
+    rows = (
+        db.query(KgPredicateOntology)
+        .filter_by(tenant_id=tenant_id, is_enabled=True)
+        .order_by(KgPredicateOntology.predicate.asc())
+        .all()
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for r in rows:
+        key = r.predicate.strip()
+        if not key:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
 
 
 def resolve_allowed_predicates(
@@ -62,14 +57,11 @@ def resolve_allowed_predicates(
     """
     db_preds = load_enabled_predicates(db, tenant_id=tenant_id)
     if db_preds:
-        return list(db_preds)
+        return db_preds
 
-    raw = str(raw_override or "").strip()
-    if raw:
-        parts = [p.strip() for p in raw.replace("\r\n", "\n").split("\n") for p in p.split(",")]
-        cleaned = [p for p in (str(x or "").strip() for x in parts) if p]
+    if raw_override:
+        cleaned = [part for value in raw_override.replace("\n", ",").split(",") if (part := value.strip())]
         if cleaned:
             return cleaned
 
-    return [str(p).strip() for p in (fallback_default or []) if str(p).strip()]
-
+    return [part for value in fallback_default if (part := value.strip())]

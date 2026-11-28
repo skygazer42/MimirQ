@@ -4,9 +4,12 @@
 import argparse
 import base64
 import binascii
+import csv
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -168,17 +171,44 @@ def _load_password(*, password: str, password_file: str) -> str:
     return ""
 
 
+def _restrict_windows_token_file(path: Path) -> None:
+    system_tools = Path(os.environ["SystemRoot"]) / "System32"
+    identity = subprocess.check_output(
+        [system_tools / "whoami.exe", "/user", "/fo", "csv", "/nh"],
+        encoding="oem",
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    _, sid = next(csv.reader(identity.splitlines()))
+    subprocess.run(
+        [system_tools / "icacls.exe", path, "/reset"],
+        check=True,
+        capture_output=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    subprocess.run(
+        [system_tools / "icacls.exe", path, "/inheritance:r", "/grant:r", f"*{sid}:(F)"],
+        check=True,
+        capture_output=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+
+
 def _write_private_text(path: Path, text: str) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(path, flags, 0o600)
+    if path.is_symlink():
+        raise ValueError("The console storage-state file must not be a symbolic link")
+    fd, temporary_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    temporary = Path(temporary_name)
     try:
-        os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as file_obj:
             fd = -1
+            if os.name == "nt":
+                _restrict_windows_token_file(temporary)
             file_obj.write(text)
+        os.replace(temporary, path)
     finally:
         if fd >= 0:
             os.close(fd)
+        temporary.unlink(missing_ok=True)
 
 
 def refresh_storage_state(

@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { useEffect, useState } from 'react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
@@ -19,12 +20,22 @@ const ExecutionMonitorPageClient = dynamic(() => import('./page-client'), {
 
 export default function KnowledgeIngestionPage() {
   const searchParams = useSearchParams()
-  const activeView = searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'operation'
+  const showMonitor = searchParams.get('mode') === 'execution-monitor'
+  const [visitedOperation, setVisitedOperation] = useState(!showMonitor)
+
+  useEffect(() => {
+    if (!showMonitor) setVisitedOperation(true)
+  }, [showMonitor])
 
   return (
     <AppFrame>
-      <div className="h-full min-h-0 bg-transparent">
-        {activeView === 'execution-monitor' ? <ExecutionMonitorPageClient /> : <OperationPageClient />}
+      <div className="flex h-full min-h-0 flex-col bg-transparent">
+        {(!showMonitor || visitedOperation) && (
+          <div className="h-full min-h-0" hidden={showMonitor}>
+            <OperationPageClient active={!showMonitor} />
+          </div>
+        )}
+        {showMonitor && <ExecutionMonitorPageClient />}
       </div>
     </AppFrame>
   )
@@ -34,16 +45,6 @@ function KnowledgeIngestionLoading() {
   const t = useTranslations('KnowledgeIngestionPage')
 
   return (
-    <PageLoading
-      className="min-h-dvh bg-background"
-      message={t('loadingMessage')}
-      srMessage={t('loadingSrMessage')}
-    />
+    <PageLoading className="min-h-dvh bg-background" message={t('loadingMessage')} srMessage={t('loadingSrMessage')} />
   )
 }
-
-/*
-Source markers retained for route-level source tests:
-OperationPageClient
-ExecutionMonitorPageClient
-*/

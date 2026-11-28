@@ -1,6 +1,8 @@
-# MimirQ Web (Next.js Frontend)
+# Ragvia Web (Next.js Frontend)
 
 This folder contains the Next.js 16 (App Router) frontend.
+
+Develop on `feat/ragvia-ui` and push to `origin/feat/ragvia-ui`. Product names and approved artwork come from `lib/brand.ts` and `components/brand-logo.tsx`.
 
 ## Prerequisites
 
@@ -18,6 +20,7 @@ pnpm dev
 ```
 
 Notes:
+
 - `pnpm dev` now binds `127.0.0.1` by default and will automatically fall forward to the next free port when `3000` is busy.
 - `pnpm dev -- --port 3001` or `PORT=3001 pnpm dev` lets you pick another port explicitly.
 - `pnpm dev:public` keeps the old `0.0.0.0` behavior for LAN/device testing.
@@ -55,6 +58,7 @@ Frontend env vars (client-side):
 - `NEXT_PUBLIC_OIDC_ENABLED` (optional; set false to force-disable)
 
 Single-provider (backward compatible):
+
 - `NEXT_PUBLIC_OIDC_ISSUER` (e.g. `https://idp.example`)
 - `NEXT_PUBLIC_OIDC_CLIENT_ID`
 - `NEXT_PUBLIC_OIDC_SCOPES` (default: `openid profile email`)
@@ -62,6 +66,7 @@ Single-provider (backward compatible):
 - `NEXT_PUBLIC_OIDC_AUTH_PARAMS` (optional; querystring like `audience=...&prompt=login`)
 
 Multi-provider:
+
 - `NEXT_PUBLIC_OIDC_PROVIDERS_JSON` (JSON array; preferred)
   - shape: `{ id, name?, issuer, client_id, scopes?, auth_params? }`
   - example:
@@ -88,11 +93,13 @@ Notes:
 Optional server-side env vars (Next.js server only):
 
 Single-provider (backward compatible):
+
 - `OIDC_CLIENT_SECRET` (confidential clients)
 - `OIDC_CLIENT_AUTH_METHOD` (`basic` default | `post`)
 - `OIDC_SERVER_EXCHANGE_ENABLED` (optional; set false to force-disable server exchange)
 
 Multi-provider:
+
 - `OIDC_PROVIDERS_JSON` (JSON array)
   - shape: `{ id, name?, issuer, client_id, client_secret?, client_auth_method? }`
   - note: `client_secret` is optional; when missing, the route handler still works for public clients (but refresh via httpOnly cookie may be unavailable).
@@ -104,7 +111,7 @@ Implementation:
 
 ## SAML SSO (Optional)
 
-MimirQ supports IdP-initiated SAML 2.0 behind a guarded Next.js ACS route plus backend assertion exchange.
+Ragvia supports IdP-initiated SAML 2.0 behind a guarded Next.js ACS route plus backend assertion exchange.
 
 - Enable switch: `SAML_ENABLED=true` (default: off)
 - SP metadata: `GET /api/saml/metadata`
@@ -130,7 +137,7 @@ Behavior:
 
 - The Next.js ACS route accepts the IdP POST and forwards the raw assertion to the backend exchange endpoint.
 - The backend validates signature, issuer, audience, destination, recipient, time window, and replay state.
-- On success, the backend maps `NameID`/email to an existing MimirQ user and issues a normal app JWT session.
+- On success, the backend maps `NameID`/email to an existing Ragvia user and issues a normal app JWT session.
 - The frontend callback stores that session through the existing `setAuthSession(...)` path.
 
 Implementation details: `docs/guides/saml_sso.md`.

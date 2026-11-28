@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -6,9 +5,9 @@ from typing import Any
 import pytest
 from langchain_core.documents import Document
 
-from app.core.config import settings
-from app.rag.reranker.base import BaseReranker
-from app.rag.reranker.types import RerankCandidate, RerankResult
+from app.infrastructure.config import settings
+from app.rag.retrieval.reranking.base import BaseReranker
+from app.rag.retrieval.reranking.types import RerankCandidate, RerankResult
 
 
 @dataclass
@@ -44,6 +43,10 @@ class _FakeRetriever:
 
 def test_post_rerank_score_calibration_can_reorder_using_retrieval_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import post_rerank as post_rerank_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -61,13 +64,17 @@ def test_post_rerank_score_calibration_can_reorder_using_retrieval_signal(monkey
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "stub", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 2, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.2, raising=False)
 
-    doc_id = "doc"
+    doc_id = "00000000-0000-0000-0000-000000000001"
     d1 = Document(page_content="a", id="a", metadata={"document_id": doc_id, "chunk_id": "a", "score": 0.95})
     d2 = Document(page_content="b", id="b", metadata={"document_id": doc_id, "chunk_id": "b", "score": 0.20})
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=[d1, d2]), raising=True)
+    retriever_port = _FakeRetriever(docs=[d1, d2])
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever_port, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever_port, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever_port, raising=True)
 
     def _fake_get_reranker(_provider: str, **_kwargs: Any) -> BaseReranker:
         return _StubReranker(
@@ -75,7 +82,7 @@ def test_post_rerank_score_calibration_can_reorder_using_retrieval_signal(monkey
             score_map={"b": 0.99, "a": 0.98},
         )
 
-    monkeypatch.setattr(orch_mod, "get_reranker", _fake_get_reranker, raising=True)
+    monkeypatch.setattr(post_rerank_stage, "get_reranker_for_retrieval", _fake_get_reranker, raising=True)
 
     out = orch_mod.run_retrieval(
         {

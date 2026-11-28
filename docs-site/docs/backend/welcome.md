@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 后端手册总览
 
-本手册面向 **后端开发者、架构师与联调工程师**，帮助你快速理解 MimirQ 后端的模块边界、API 契约与内部流转。阅读时请以 [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) 为权威 Schema 参考，本手册侧重 **导航索引、状态机说明与排障指引**。
+本手册面向 **后端开发者、架构师与联调工程师**，帮助你快速理解 Ragvia 后端的模块边界、API 契约与内部流转。阅读时请以 [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) 为权威 Schema 参考，本手册侧重 **导航索引、状态机说明与排障指引**。
 
 ## 技术栈
 
@@ -13,7 +13,7 @@ sidebar_position: 1
 | --- | --- | --- |
 | Web 框架 | FastAPI | 0.135 |
 | ORM | SQLAlchemy | 2.0 (async) |
-| 向量数据库 | Milvus | 2.x（BM25 + SPLADE + ColBERT ANN 混合检索） |
+| 向量数据库 | Milvus | 2.x（向量与原生 BM25 混合检索） |
 | 关系数据库 | PostgreSQL | 主存储 |
 | 缓存 / 队列 | Redis | Session、限流与 Pub/Sub |
 | 任务队列 | Arq | 异步解析、索引、评测任务 |
@@ -75,18 +75,20 @@ graph LR
 
 ## Embedding 与模型支持
 
-后端内置多种 Embedding 模型，Provider 适配层覆盖 **OpenAI / Ollama / DashScope / Local** 等真实实现（Voyage / Cohere / Jina / Bedrock 目前为占位适配，复用 OpenAI 兼容协议，无原厂特性）。仓库随 `.env.example` 发布的默认模型是 `BAAI/bge-m3`；如果你没有显式设置 `EMBEDDING_MODEL`，后端代码仍保留 `text-embedding-3-small` 作为回退值。生产和团队环境应以 `.env.example` / 部署配置为准，不要依赖进程内默认值。RAG Engine 默认 **Vector + BM25 + RRF** 混合检索，SPLADE / ColBERT ANN 为可选后端（需显式启用）。
+后端内置多种 Embedding 模型，Provider 适配层覆盖 **OpenAI / Ollama / DashScope / Local** 等真实实现（Voyage / Cohere / Jina / Bedrock 目前为占位适配，复用 OpenAI 兼容协议，无原厂特性）。仓库随 `.env.example` 发布的默认模型是 `BAAI/bge-m3`；如果你没有显式设置 `EMBEDDING_MODEL`，后端代码仍保留 `text-embedding-3-small` 作为回退值。生产和团队环境应以 `.env.example` / 部署配置为准，不要依赖进程内默认值。RAG Engine 默认 **Vector + BM25 + RRF** 混合检索，ColBERT、SPARSE 和 ColPali 实验能力已退出。
 
 ## 关键配置与文件路径
 
 | 文件 | 用途 |
 | --- | --- |
-| `app/core/config.py` | 1200+ 配置项，pydantic-settings 驱动 |
+| `app/infrastructure/config.py` | 1200+ 配置项，pydantic-settings 驱动 |
 | `alembic.ini` / `alembic/` | 数据库迁移 |
 | `docker-compose.yml` | 本地开发环境编排 |
-| `app/rag/engine.py` | RAGEngine 主流程（streaming） |
-| `app/rag/retriever.py` | HybridRetriever 混合检索 |
-| `app/rag/pipelines/langgraph.py` | LangGraph Functional API 管线 |
+| `app/rag/runtime/engine.py` | RAGEngine 主流程（streaming） |
+| `app/rag/retrieval/recall/retriever.py` | HybridRetriever 混合召回入口 |
+| `app/rag/retrieval/ranking/` | 候选融合、去重与排序 |
+| `app/rag/retrieval/reranking/` | 模型与 API 重排 |
+| `app/rag/runtime/graph/workflow.py` | LangGraph Functional API 管线装配 |
 | `app/rag/kg/` | 知识图谱抽取 / 召回 / 扩展 / 重排 |
 
 :::info 配置优先级

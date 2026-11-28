@@ -1,7 +1,5 @@
-"""Retrieval-only building blocks (platform contract).
+"""Plan queries, recall candidates, rank evidence and execute model rerankers.
 
-This package intentionally focuses on evidence retrieval (no answer generation).
-Chat pipelines may import and reuse these utilities, but they are designed to
-remain usable independently of LangGraph orchestration.
+orchestrator.run_retrieval assembles the ordered stages; this package marker
+does not load query backends, model providers or graph execution.
 """
-

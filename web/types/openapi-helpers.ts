@@ -5,124 +5,95 @@
  * - Use the OpenAPI schema as the single source of truth
  * - Keep call sites readable (no deeply nested `paths['/...']['get']['responses'][200]...`)
  */
-import type { components, paths } from './openapi'
+import type { paths } from './openapi'
 
-export type OpenApiPaths = paths
-export type OpenApiComponents = components
-export type OpenApiSchemas = components['schemas']
+export type OpenApiPath = keyof paths
 
-export type OpenApiPath = keyof OpenApiPaths
+type OpenApiHttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete'
 
-export type OpenApiHttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete'
-
-type _OpAtPath<
-  P extends OpenApiPath,
-  M extends OpenApiHttpMethod,
-> = OpenApiPaths[P] extends { [K in M]?: infer Op } ? Op : never
+type OperationAtPath<P extends OpenApiPath, M extends OpenApiHttpMethod> = paths[P] extends {
+  [Method in M]?: infer Operation
+}
+  ? Operation
+  : never
 
 export type OpenApiMethodForPath<P extends OpenApiPath> = {
-  [M in OpenApiHttpMethod]: _OpAtPath<P, M> extends never ? never : M
+  [M in OpenApiHttpMethod]: OperationAtPath<P, M> extends never ? never : M
 }[OpenApiHttpMethod]
 
-export type OpenApiOperation<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = _OpAtPath<P, M>
+type OperationParameters<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationAtPath<P, M> extends { parameters: infer Parameters } ? Parameters : never
 
-type _Params<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = OpenApiOperation<P, M> extends { parameters: infer Params } ? Params : never
+export type OpenApiQueryParams<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationParameters<P, M> extends { query?: infer Query } ? Query : never
 
-export type OpenApiQueryParams<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = _Params<P, M> extends { query?: infer Q } ? Q : never
+export type OpenApiPathParams<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationParameters<P, M> extends { path?: infer Path } ? Path : never
 
-export type OpenApiPathParams<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = _Params<P, M> extends { path?: infer PP } ? PP : never
+export type OpenApiHeaderParams<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationParameters<P, M> extends { header?: infer Headers } ? Headers : never
 
-export type OpenApiHeaderParams<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = _Params<P, M> extends { header?: infer H } ? H : never
-
-type _RequestBodyContent<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = OpenApiOperation<P, M> extends { requestBody: { content: infer C } } ? C : never
+type RequestBodyContent<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationAtPath<P, M> extends { requestBody: { content: infer Content } } ? Content : never
 
 export type OpenApiRequestBody<
   P extends OpenApiPath,
   M extends OpenApiMethodForPath<P>,
   ContentType extends string = 'application/json',
-> = _RequestBodyContent<P, M> extends Record<string, unknown>
-  ? ContentType extends keyof _RequestBodyContent<P, M>
-    ? _RequestBodyContent<P, M>[ContentType]
+> =
+  RequestBodyContent<P, M> extends Record<string, unknown>
+    ? ContentType extends keyof RequestBodyContent<P, M>
+      ? RequestBodyContent<P, M>[ContentType]
+      : never
     : never
-  : never
 
-type _Responses<
+type OperationResponses<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationAtPath<P, M> extends { responses: infer Responses } ? Responses : never
+
+type ResponseStatus<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> = keyof OperationResponses<P, M>
+
+type ResponseContent<
   P extends OpenApiPath,
   M extends OpenApiMethodForPath<P>,
-> = OpenApiOperation<P, M> extends { responses: infer R } ? R : never
+  Status extends ResponseStatus<P, M>,
+> = OperationResponses<P, M>[Status] extends { content: infer Content } ? Content : never
 
-export type OpenApiResponseStatus<
+type ResponseBody<
   P extends OpenApiPath,
   M extends OpenApiMethodForPath<P>,
-> = keyof _Responses<P, M>
-
-export type OpenApiResponseContent<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-  Status extends OpenApiResponseStatus<P, M>,
-> = _Responses<P, M>[Status] extends { content: infer C } ? C : never
-
-export type OpenApiResponseBody<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-  Status extends OpenApiResponseStatus<P, M>,
+  Status extends ResponseStatus<P, M>,
   ContentType extends string = 'application/json',
-> = OpenApiResponseContent<P, M, Status> extends Record<string, unknown>
-  ? ContentType extends keyof OpenApiResponseContent<P, M, Status>
-    ? OpenApiResponseContent<P, M, Status>[ContentType]
+> =
+  ResponseContent<P, M, Status> extends Record<string, unknown>
+    ? ContentType extends keyof ResponseContent<P, M, Status>
+      ? ResponseContent<P, M, Status>[ContentType]
+      : never
     : never
-  : never
 
-type _OkStatus<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = _Responses<P, M> extends infer R
-  ? R extends Record<number, unknown>
-    ? 200 extends keyof R
-      ? 200
-      : 201 extends keyof R
-        ? 201
-        : 202 extends keyof R
-          ? 202
-          : 204 extends keyof R
-            ? 204
-            : Extract<keyof R, number>
+type SuccessStatus<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  OperationResponses<P, M> extends infer Responses
+    ? Responses extends Record<number, unknown>
+      ? 200 extends keyof Responses
+        ? 200
+        : 201 extends keyof Responses
+          ? 201
+          : 202 extends keyof Responses
+            ? 202
+            : 204 extends keyof Responses
+              ? 204
+              : Extract<keyof Responses, number>
+      : never
     : never
-  : never
 
-export type OpenApiOkStatus<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = _OkStatus<P, M>
-
-export type OpenApiOkJsonResponse<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = OpenApiOkStatus<P, M> extends infer S
-  ? S extends OpenApiResponseStatus<P, M>
-    ? OpenApiResponseBody<P, M, S, 'application/json'>
+type SuccessJsonResponse<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> =
+  SuccessStatus<P, M> extends infer Status
+    ? Status extends ResponseStatus<P, M>
+      ? ResponseBody<P, M, Status, 'application/json'>
+      : never
     : never
-  : never
 
-export type OpenApiOkResponse<
-  P extends OpenApiPath,
-  M extends OpenApiMethodForPath<P>,
-> = [OpenApiOkJsonResponse<P, M>] extends [never] ? void : OpenApiOkJsonResponse<P, M>
+export type OpenApiOkResponse<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> = [
+  SuccessJsonResponse<P, M>,
+] extends [never]
+  ? void
+  : SuccessJsonResponse<P, M>

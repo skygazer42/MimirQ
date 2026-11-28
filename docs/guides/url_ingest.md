@@ -74,7 +74,7 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload-url" \
 
 相关 API：
 
-- `GET /api/v1/connectors`：列出可用连接器（例如 `url_batch` / `web_crawl` / `github_repo` / `drive_files` / `minio_bucket` / `mysql_catalog` / `sqlserver_catalog`）
+- `GET /api/v1/connectors`：列出可用连接器（例如 `url_batch` / `web_crawl` / `minio_bucket` / `mysql_catalog` / `sqlserver_catalog`）
 - `POST /api/v1/connectors/validate`：校验配置与连通性（预检，用于 UI/运维）
 - `POST /api/v1/connectors/runs`：创建一次连接器运行
 - `GET /api/v1/connectors/runs`：查询运行列表（可选 `dataset_id` 过滤）

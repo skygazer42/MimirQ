@@ -6,10 +6,9 @@ import zipfile
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import router as v1_router
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1 import get_router
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -36,9 +35,9 @@ def _zip_text_entries(payload: bytes) -> dict[str, str]:
 def test_dataset_report_export_bundle_zip(monkeypatch):  # noqa: ANN001
     dataset_id = uuid.uuid4()
 
-    import app.api.v1.reports as reports_module
-    from app.api.schemas.dataset_profile import DatasetProfileSummary
-    from app.api.schemas.report import ComplianceSummary, DatasetReportOut
+    import app.api.v1.datasets.reports as reports_module
+    from app.api.schemas.datasets.profile import DatasetProfileSummary
+    from app.api.schemas.evaluation.reports import ComplianceSummary, DatasetReportOut
 
     dummy_profile = DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -58,7 +57,7 @@ def test_dataset_report_export_bundle_zip(monkeypatch):  # noqa: ANN001
         dataset_metadata={},
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -80,7 +79,7 @@ def test_dataset_report_export_bundle_zip(monkeypatch):  # noqa: ANN001
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
-    app.include_router(v1_router, prefix="/api/v1")
+    app.include_router(get_router(), prefix="/api/v1")
     client = TestClient(app)
 
     res = client.get(f"/api/v1/reports/datasets/{dataset_id}/export-bundle?redact=false")
@@ -104,9 +103,9 @@ def test_dataset_report_export_bundle_redacts_filename_and_manifest(monkeypatch)
     regression_run_id = uuid.UUID("99999999-8888-7777-6666-555555555555")
     pipeline_hash = "abcdef0123456789" * 4
 
-    import app.api.v1.reports as reports_module
-    from app.api.schemas.dataset_profile import DatasetProfileScanRunSummary, DatasetProfileSummary
-    from app.api.schemas.report import ComplianceSummary, DatasetRegressionRunSummaryOut, DatasetReportOut
+    import app.api.v1.datasets.reports as reports_module
+    from app.api.schemas.datasets.profile import DatasetProfileScanRunSummary, DatasetProfileSummary
+    from app.api.schemas.evaluation.reports import ComplianceSummary, DatasetRegressionRunSummaryOut, DatasetReportOut
 
     dummy_profile = DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -138,13 +137,13 @@ def test_dataset_report_export_bundle_redacts_filename_and_manifest(monkeypatch)
         ),
     )
     monkeypatch.setattr(
-        reports_module.ReportService, "build_dataset_report", lambda *_a, **_k: dummy_report, raising=True
+        reports_module.report_service, "build_dataset_report", lambda *_a, **_k: dummy_report, raising=True
     )
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
-    app.include_router(v1_router, prefix="/api/v1")
+    app.include_router(get_router(), prefix="/api/v1")
     client = TestClient(app)
 
     res = client.get(

@@ -8,14 +8,14 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.core.database import Base
-from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
+from app.infrastructure.database.connection import Base
+from app.models.knowledge_graph.entities import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 
 
 def test_delete_document_minio_images_streams_chunk_img_ids_and_batches_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -140,19 +140,13 @@ def test_minio_delete_images_uses_batch_remove_objects_and_surfaces_aggregated_f
     )
 
 
-def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.ingestion.indexing import indexer
 
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     tenant_id = uuid4()
     document_id = uuid4()
     query_args: list[object] = []
-
-    class _Row:
-        def __init__(self, **mapping: object) -> None:
-            self._mapping = mapping
 
     class _Query:
         def __init__(self) -> None:
@@ -168,16 +162,8 @@ def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
         def __iter__(self):
             return iter(
                 [
-                    _Row(
-                        vector_collection_name="",
-                        embedding_space_hash="space-a",
-                        dataset_scoped="true",
-                    ),
-                    _Row(
-                        vector_collection_name="documents_emb_oldbase_space_b",
-                        embedding_space_hash="space-b",
-                        dataset_scoped=True,
-                    ),
+                    ("", "space-a"),
+                    ("documents_emb_oldbase_space_b", "space-b"),
                 ]
             )
 
@@ -186,36 +172,21 @@ def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
 
     query = _Query()
 
-    monkeypatch.setattr(
-        indexer,
-        "resolve_dataset_embedding_runtime",
-        lambda _meta: DatasetEmbeddingRuntimeConfig(
-            provider="local",
-            model="model-default",
-            api_base="",
-            api_key="",
-            embedding_space_hash="space-default",
-            collection_name="documents",
-            dataset_scoped=False,
-        ),
-    )
-
     service = object.__new__(indexer.Indexer)
     service._db = SimpleNamespace(query=lambda *args: query_args.extend(args) or query)
 
     collections = service._dataset_scoped_vector_collections_for_document(
         tenant_id=tenant_id,
         document_id=document_id,
-        assume_dataset_scoped=False,
     )
 
-    assert len(query_args) == 3
+    assert [column.key for column in query_args] == ["vector_collection_name", "embedding_space_hash"]
     assert query.batch_size == indexer._CHUNK_METADATA_SCAN_BATCH_SIZE
     assert collections == ["documents_emb_oldbase_space_b", "documents_emb_space_a"]
 
 
 def test_run_bounded_cleanup_batch_aggregates_parallel_failures_without_leaking_values() -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     values = ["/sensitive/a.pdf", "/sensitive/b.pdf", "/sensitive/c.pdf"]
     seen: list[str] = []
@@ -312,7 +283,7 @@ def test_delete_event_indexes_batches_without_committing_caller_transaction(
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(1000)
     document_id = _kg_uuid(2000)
@@ -361,7 +332,7 @@ def test_delete_event_indexes_strict_entity_vector_failure_rolls_back_current_ba
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(3000)
     document_id = _kg_uuid(4000)
@@ -402,7 +373,7 @@ def test_delete_event_indexes_non_strict_vector_failures_still_commit_all_batche
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(4100)
     document_id = _kg_uuid(4200)
@@ -449,7 +420,7 @@ def test_delete_event_indexes_strict_later_batch_failure_preserves_resumable_pro
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(4300)
     document_id = _kg_uuid(4400)
@@ -506,7 +477,7 @@ def test_delete_event_indexes_batches_respect_excluded_event_ids(
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(4500)
     document_id = _kg_uuid(4600)
@@ -536,7 +507,7 @@ def test_prune_orphan_entities_batches_candidates_and_keeps_referenced_rows(
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(5000)
     referenced_entity_id = _kg_uuid(6000)

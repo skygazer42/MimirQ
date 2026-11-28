@@ -1,4 +1,4 @@
-import type { TenantAccess } from '@/lib/tenant-permissions'
+import { TENANT_PERMISSIONS, tenantAccessAllows, type TenantAccess } from '@/lib/tenant-permissions'
 
 export const ADMIN_CONTROLLED_NAVIGATION_MODULES = [
   'governanceProfiles',
@@ -18,25 +18,25 @@ const ADMIN_CONTROLLED_NAVIGATION_MODULE_SET = new Set<string>(ADMIN_CONTROLLED_
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 export function normalizeNavigationModules(value: unknown): AdminControlledNavigationModule[] {
-  const raw = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? value.split(',')
-      : []
-  const requested = new Set(raw.map((item) => String(item || '').trim()).filter(Boolean))
+  const modules = typeof value === 'string' ? value.split(',') : value
+  if (!Array.isArray(modules)) return []
 
+  const requested = new Set<string>()
+  for (const item of modules) {
+    if (typeof item === 'string') requested.add(item.trim())
+  }
   return ADMIN_CONTROLLED_NAVIGATION_MODULES.filter((module) => requested.has(module))
 }
 
 export function tenantAccessIsAdmin(access: TenantAccess | null | undefined): boolean {
-  if (!access?.is_active) return false
-  const role = String(access.role || '').trim().toLowerCase()
-  return ADMIN_ROLES.has(role) || (access.permissions || []).includes('settings.read')
+  if (access?.is_active !== true) return false
+  const role = access.role.trim().toLowerCase()
+  return ADMIN_ROLES.has(role) || tenantAccessAllows(access, TENANT_PERMISSIONS.SETTINGS_READ)
 }
 
 export function canShowAdminControlledNavigationModule(
   access: TenantAccess | null | undefined,
-  moduleKey?: AdminControlledNavigationModule
+  moduleKey?: AdminControlledNavigationModule,
 ): boolean {
   if (!moduleKey) return true
   if (!ADMIN_CONTROLLED_NAVIGATION_MODULE_SET.has(moduleKey)) return false

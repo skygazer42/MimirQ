@@ -1,7 +1,5 @@
-
-
 def test_compute_chunking_stats_from_texts_tokens_counts_and_histogram() -> None:
-    from app.services.chunking_stats_utils import compute_chunking_stats_from_texts_tokens
+    from app.services.chunking.statistics import compute_chunking_stats_from_texts_tokens
 
     stats = compute_chunking_stats_from_texts_tokens(
         [
@@ -21,4 +19,3 @@ def test_compute_chunking_stats_from_texts_tokens_counts_and_histogram() -> None
     hist = {b.get("label"): int(b.get("count") or 0) for b in (stats.get("histogram") or []) if isinstance(b, dict)}
     assert hist.get("0-50") == 2
     assert hist.get("200-400") == 1
-

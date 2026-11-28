@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.models import _all as model_registry
+from app.models import registry as model_registry
 from scripts import seed_public_bench_cfever_dev as cfever_seed
 
 
@@ -8,8 +8,8 @@ def test_registered_model_modules_keep_explicit_side_effect_imports() -> None:
     module_names = {module.__name__ for module in model_registry.REGISTERED_MODEL_MODULES}
 
     assert "app.models.audit_log" in module_names
-    assert "app.models.tenant" in module_names
-    assert "app.rag.kg.models" in module_names
+    assert "app.models.identity.workspaces" in module_names
+    assert "app.models.knowledge_graph.entities" in module_names
 
 
 def test_cfever_seed_wiki_subset_dry_run_trims_required_pages(

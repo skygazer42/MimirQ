@@ -23,7 +23,7 @@ import sys
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 # Ensure repo root is on sys.path so `import app` works when invoked as:
 #   python scripts/access_graph_diff.py ...
@@ -31,14 +31,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.services.access_graph_diff_service import diff_access_graph_records  # noqa: E402
+from app.services.identity.access_graph_diff import diff_access_graph_records  # noqa: E402
 
 
 def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _open_text(path: Path):  # noqa: ANN202
+def _open_text(path: Path) -> TextIO:
     if path.suffix.lower() == ".gz":
         return gzip.open(path, "rt", encoding="utf-8", errors="replace")
     return path.open("r", encoding="utf-8", errors="replace")
@@ -47,7 +47,7 @@ def _open_text(path: Path):  # noqa: ANN202
 def _iter_non_empty_lines(path: Path) -> Iterable[str]:
     with _open_text(path) as f:
         for line in f:
-            s = (line or "").strip()
+            s = line.strip()
             if s:
                 yield s
 
@@ -99,15 +99,15 @@ def _read_records(path: Path, *, max_records: int) -> tuple[list[dict[str, Any]]
         truncated = len(records_json) > max_records
         return records_json[:max_records], {
             "format": "json",
-            "returned": int(min(len(records_json), max_records)),
-            "truncated": bool(truncated),
+            "returned": min(len(records_json), max_records),
+            "truncated": truncated,
         }
 
     records = _read_records_ndjson(path, max_records=max_records)
     return records, {
         "format": "ndjson",
-        "returned": int(len(records)),
-        "truncated": bool(len(records) >= max_records),
+        "returned": len(records),
+        "truncated": len(records) >= max_records,
     }
 
 
@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         "diff": diff,
     }
 
-    if bool(args.compact):
+    if args.compact:
         print(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str))
     else:
         print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))

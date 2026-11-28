@@ -1,9 +1,7 @@
-
-
 def test_compute_index_audit_summary_reports_missing_and_orphan_samples() -> None:
     from uuid import UUID
 
-    from app.services.index_audit_service import compute_index_audit_summary
+    from app.services.indexing.audit import compute_index_audit_summary
 
     tenant_id = UUID("00000000-0000-0000-0000-000000000000")
     dataset_id = UUID("11111111-1111-1111-1111-111111111111")
@@ -38,14 +36,14 @@ def test_compute_index_channel_audit_summary_preserves_legacy_ready_behavior_wit
     from types import SimpleNamespace
     from uuid import UUID
 
-    from app.services.index_audit_service import compute_index_channel_audit_summary
+    from app.services.indexing.audit import compute_index_channel_audit_summary
 
     tenant_id = UUID("00000000-0000-0000-0000-000000000000")
     dataset_id = UUID("11111111-1111-1111-1111-111111111111")
     document_id = UUID("22222222-2222-2222-2222-222222222222")
 
     monkeypatch.setattr(
-        "app.services.index_audit_service.resolve_pipeline_effective",
+        "app.services.indexing.audit.resolve_pipeline_effective",
         lambda **_kwargs: SimpleNamespace(
             chunk_vector_enabled=True,
             bm25_index_enabled=True,
@@ -94,10 +92,10 @@ def test_compute_index_channel_audit_summary_preserves_legacy_ready_behavior_wit
 def test_compute_index_channel_audit_summary_distinguishes_required_and_optional_states(monkeypatch) -> None:  # noqa: ANN001
     from types import SimpleNamespace
 
-    from app.services.index_audit_service import compute_index_channel_audit_summary
+    from app.services.indexing.audit import compute_index_channel_audit_summary
 
     monkeypatch.setattr(
-        "app.services.index_audit_service.resolve_pipeline_effective",
+        "app.services.indexing.audit.resolve_pipeline_effective",
         lambda **_kwargs: SimpleNamespace(
             chunk_vector_enabled=True,
             bm25_index_enabled=True,
@@ -177,7 +175,7 @@ def test_compute_index_channel_audit_summary_distinguishes_required_and_optional
 
 
 def test_classify_index_audit_reconcile_status_marks_legacy_unknown_without_rows() -> None:
-    from app.services.index_audit_service import _classify_index_audit_reconcile_status
+    from app.services.indexing.audit import _classify_index_audit_reconcile_status
 
     out = _classify_index_audit_reconcile_status(
         current_index_readiness={"ready": True, "pending_channels": [], "error_channels": []},
@@ -194,7 +192,7 @@ def test_classify_index_audit_reconcile_status_marks_legacy_unknown_without_rows
 
 
 def test_classify_index_audit_reconcile_status_prefers_error_then_pending_then_ready() -> None:
-    from app.services.index_audit_service import _classify_index_audit_reconcile_status
+    from app.services.indexing.audit import _classify_index_audit_reconcile_status
 
     error = _classify_index_audit_reconcile_status(
         current_index_readiness={"ready": False, "pending_channels": [], "error_channels": ["bm25"]},
@@ -221,7 +219,7 @@ def test_plan_index_audit_reconcile_reports_only_pending_error_as_candidates(mon
     from types import SimpleNamespace
     from uuid import UUID
 
-    from app.services import index_audit_service as audit_service
+    from app.services.indexing import audit as audit_service
 
     tenant_id = UUID("00000000-0000-0000-0000-000000000000")
     dataset_id = UUID("11111111-1111-1111-1111-111111111111")
@@ -234,7 +232,7 @@ def test_plan_index_audit_reconcile_reports_only_pending_error_as_candidates(mon
         def all(self):  # noqa: ANN201
             return list(docs)
 
-    monkeypatch.setattr(audit_service.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(audit_service.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(audit_service, "_active_index_audit_documents_query", lambda **_kwargs: _Query(), raising=True)
 
     payloads = {
@@ -274,6 +272,11 @@ def test_plan_index_audit_reconcile_reports_only_pending_error_as_candidates(mon
             **payloads[str(kwargs["document"].id)],
         },
         raising=True,
+    )
+    monkeypatch.setattr(
+        audit_service,
+        "summarize_document_index_channels",
+        lambda _db, *, document: SimpleNamespace(to_dict=lambda: payloads[str(document.id)]["current_index_readiness"]),
     )
 
     plan = audit_service.plan_index_audit_reconcile(

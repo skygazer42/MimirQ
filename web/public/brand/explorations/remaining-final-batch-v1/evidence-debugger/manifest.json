@@ -1,0 +1,51 @@
+{
+  "title": "证据调试",
+  "round": "剩余页面 04",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-final-batch-v1/evidence-debugger/a.html",
+      "name": "A · 问题与证据分栏",
+      "concept": "当前对象、动作与结果连续可读",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A · 问题与证据分栏"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-final-batch-v1/evidence-debugger/b.html",
+      "name": "B · 问题先行",
+      "concept": "当前对象、动作与结果连续可读",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B · 问题先行"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-final-batch-v1/evidence-debugger/c.html",
+      "name": "C · 引用目录",
+      "concept": "当前对象、动作与结果连续可读",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C · 引用目录"
+      ]
+    }
+  ]
+}

@@ -6,13 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/ui/tabs', () => ({
   Tabs: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TabsContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  TabsContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   TabsList: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TabsTrigger: ({ children }: { children: React.ReactNode }) => (
-    <button type="button">{children}</button>
-  ),
+  TabsTrigger: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
 }))
 vi.mock('@/components/document-viewer/chunk-editor-dialog', () => ({
   ChunkEditorDialog: () => null,
@@ -44,8 +40,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
       writable: true,
@@ -77,12 +72,23 @@ describe('DocumentViewerPanelShell accessibility', () => {
     const props = {
       activeTab: 'preview',
       chunks: [],
+      clearRetrievePreview: vi.fn(),
       closeDocument: vi.fn(),
       copyChunkContent: vi.fn(),
       copyChunkLink: vi.fn(),
       doc: null,
+      documentError: null,
+      chunksError: null,
+      serverMatchError: null,
+      retryDocument: vi.fn(),
+      retryChunks: vi.fn(),
+      retryParsedContent: vi.fn(),
+      retryChunkSearch: vi.fn(),
       documentId: 'doc-a',
-      downloadUrl: null,
+      canDownloadOriginalFile: false,
+      downloadOriginalFile: vi.fn().mockResolvedValue(undefined),
+      downloadLoading: false,
+      downloadError: null,
       fileUrl: null,
       handleActiveTabChange: vi.fn(),
       handleChunkEditorOpenChange: vi.fn(),
@@ -91,9 +97,11 @@ describe('DocumentViewerPanelShell accessibility', () => {
       handleQaDialogOpenChange: vi.fn(),
       handleSelectTextChunkIndex: vi.fn(),
       handleTextScrollTopChange: vi.fn(),
-      highlightChunk: null,
+      highlightContent: null,
       highlightChunkId: null,
       highlightChunkLoading: false,
+      highlightChunkError: null,
+      retryHighlightedChunk: vi.fn(),
       highlightRange: null,
       isExpanded: false,
       isLoading: false,
@@ -112,14 +120,15 @@ describe('DocumentViewerPanelShell accessibility', () => {
       previewAnchor: null,
       qaDialogOpen: false,
       qaLastResult: null,
-      qaMaxSourceChars: 1000,
-      qaNumPairs: 5,
+      qaMaxSourceCharsInput: '1000',
+      qaNumPairsInput: '5',
       qaPreferLlm: false,
       qaReplaceExisting: false,
       qaSubmitting: false,
-      rawFileUrl: null,
       retrieveCitations: [],
-      retrieveError: '',
+      retrieveError: null,
+      retrieveFailedQuery: null,
+      retrieveResultQuery: null,
       retrieveLoading: false,
       retrieveQuery: '',
       rowVirtualizer: null,
@@ -136,17 +145,17 @@ describe('DocumentViewerPanelShell accessibility', () => {
       setIsExpanded: vi.fn(),
       setLoadAllChunks: vi.fn(),
       setPanelWidthPx,
-      setQaMaxSourceChars: vi.fn(),
-      setQaNumPairs: vi.fn(),
+      setQaMaxSourceCharsInput: vi.fn(),
+      setQaNumPairsInput: vi.fn(),
       setQaPreferLlm: vi.fn(),
       setQaReplaceExisting: vi.fn(),
-      setRetrieveCitations: vi.fn(),
-      setRetrieveError: vi.fn(),
       setRetrieveQuery: vi.fn(),
       setTextMode: vi.fn(),
       submitChunkEditor: vi.fn(),
       textActiveChunkIndex: null,
       textChunkItems: [],
+      textHighlightRange: null,
+      textUnpositionedChunkCount: 0,
       textInitialScrollTop: 0,
       textMode: 'plain',
       textValue: '',
@@ -175,19 +184,13 @@ describe('DocumentViewerPanelShell accessibility', () => {
       root.render(<DocumentViewerPanelShell {...props} />)
     })
 
-    const handle = container.querySelector(
-      '[data-document-viewer-resize-handle="true"]'
-    ) as HTMLElement | null
+    const handle = container.querySelector('[data-document-viewer-resize-handle="true"]') as HTMLElement | null
     expect(handle?.getAttribute('role')).toBe('separator')
     expect(handle?.getAttribute('aria-valuenow')).toBe('576')
 
     act(() => {
-      handle?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })
-      )
-      handle?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
-      )
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+      handle?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
     })
 
     expect(setPanelWidthPx).toHaveBeenNthCalledWith(1, 600)

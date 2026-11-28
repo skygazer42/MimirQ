@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/similarity/a.html",
+      "name": "A 矩阵工作区",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 矩阵工作区"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/similarity/b.html",
+      "name": "B 数据源分栏",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 数据源分栏"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/similarity/c.html",
+      "name": "C 矩阵与关联表",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 矩阵与关联表"
+      ]
+    }
+  ]
+}

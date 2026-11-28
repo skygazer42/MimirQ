@@ -14,7 +14,7 @@ import { listAllDatasets } from './datasets'
 
 describe('listAllDatasets', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    openapi.request.mockReset()
   })
 
   it('reads every dataset page until the reported total is reached', async () => {
@@ -42,19 +42,19 @@ describe('listAllDatasets', () => {
         path: '/api/v1/datasets/',
         method: 'get',
         query: { skip: 0, limit: 200 },
-      })
+      }),
     )
     expect(openapi.request).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         query: { skip: 200, limit: 200 },
-      })
+      }),
     )
     expect(openapi.request).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({
         query: { skip: 400, limit: 200 },
-      })
+      }),
     )
   })
 
@@ -85,7 +85,7 @@ describe('listAllDatasets', () => {
           include_descendants: true,
           q: 'finance',
         },
-      })
+      }),
     )
     expect(openapi.request).toHaveBeenNthCalledWith(
       2,
@@ -97,41 +97,58 @@ describe('listAllDatasets', () => {
           include_descendants: true,
           q: 'finance',
         },
-      })
+      }),
     )
   })
 
-  it('stops when a later full page repeats only already-seen dataset ids', async () => {
+  it('rejects an incomplete directory when a later page repeats already-seen ids', async () => {
     openapi.request
       .mockResolvedValueOnce({
-        total: 10_000,
+        total: 400,
         items: Array.from({ length: 200 }, (_, index) => ({ id: `dataset-${index}` })),
       })
       .mockResolvedValueOnce({
-        total: 10_000,
+        total: 400,
         items: Array.from({ length: 200 }, (_, index) => ({ id: `dataset-${index}` })),
       })
 
-    const datasets = await listAllDatasets()
-
-    expect(datasets).toHaveLength(200)
+    await expect(listAllDatasets()).rejects.toThrow('数据集目录在读取期间发生变化，请重新读取')
     expect(openapi.request).toHaveBeenCalledTimes(2)
   })
 
-  it('treats invalid totals as untrusted and still terminates on a short page', async () => {
+  it('rejects an invalid total before requesting another page', async () => {
+    openapi.request.mockResolvedValueOnce({
+      total: 'not-a-number',
+      items: [{ id: 'dataset-a' }],
+    })
+
+    await expect(listAllDatasets()).rejects.toThrow('数据集目录总数无效，请重新读取')
+    expect(openapi.request).toHaveBeenCalledOnce()
+  })
+
+  it('does not convert a missing required items envelope into a successful empty list', async () => {
+    openapi.request.mockResolvedValueOnce({ total: 2 })
+
+    await expect(listAllDatasets()).rejects.toBeInstanceOf(TypeError)
+    expect(openapi.request).toHaveBeenCalledOnce()
+  })
+
+  it('forwards the query cancellation signal through every dataset page', async () => {
+    const signal = new AbortController().signal
     openapi.request
-      .mockResolvedValueOnce({
-        total: 'not-a-number',
-        items: Array.from({ length: 200 }, (_, index) => ({ id: `dataset-${index}` })),
-      })
-      .mockResolvedValueOnce({
-        total: 'not-a-number',
-        items: Array.from({ length: 5 }, (_, index) => ({ id: `dataset-${200 + index}` })),
-      })
+      .mockResolvedValueOnce({ total: 3, items: [{ id: 'dataset-a' }, { id: 'dataset-b' }] })
+      .mockResolvedValueOnce({ total: 3, items: [{ id: 'dataset-c' }] })
 
-    const datasets = await listAllDatasets()
+    const datasets = await listAllDatasets({ pageSize: 2 }, { signal })
 
-    expect(datasets).toHaveLength(205)
-    expect(openapi.request).toHaveBeenCalledTimes(2)
+    expect(datasets).toHaveLength(3)
+    expect(openapi.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ query: { skip: 0, limit: 2 }, signal }),
+    )
+    expect(openapi.request).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ query: { skip: 2, limit: 2 }, signal }),
+    )
   })
 })

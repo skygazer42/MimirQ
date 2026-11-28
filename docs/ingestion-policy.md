@@ -123,12 +123,12 @@
 
 ## 4.1 内置治理预设（Governance Profiles）
 
-治理预设用于"解析后 Markdown 清洗"，会注入 `pipeline_patch + regex_rules`。当前内置 26 个（`app/services/governance_profiles.py`），按场景分组：
+治理预设用于"解析后 Markdown 清洗"，会注入 `pipeline_patch + regex_rules`。当前内置 26 个（`app/services/pipelines/profiles.py`），按场景分组：
 
 **通用 / 网页**
 - `builtin:kb_default`：通用保守清洗（去噪/去目录/断行修复/去重页眉页脚）
 - `builtin:html_web`：网页抓取/复制（去样板/去追踪参/段落去重）
-- `builtin:html_xpath_main`：网页 XPath 优先抽正文（默认 `//main`，未命中则回退）
+- `builtin:html_xpath_main`：网页 XPath 优先抽正文（需选择 `html` 解析后端；默认 `//main`，未命中则回退）
 - `builtin:wiki_longform`：长文/Wiki（去重 + 参考文献裁剪）
 
 **PDF**

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const authMock = vi.hoisted(() => ({
   token: 'token' as string | null,
+  revision: 0,
 }))
 const backendMetaMock = vi.hoisted(() => ({
   authMode: 'jwt' as string | null,
@@ -19,16 +20,15 @@ const routerMock = vi.hoisted(() => ({
   replace: vi.fn(),
 }))
 
-vi.mock('@/lib/auth-storage', () => ({
-  AUTH_SCOPE_CHANGED_EVENT: 'mimirq:auth-scope-changed',
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   getAccessToken: () => authMock.token,
+  getAuthSessionRevision: () => authMock.revision,
 }))
 vi.mock('@/hooks/use-backend-meta', () => ({
   useBackendMeta: () => ({
     data:
-      typeof backendMetaMock.authMode === 'string'
-        ? { features: { auth_mode: backendMetaMock.authMode } }
-        : undefined,
+      typeof backendMetaMock.authMode === 'string' ? { features: { auth_mode: backendMetaMock.authMode } } : undefined,
     isPending: backendMetaMock.isPending,
     isError: backendMetaMock.isError,
   }),
@@ -47,6 +47,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks()
   authMock.token = 'token'
+  authMock.revision = 0
   backendMetaMock.authMode = 'jwt'
   backendMetaMock.isPending = false
   backendMetaMock.isError = false
@@ -55,6 +56,39 @@ afterEach(() => {
 })
 
 describe('AuthGuard session changes', () => {
+  it('preserves the in-flight login form when the authenticated session changes', () => {
+    navigationMock.pathname = '/auth'
+    authMock.token = null
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    function LoginForm() {
+      const [submitting, setSubmitting] = React.useState(false)
+      return <button onClick={() => setSubmitting(true)}>{submitting ? '正在登录' : '登录'}</button>
+    }
+
+    act(() => {
+      root.render(
+        <AuthGuard>
+          <LoginForm />
+        </AuthGuard>,
+      )
+    })
+    act(() => container.querySelector('button')?.click())
+    expect(container.textContent).toBe('正在登录')
+
+    authMock.token = 'signed-in-token'
+    act(() => {
+      authMock.revision++
+      window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
+    })
+
+    expect(container.textContent).toBe('正在登录')
+    expect(routerMock.replace).not.toHaveBeenCalled()
+    act(() => root.unmount())
+  })
+
   it('redirects when the active session is cleared asynchronously', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -64,13 +98,14 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
     expect(routerMock.replace).not.toHaveBeenCalled()
 
     authMock.token = null
     act(() => {
+      authMock.revision++
       window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
     })
 
@@ -93,13 +128,14 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <PrivateState />
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
     act(() => container.querySelector('button')?.click())
     expect(container.textContent).toBe('private-a')
 
     act(() => {
+      authMock.revision++
       window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
     })
 
@@ -118,7 +154,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 
@@ -139,7 +175,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>sign-in</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 
@@ -160,7 +196,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 

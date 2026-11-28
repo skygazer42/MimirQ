@@ -1,16 +1,16 @@
 const knowledgeMessages = {
-KnowledgeWorkbenchActions: {
-    importOrCreate: '导入/新增',
+  KnowledgeWorkbenchActions: {
+    importOrCreate: '导入文档',
   },
-KnowledgeIngestionPage: {
+  KnowledgeIngestionPage: {
     loadingMessage: '正在加载知识库入库流程...',
     loadingSrMessage: 'Loading knowledge ingestion workspace',
     descriptionMarker: '实时追踪解析、切块、向量化与索引构建进度。',
   },
-KnowledgePage: {
+  KnowledgePage: {
     header: {
-      title: '知识库管理',
-      description: '管理您的文档资产，构建专属知识大脑',
+      title: '知识库',
+      description: '管理文档，查看处理状态与检索结果。',
     },
     stats: {
       totalDocuments: '文档总数',
@@ -23,13 +23,10 @@ KnowledgePage: {
     },
     tabs: {
       documents: {
-        label: '文档列表',
+        label: '文档',
       },
       retrieval: {
         label: '检索测试',
-      },
-      settings: {
-        label: '配置',
       },
     },
     dialogs: {
@@ -73,6 +70,9 @@ KnowledgePage: {
     },
     toasts: {
       batchDeleteFailed: '批量删除失败',
+      batchDeleteSuccess: '已删除 {count} 份文档',
+      batchDeletePartial: '已删除 {deleted} 份文档，{denied} 份没有删除权限。',
+      batchNotFound: '{count} 份文档未找到，未执行操作。',
       batchLifecycleFailed: '批量操作失败',
       batchLifecycle: {
         disable: '已禁用 {count} 份文档',
@@ -83,12 +83,15 @@ KnowledgePage: {
       reingestLimitExceeded: '一次最多重新入库 50 份文档',
       reingestQueued: '已触发重新入库 {count} 份文档',
       reingestFailed: '批量重新入库失败',
-      uploadPartial: '已上传 {successful}/{total} 个文件，失败 {failed} 个（可重试）',
+      uploadPartial: '已上传 {successful} 个文件，失败 {failed} 个',
+      uploadUnconfirmed: '{count} 个文件结果未确认',
+      uploadFailureDetails: '查看失败文件',
+      dismissUploadResult: '关闭上传结果',
       uploadSuccess: '已上传 {count} 个文件',
       uploadFailed: '上传失败',
     },
   },
-KnowledgeScopePanel: {
+  KnowledgeScopePanel: {
     header: {
       title: '导航',
       subtitle: 'NAVIGATION',
@@ -133,7 +136,7 @@ KnowledgeScopePanel: {
       all: '全部',
     },
   },
-KnowledgeDocumentsPanel: {
+  KnowledgeDocumentsPanel: {
     status: {
       completed: '已就绪',
       failed: '失败',
@@ -150,6 +153,7 @@ KnowledgeDocumentsPanel: {
     },
     toasts: {
       deleteSuccess: '已删除文档',
+      refreshFailed: '刷新文档列表失败',
       copyUnsupported: '复制失败：浏览器不支持 Clipboard API',
       copyFailed: '复制失败',
       copySourcePath: '已复制 Source Path',
@@ -161,7 +165,7 @@ KnowledgeDocumentsPanel: {
       deleting: '删除中…',
       confirmDelete: '确认删除',
       clearFilters: '清空筛选',
-      uploadNow: '立即上传文档',
+      uploadNow: '上传文档',
       clearSelection: '清除选择',
       reingest: '重新入库',
       reingesting: '重新入库中…',
@@ -184,8 +188,8 @@ KnowledgeDocumentsPanel: {
     empty: {
       filtered: {
         title: '未找到匹配的文档',
-        description: '尝试清空筛选条件，重新查看范围内的全部文档。',
-        refinedDescription: '尝试调整筛选条件，或清空筛选后重新查看全部文档。',
+        description: '清空筛选可查看当前范围内的全部文档。',
+        refinedDescription: '换个关键词或清空筛选。',
       },
       emptyDataset: {
         title: '该数据集暂无文档',
@@ -195,9 +199,9 @@ KnowledgeDocumentsPanel: {
         },
       },
       blank: {
-        title: '知识库空空如也',
-        description: '上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引。',
-        formats: '支持 PDF, TXT, Markdown, Excel, Word 等常见格式。',
+        title: '还没有文档',
+        description: '文档完成索引后可检索。',
+        formats: '支持 PDF、TXT、Markdown、Excel、Word 等格式。',
       },
     },
     search: {
@@ -252,7 +256,7 @@ KnowledgeDocumentsPanel: {
       parserAuto: 'Auto',
     },
   },
-KnowledgeRetrievalPanel: {
+  KnowledgeRetrievalPanel: {
     header: {
       badge: '索引审计',
       title: '索引审计',
@@ -284,62 +288,7 @@ KnowledgeRetrievalPanel: {
       waitingForDataset: '等待选择数据集',
     },
   },
-KnowledgeSettingsPanel: {
-    header: {
-      title: '知识库参数配置',
-      description: '调整系统默认 Embedding、召回数量与阈值，并保留显式保存与风险确认。',
-    },
-    scope: {
-      systemDefault: '作用范围：系统默认值',
-      datasetPurgeScoped: '当前数据集仅用于危险操作：{datasetId}',
-      datasetPurgeUnselected: '未选择数据集时不可执行危险操作',
-    },
-    embedding: {
-      title: 'Embedding 模型',
-      modelHint: '768 维 / 中英支持',
-      description: '仅修改系统默认 embedding 配置，不会自动重建现有文档向量。',
-    },
-    retrieval: {
-      title: '检索模式',
-      options: {
-        vector: {
-          label: '向量检索',
-          description: '基于语义相似度，适合模糊匹配',
-        },
-        fulltext: {
-          label: '全文检索',
-          description: '基于关键词匹配，适合专有名词',
-        },
-        hybrid: {
-          label: '混合检索',
-          description: '向量 + 全文加权，效果最佳',
-        },
-      },
-    },
-    sliders: {
-      topK: {
-        title: '召回数量 (Top K)',
-        description: '单次检索返回的最大片段数，建议 3-8 之间',
-      },
-      similarity: {
-        title: '相似度阈值',
-        description: '过滤低相关度的结果，值越大匹配越精准',
-      },
-    },
-    runtimeMode: {
-      title: '检索模式说明',
-      description: '实际 retrieval mode 由请求参数、检索 profile 或运行时策略决定，这里不做系统级强制覆盖。',
-      chips: {
-        hybrid: 'Hybrid 优先',
-        vector: 'Vector 直达',
-        keyword: 'Keyword / MMR',
-      },
-    },
-    alerts: {
-      embeddingWarningTitle: 'Embedding 变更不会自动重建历史向量',
-      embeddingWarningDescription: '保存后只会更新系统默认配置。已有文档如果要切换到新模型，需要在文档列表手动重新入库，或走 shadow migration 流程。',
-      loadFailedTitle: '配置加载失败',
-    },
+  KnowledgeConnectorRunsPanel: {
     runStatus: {
       all: '全部状态',
       pending: '等待',
@@ -348,23 +297,10 @@ KnowledgeSettingsPanel: {
       completed: '已完成',
       cancelled: '已取消',
     },
-    aclModes: {
-      inherit: '继承',
-      onlyMe: '仅我',
-      allTeamMembers: '全员',
-      partialMembers: '白名单',
-      mixed: '混合',
-    },
-    syncCapabilities: {
-      incrementalAndResume: '源增量 + 续跑',
-      incremental: '源增量',
-      resumeOnly: '仅续跑',
-      full: '全量',
-    },
     connectorRuns: {
       emptyValue: '—',
       title: '任务中心',
-      description: '用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。',
+      description: '查看批量网址导入和同步记录。只显示有写权限的数据集。',
       liveBadge: '实时',
       summary: {
         all: '全部',
@@ -398,7 +334,7 @@ KnowledgeSettingsPanel: {
       lastRefreshLabel: '上次刷新',
       loading: '正在加载导入任务...',
       zeroState: {
-        description: '暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。',
+        description: '暂无导入任务。点击「导入/新增」可创建任务。',
       },
       empty: {
         title: '暂无运行记录',
@@ -434,7 +370,7 @@ KnowledgeSettingsPanel: {
       dialogs: {
         cancel: {
           title: '取消导入任务？',
-          description: '将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：',
+          description: '取消后会尝试停止导入，已导入的文档会保留。任务 ID：',
           back: '返回',
           confirm: '取消任务',
         },
@@ -452,62 +388,7 @@ KnowledgeSettingsPanel: {
         },
       },
     },
-    dangerZone: {
-      title: '危险操作',
-      description: '仅用于管理员生命周期治理：批量删除数据集内的文档（不删除数据集本身）。默认',
-      descriptionSuffix: '预览。',
-      selectDatasetTitle: '请先选择一个数据集',
-      trigger: '清空数据集文档',
-      dialog: {
-        title: '清空数据集文档？',
-        descriptionPrefix: '将调用',
-        descriptionMiddle: '，每次最多删除',
-        descriptionSuffix: '条。若数据集有扫描任务（pending/running），后端会返回 409。',
-      },
-      maxDelete: 'max_delete',
-      preview: '预览（dry-run）',
-      previewSummaryLabel: 'preview',
-      datasetLabel: 'dataset_id',
-      previewHint: '建议先点击“预览（dry-run）”确认 eligible 数量，再执行清空。',
-      cancel: '返回',
-      confirm: '确认清空',
-    },
-    actions: {
-      reload: '重新加载',
-      reset: '恢复草稿',
-      saveAll: '保存所有更改',
-    },
-    dialogs: {
-      embeddingChange: {
-        title: '确认切换 Embedding 模型？',
-        description: '这会更新系统默认 embedding 配置，但不会自动迁移历史向量索引。',
-        impact: '保存后，新导入内容会使用新的 embedding 模型；已有文档仍需手动重新入库或走蓝绿迁移流程，才能与新模型保持一致。',
-        cancel: '返回',
-        confirm: '继续保存',
-      },
-    },
-    footer: {
-      loading: '正在加载系统配置…',
-      unsaved: '有 {count} 项未保存修改',
-      savedAt: '最近一次保存于 {time}',
-      synced: '当前草稿与系统配置一致',
-    },
-    toasts: {
-      loadFailed: '加载系统配置失败',
-      copyUnsupported: '复制失败：浏览器不支持 Clipboard API',
-      copyFailed: '复制失败',
-      saveSuccess: '配置已保存',
-      saveSuccessEmbeddingChanged: '配置已保存；Embedding 模型已更新，现有文档需手动重新入库',
-      saveFailed: '保存系统配置失败',
-      selectDatasetFirst: '请先选择一个数据集',
-      purgePreviewReady: '已预览：eligible={eligible}',
-      purgeCompleted: '已清空：deleted={deleted}（如还有剩余可重复执行）',
-      purgeFailed: '清空数据集失败',
-      copyRunId: '已复制 run_id',
-      copyTaskLink: '已复制任务链接',
-      copyDocumentIds: '已复制文档 ID 列表',
-    },
-  }
+  },
 } as const
 
 export default knowledgeMessages

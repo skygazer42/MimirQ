@@ -1,9 +1,9 @@
-from app.api.schemas.dataset_precheck import DatasetPrecheckEmbeddingAdvisory
-from app.services.dataset_embedding_advisory import build_embedding_language_advisories
+from app.api.schemas.datasets.precheck import DatasetPrecheckEmbeddingAdvisory
+from app.services.datasets.precheck.embedding_advisories import build_embedding_language_advisories
 
 
 def _set_generic_defaults(monkeypatch) -> None:  # noqa: ANN001
-    from app.services import dataset_embedding_advisory as advisory
+    from app.services.datasets.precheck import embedding_advisories as advisory
 
     monkeypatch.setattr(advisory.settings, "EMBEDDING_PROVIDER", "openai_compatible", raising=False)
     monkeypatch.setattr(advisory.settings, "EMBEDDING_MODEL", "text-embedding-3-small", raising=False)
@@ -52,7 +52,7 @@ def test_explicit_dataset_multilingual_embedding_does_not_warn(monkeypatch) -> N
 
 def test_configured_language_route_suppresses_generic_default_warning(monkeypatch) -> None:  # noqa: ANN001
     _set_generic_defaults(monkeypatch)
-    from app.services import dataset_embedding_advisory as advisory
+    from app.services.datasets.precheck import embedding_advisories as advisory
 
     monkeypatch.setattr(advisory.settings, "EMBEDDING_LANGUAGE_ROUTING_ENABLED", True, raising=False)
     monkeypatch.setattr(advisory.settings, "EMBEDDING_MODEL_ZH", "siliconflow/BAAI/bge-m3", raising=False)

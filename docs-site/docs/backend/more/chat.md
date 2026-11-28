@@ -5,7 +5,7 @@ sidebar_position: 4
 
 # 对话与模板
 
-MimirQ 的对话引擎基于 RAG 架构，将用户提问经过检索增强后交由 LLM 生成流式回答，同时提供 Prompt 模板管理和多轮对话记忆。
+Ragvia 的对话引擎基于 RAG 架构，将用户提问经过检索增强后交由 LLM 生成流式回答，同时提供 Prompt 模板管理和多轮对话记忆。
 
 ## 架构概览
 
@@ -97,9 +97,9 @@ A/B 路由使用 `SHA-256(ab_user_key)` 生成稳定哈希，确保同一用户�
 | 文件 | 职责 |
 |------|------|
 | `app/rag/engine.py` | RAGEngine 主入口（~2200+ 行） |
-| `app/services/prompt_resolver.py` | 模板解析与 A/B 路由 |
-| `app/rag/core/conversation.py` | 对话历史格式化 |
-| `app/rag/core/sentence_citations.py` | 句级引用标注 |
+| `app/services/prompts/resolver.py` | 模板解析与 A/B 路由 |
+| `app/rag/llm/prompts/templates.py` | 对话历史格式化 |
+| `app/rag/llm/citation_rendering.py` | 句级引用标注 |
 
 ---
 

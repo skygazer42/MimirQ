@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
 from langchain_core.documents import Document
 
-from app.rag.preprocessing import processor as processor_module
+from app.rag.ingestion.governance import processor as processor_module
+from app.rag.ingestion.governance.cleaning import CleaningResult
 
 
 def _result(**values: object) -> SimpleNamespace:
@@ -10,33 +12,21 @@ def _result(**values: object) -> SimpleNamespace:
 
 
 def _patch_quality_metrics(monkeypatch, order: list[str]) -> None:
-    def low_density(text: str, *, threshold: float) -> SimpleNamespace:
-        order.append("quality:density")
-        return _result(
-            dropped=False,
-            reason=None,
-            metrics={"density": 0.5, "chars_non_space": 10, "chars_alnum_cjk": 8},
-        )
+    def measure(text: str) -> dict[str, float | int]:
+        order.append("quality")
+        return {
+            "density": 0.5,
+            "chars_non_space": 10,
+            "chars_alnum_cjk": 8,
+            "heading_ratio": 0.25,
+            "lines_total": 4,
+            "lines_outline": 1,
+            "content_chars": 20,
+            "perplexity_proxy": 0.1,
+            "token_count": 6,
+        }
 
-    def outline(text: str, *, min_content_chars: int, max_heading_ratio: float) -> SimpleNamespace:
-        order.append("quality:outline")
-        return _result(
-            dropped=False,
-            reason=None,
-            metrics={"heading_ratio": 0.25, "lines_total": 4, "lines_outline": 1, "content_chars": 20},
-        )
-
-    def perplexity(text: str, *, threshold: float, min_tokens: int) -> SimpleNamespace:
-        order.append("quality:perplexity")
-        return _result(
-            dropped=False,
-            reason=None,
-            metrics={"perplexity_proxy": 0.1, "token_count": 6},
-        )
-
-    monkeypatch.setattr(processor_module, "drop_if_low_density", low_density)
-    monkeypatch.setattr(processor_module, "drop_if_outline_only", outline)
-    monkeypatch.setattr(processor_module, "drop_if_high_perplexity_proxy", perplexity)
+    monkeypatch.setattr(processor_module, "measure_governance_quality", measure)
 
 
 def test_clean_documents_preserves_phase_order_metadata_and_stats(monkeypatch) -> None:
@@ -61,11 +51,11 @@ def test_clean_documents_preserves_phase_order_metadata_and_stats(monkeypatch) -
         lambda *args, **kwargs: order.append("repeated-lines") or {"repeated"},
     )
 
-    def clean(text: str, **kwargs: object) -> SimpleNamespace:
+    def clean(text: str, **kwargs: object) -> CleaningResult:
         order.append("clean")
         assert text == "frontmatter-stripped"
         assert kwargs["common_lines"] == {"repeated"}
-        return _result(markdown="clean", applied_rules=2, changed=True)
+        return CleaningResult(markdown="clean", applied_rules=2, changed=True, stats={"regex_timeout_rules": []})
 
     monkeypatch.setattr(processor_module, "clean_markdown", clean)
     monkeypatch.setattr(
@@ -156,7 +146,7 @@ def test_clean_documents_preserves_phase_order_metadata_and_stats(monkeypatch) -
     )
     source = Document(page_content="source", metadata={"source": "fixture"}, id="doc-1")
 
-    cleaned, stats = processor_module.GovernanceProcessor(rules=[]).clean_documents([source], options=options)
+    cleaned, stats = processor_module.clean_documents([source], rules=[], options=options)
 
     assert order == [
         "frontmatter",
@@ -173,9 +163,7 @@ def test_clean_documents_preserves_phase_order_metadata_and_stats(monkeypatch) -
         "urls",
         "language",
         "keywords",
-        "quality:density",
-        "quality:outline",
-        "quality:perplexity",
+        "quality",
     ]
     assert cleaned[0].page_content == "clean|tables|code|boilerplate|images|pii|secrets|paragraphs|references|urls"
     assert cleaned[0].id == "doc-1"
@@ -245,7 +233,9 @@ def test_clean_documents_drops_individual_quality_failure(monkeypatch) -> None:
     monkeypatch.setattr(
         processor_module,
         "clean_markdown",
-        lambda text, **kwargs: _result(markdown=text, applied_rules=0, changed=False),
+        lambda text, **kwargs: CleaningResult(
+            markdown=text, applied_rules=0, changed=False, stats={"regex_timeout_rules": []}
+        ),
     )
     monkeypatch.setattr(
         processor_module,
@@ -253,8 +243,9 @@ def test_clean_documents_drops_individual_quality_failure(monkeypatch) -> None:
         lambda text, **kwargs: _result(dropped=True, reason="outline_only", metrics={}),
     )
 
-    cleaned, stats = processor_module.GovernanceProcessor(rules=[]).clean_documents(
+    cleaned, stats = processor_module.clean_documents(
         [Document(page_content="# Heading")],
+        rules=[],
         options=processor_module.GovernanceCleanOptions(drop_outline_only=True, remove_common_lines=False),
     )
 
@@ -267,7 +258,9 @@ def test_clean_documents_applies_aggregate_pii_gate(monkeypatch) -> None:
     monkeypatch.setattr(
         processor_module,
         "clean_markdown",
-        lambda text, **kwargs: _result(markdown=text, applied_rules=1, changed=False),
+        lambda text, **kwargs: CleaningResult(
+            markdown=text, applied_rules=1, changed=False, stats={"regex_timeout_rules": []}
+        ),
     )
     monkeypatch.setattr(
         processor_module,
@@ -276,8 +269,9 @@ def test_clean_documents_applies_aggregate_pii_gate(monkeypatch) -> None:
     )
     _patch_quality_metrics(monkeypatch, [])
 
-    cleaned, stats = processor_module.GovernanceProcessor(rules=[]).clean_documents(
+    cleaned, stats = processor_module.clean_documents(
         [Document(page_content="one"), Document(page_content="two")],
+        rules=[],
         options=processor_module.GovernanceCleanOptions(
             remove_common_lines=False,
             pii_anonymize=True,
@@ -295,7 +289,7 @@ def test_clean_documents_applies_aggregate_pii_gate(monkeypatch) -> None:
 
 
 def test_clean_documents_empty_input_has_stable_stats() -> None:
-    cleaned, stats = processor_module.GovernanceProcessor().clean_documents([])
+    cleaned, stats = processor_module.clean_documents([])
 
     assert cleaned == []
     assert stats == processor_module.GovernanceStats(
@@ -322,15 +316,16 @@ def test_clean_documents_clamps_global_common_lines_and_applies_legacy_overrides
         lambda text, **kwargs: {f"local:{text}"},
     )
 
-    def clean(text: str, **kwargs: object) -> SimpleNamespace:
+    def clean(text: str, **kwargs: object) -> CleaningResult:
         clean_calls.append({"text": text, **kwargs})
-        return _result(markdown=text, applied_rules=0, changed=False)
+        return CleaningResult(markdown=text, applied_rules=0, changed=False, stats={"regex_timeout_rules": []})
 
     monkeypatch.setattr(processor_module, "clean_markdown", clean)
     _patch_quality_metrics(monkeypatch, [])
 
-    cleaned, stats = processor_module.GovernanceProcessor(rules=[]).clean_documents(
+    cleaned, stats = processor_module.clean_documents(
         [Document(page_content="one"), Document(page_content="two")],
+        rules=[],
         options=processor_module.GovernanceCleanOptions(common_lines_min_docs=3),
         remove_toc_lines=False,
     )
@@ -352,11 +347,13 @@ def test_clean_documents_clamps_global_common_lines_and_applies_legacy_overrides
     assert all(call["remove_toc_lines"] is False for call in clean_calls)
 
 
-def test_clean_documents_keeps_best_effort_failures_non_fatal(monkeypatch) -> None:
+def test_clean_documents_propagates_transform_failures(monkeypatch) -> None:
     monkeypatch.setattr(
         processor_module,
         "clean_markdown",
-        lambda text, **kwargs: _result(markdown=text, applied_rules=0, changed=False),
+        lambda text, **kwargs: CleaningResult(
+            markdown=text, applied_rules=0, changed=False, stats={"regex_timeout_rules": []}
+        ),
     )
 
     def fail(*args: object, **kwargs: object) -> None:
@@ -370,23 +367,16 @@ def test_clean_documents_keeps_best_effort_failures_non_fatal(monkeypatch) -> No
     monkeypatch.setattr(processor_module, "extract_keywords_fn", fail)
     monkeypatch.setattr(processor_module, "drop_if_low_density", fail)
 
-    cleaned, stats = processor_module.GovernanceProcessor(rules=[]).clean_documents(
-        [Document(page_content="unchanged", metadata={"source": "fixture"})],
-        options=processor_module.GovernanceCleanOptions(
-            remove_common_lines=False,
-            drop_duplicate_paragraphs=True,
-            trim_references=True,
-            normalize_urls=True,
-            detect_language=True,
-            extract_keywords=True,
-        ),
-    )
-
-    assert cleaned[0].page_content == "unchanged"
-    assert cleaned[0].metadata["source"] == "fixture"
-    assert cleaned[0].metadata["governance_changed"] is False
-    assert "governance_quality" not in cleaned[0].metadata
-    assert stats.changed == 0
-    assert stats.paragraphs_dropped == 0
-    assert stats.references_removed_lines == 0
-    assert stats.urls_changed == 0
+    with pytest.raises(RuntimeError, match="optional phase failed"):
+        processor_module.clean_documents(
+            [Document(page_content="unchanged", metadata={"source": "fixture"})],
+            rules=[],
+            options=processor_module.GovernanceCleanOptions(
+                remove_common_lines=False,
+                drop_duplicate_paragraphs=True,
+                trim_references=True,
+                normalize_urls=True,
+                detect_language=True,
+                extract_keywords=True,
+            ),
+        )

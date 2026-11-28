@@ -1,13 +1,11 @@
 import pytest
 
-from app.rag.retrieval.orchestration.query_variants import (
-    QueryVariantStageInput,
-    build_query_variant_stage,
-)
+from app.rag.retrieval.planning.contracts import QueryExpansionBudget
+from app.rag.retrieval.planning.variants import QueryVariantStageInput, build_query_variant_stage
 
 
 def test_query_variant_stage_preserves_order_dedup_and_budget_trimming(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.retrieval.orchestration import query_variants
+    from app.rag.retrieval.planning import variants as query_variants
 
     monkeypatch.setattr(query_variants, "num_tokens_from_string", lambda text: len(text.split()))
     output = build_query_variant_stage(
@@ -24,10 +22,7 @@ def test_query_variant_stage_preserves_order_dedup_and_budget_trimming(monkeypat
             sub_questions=["sub q"],
             hyde_used=False,
             hyde_text="",
-            query_expansion_max_queries_raw=2,
-            query_expansion_max_candidates_raw=None,
-            query_expansion_token_budget_raw=None,
-            query_expansion_latency_budget_ms_raw=None,
+            budget=QueryExpansionBudget(2, 0, 0, 0.0),
             query_expansion_elapsed_ms=0.0,
         )
     )
@@ -72,10 +67,7 @@ def test_query_variant_stage_deduplicates_normalized_queries_before_budgeting() 
             sub_questions=[],
             hyde_used=False,
             hyde_text="",
-            query_expansion_max_queries_raw=None,
-            query_expansion_max_candidates_raw=None,
-            query_expansion_token_budget_raw=None,
-            query_expansion_latency_budget_ms_raw=None,
+            budget=QueryExpansionBudget(0, 0, 0, 0.0),
             query_expansion_elapsed_ms=0.0,
         )
     )

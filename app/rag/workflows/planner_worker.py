@@ -8,17 +8,20 @@ Pattern: Plan -> [Worker1, Worker2, ...] -> Synthesize -> Result
 """
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
+    WorkflowPlanStep,
     WorkflowResult,
+    cancel_and_drain_tasks,
+    model_response_text,
 )
 
-logger = get_logger("rag.workflows.planner_worker")
+logger = logging.getLogger("rag.workflows.planner_worker")
 
 
 class SubTask:
@@ -29,7 +32,7 @@ class SubTask:
         id: str,
         description: str,
         dependencies: list[str] | None = None,
-    ):
+    ) -> None:
         self.id = id
         self.description = description
         self.dependencies = dependencies or []
@@ -55,8 +58,8 @@ class PlannerWorkerWorkflow(BaseWorkflow):
         llm: Any | None = None,
         max_subtasks: int = 5,
         parallel_execution: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the planner-worker workflow.
 
@@ -123,19 +126,16 @@ task3: [description] | deps: none
 Plan:"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
+        content = model_response_text(response)
 
         # Parse subtasks
-        subtasks = []
+        subtasks: list[SubTask] = []
         for line in content.strip().split("\n"):
             line = line.strip()
             if not line or ":" not in line:
                 continue
 
             parts = line.split(":", 1)
-            if len(parts) != 2:
-                continue
-
             task_id = parts[0].strip()
             rest = parts[1].strip()
 
@@ -158,13 +158,12 @@ Plan:"""
     async def _execute_worker(self, subtask: SubTask) -> str:
         """Execute a subtask using the worker."""
         if self._worker is None:
-            return f"No worker configured for: {subtask.description}"
+            raise ValueError("Worker not configured")
 
-        try:
-            return await self._worker(subtask.description)
-        except Exception as e:
-            logger.exception("Worker failed for %s: %s", subtask.id, e)
-            return f"Error: {str(e)}"
+        result = await self._worker(subtask.description)
+        if not isinstance(result, str):
+            raise TypeError("Worker result must be text")
+        return result
 
     async def _execute_subtasks(self, subtasks: list[SubTask]) -> dict[str, str]:
         """
@@ -174,36 +173,51 @@ Plan:"""
             Dict mapping task_id to result
         """
         results: dict[str, str] = {}
-        completed: set = set()
+        task_ids = {task.id for task in subtasks}
+        if len(task_ids) != len(subtasks) or any(not task.id for task in subtasks):
+            raise ValueError("Task IDs must be unique and non-empty")
+        unknown_dependencies = {dependency for task in subtasks for dependency in task.dependencies} - task_ids
+        if unknown_dependencies:
+            raise ValueError(f"Unknown task dependencies: {sorted(unknown_dependencies)}")
 
-        while len(completed) < len(subtasks):
+        while len(results) < len(subtasks):
             # Find tasks ready to execute
-            ready = [t for t in subtasks if t.id not in completed and all(d in completed for d in t.dependencies)]
+            ready = [
+                task for task in subtasks if task.id not in results and all(d in results for d in task.dependencies)
+            ]
 
             if not ready:
-                # No tasks ready - might have circular deps
-                remaining = [t for t in subtasks if t.id not in completed]
-                for t in remaining:
-                    results[t.id] = "Error: Circular dependency"
-                    completed.add(t.id)
-                break
+                raise ValueError("Circular task dependency")
 
             if self.parallel_execution:
                 # Execute ready tasks in parallel
-                async def run_task(task: SubTask) -> tuple:
+                async def run_task(task: SubTask) -> tuple[str, str]:
                     result = await self._execute_worker(task)
                     return task.id, result
 
-                task_results = await asyncio.gather(*[run_task(t) for t in ready])
+                tasks: list[asyncio.Task[tuple[str, str]]] = []
+                pending_error: BaseException | None = None
+                try:
+                    for task in ready:
+                        task_coro = run_task(task)
+                        try:
+                            tasks.append(asyncio.create_task(task_coro))
+                        except BaseException:
+                            task_coro.close()
+                            raise
+                    task_results = await asyncio.gather(*tasks)
+                except BaseException as operation_error:
+                    pending_error = operation_error
+                    raise
+                finally:
+                    await cancel_and_drain_tasks(tasks, pending_error=pending_error)
                 for task_id, result in task_results:
                     results[task_id] = result
-                    completed.add(task_id)
             else:
                 # Execute sequentially
                 for task in ready:
                     result = await self._execute_worker(task)
                     results[task.id] = result
-                    completed.add(task.id)
 
         return results
 
@@ -226,13 +240,13 @@ Plan:"""
         """
         if self._llm is None:
             # Simple concatenation
-            parts = [f"{t.id}: {results.get(t.id, 'No result')}" for t in subtasks]
+            parts = [f"{t.id}: {results[t.id]}" for t in subtasks]
             return "\n".join(parts)
 
         # Format subtask results
         result_text = []
         for task in subtasks:
-            result = results.get(task.id, "No result")
+            result = results[task.id]
             result_text.append(f"Subtask '{task.description}':\n{result}")
 
         prompt = f"""You are synthesizing answers from multiple subtasks to answer the original question.
@@ -247,7 +261,7 @@ Based on all the subtask results above, provide a comprehensive answer to the or
 Final Answer:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, "content") else str(response)
+        return model_response_text(response)
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
@@ -273,9 +287,10 @@ Final Answer:"""
         # Plan
         try:
             subtasks = await self._plan(question)
-            current_state["plan"] = [
+            plan: list[WorkflowPlanStep] = [
                 {"id": t.id, "description": t.description, "dependencies": t.dependencies} for t in subtasks
             ]
+            current_state["plan"] = plan
             execution_path.append(f"planned:{len(subtasks)}_tasks")
         except Exception as e:
             logger.exception("Planning failed: %s", e)
@@ -353,7 +368,6 @@ def create_rag_worker(
         contexts = await retrieve_func(subtask)
 
         # Generate answer
-        answer = await generate_func(subtask, contexts)
-        return answer
+        return await generate_func(subtask, contexts)
 
     return worker

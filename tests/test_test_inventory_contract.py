@@ -15,7 +15,7 @@ def test_critical_regression_files_remain_present() -> None:
         "tests/test_source_guard_contracts.py",
         "web/app/history/page.source.test.ts",
         "web/app/knowledge/knowledge-page.entry.test.ts",
-        "web/app/evaluations/page.query.source.test.ts",
+        "web/e2e/evaluation-matrix.spec.ts",
         "web/lib/api-runtime-contracts.test.ts",
     )
 

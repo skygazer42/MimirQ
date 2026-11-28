@@ -1,16 +1,16 @@
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.api.v1 import (
-    connectors_artifacts,
-    connectors_confluence,
-    connectors_drive_files,
-    connectors_github_repo,
-    connectors_url_batch,
-)
-from app.models.connector import ConnectorRun, ConnectorRunDocument
-from app.models.document import Document as DBDocument
+import pytest
+from fastapi import HTTPException
+
+import app.services.connectors.execution.confluence as connectors_confluence
+import app.services.connectors.execution.shared.artifacts as connectors_artifacts
+import app.services.connectors.execution.url_batch as connectors_url_batch
+from app.models.connectors.runs import ConnectorRun, ConnectorRunDocument
+from app.models.documents.records import Document as DBDocument
 
 
 class _FakeQuery:
@@ -65,143 +65,47 @@ def _make_run(*, connector_id: str, config_id: str | None) -> ConnectorRun:
     )
 
 
-def test_drive_files_acl_paths_use_run_config_id(monkeypatch) -> None:
-    config_id = str(uuid4())
-    run = _make_run(connector_id="drive_files", config_id=config_id)
-    db = _FakeDB()
-    delta_calls: list[dict[str, object]] = []
-    disable_ref_calls: list[dict[str, object]] = []
-    disable_url_calls: list[dict[str, object]] = []
+@pytest.mark.parametrize("connector_id", ["github_repo", "drive_files"])
+def test_removed_connector_config_actions_reject_before_writing(monkeypatch, connector_id: str) -> None:
+    from app.api.schemas.sources import ConnectorConfigCreateRequest
+    from app.services.connectors import configs, schedules
 
-    async def _resolve_drive_source_acl(*_args, **_kwargs):  # noqa: ANN002, ANN003
-        return {"mode": "inherit"}, {"source": "acl"}
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    saved = SimpleNamespace(id=uuid4(), connector_id=connector_id, dataset_id=dataset_id)
+    db = _SequenceDB([saved, saved, saved])
+    monkeypatch.setattr(configs.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(configs.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(configs.dataset_service, "assert_dataset_writable", lambda *_args: None)
 
-    async def _ingest_url_upload_request(**_kwargs):  # noqa: ANN003
-        return SimpleNamespace(id=uuid4(), doc_metadata={})
+    async def prepare(operation, **_kwargs):
+        return operation(db)
 
-    monkeypatch.setattr(
-        connectors_drive_files,
-        "_resolve_drive_source_acl",
-        _resolve_drive_source_acl,
-        raising=True,
-    )
-    monkeypatch.setattr(
-        connectors_drive_files,
-        "_leader_module",
-        SimpleNamespace(
-            _drive_direct_download_url=lambda file_id: f"https://download/{file_id}",
-            _delta_sync_connector_documents_acl_by_source_url=lambda *_args, **kwargs: delta_calls.append(kwargs) or 2,
-            UrlUploadRequest=lambda **kwargs: SimpleNamespace(**kwargs),
-            _ingest_url_upload_request=_ingest_url_upload_request,
-            _apply_document_access_from_config=lambda *_args, **_kwargs: None,
-            _apply_connector_identity_metadata=lambda *_args, **_kwargs: None,
-            _connector_config_id_from_run=lambda _run: config_id,
-            _soft_disable_connector_documents_by_source_ref=lambda *_args, **kwargs: (
-                disable_ref_calls.append(kwargs) or 1
-            ),
-            _soft_disable_connector_documents_by_source_url=lambda *_args, **kwargs: (
-                disable_url_calls.append(kwargs) or 1
-            ),
-        ),
-        raising=False,
-    )
-
-    result = asyncio.run(
-        connectors_drive_files._ingest_drive_file_source(
-            client=object(),
-            db=db,
-            run=run,
-            run_id=uuid4(),
-            tenant_id=run.tenant_id,
-            requested_by="tester",
-            source_ref="url:file-1",
-            file_id="file-1",
-            settings_map={"enable_source_acl": True},
-        )
-    )
-    reconciled = connectors_drive_files._reconcile_removed_drive_sources(
+    monkeypatch.setattr(configs, "prepare_managed_handoff", prepare)
+    payload = ConnectorConfigCreateRequest(connector_id=connector_id, dataset_id=dataset_id, name="Removed source")
+    with pytest.raises(HTTPException, match="Unsupported connector_id") as error:
+        configs.create_config(payload, tenant_id=tenant_id, account_id="operator", db=db)
+    assert error.value.status_code == 400
+    with pytest.raises(HTTPException, match="Unsupported connector_id") as error:
+        asyncio.run(configs.run_saved_config(saved.id, object(), tenant_id=tenant_id, account_id="operator", db=db))
+    assert error.value.status_code == 400
+    with pytest.raises(HTTPException, match="Unsupported connector_id") as error:
+        configs.reconcile_config(saved.id, apply=True, tenant_id=tenant_id, account_id="operator", db=db)
+    assert error.value.status_code == 400
+    assert db.added == []
+    monkeypatch.setattr(schedules, "_is_scheduled_config_due", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(schedules, "_config_dataset_is_writable", lambda *_args: True)
+    result = schedules._prepare_scheduled_config(
         db,
-        run=run,
-        tenant_id=run.tenant_id,
-        removed_source_refs=["url:file-1", "file-2"],
+        config_id=saved.id,
+        tenant_id=tenant_id,
+        account_id="operator",
+        now=datetime(2026, 11, 17, tzinfo=UTC),
+        background_tasks=object(),
     )
-
-    assert result["updated_existing"] == 2
-    assert reconciled == (2, 2)
-    assert delta_calls == [
-        {
-            "tenant_id": run.tenant_id,
-            "dataset_id": run.dataset_id,
-            "connector_id": "drive_files",
-            "source_url": "https://download/file-1",
-            "requested_by": "tester",
-            "access": {"mode": "inherit"},
-            "acl_provenance": {"source": "acl"},
-            "connector_config_id": config_id,
-        }
-    ]
-    assert [call["connector_config_id"] for call in disable_ref_calls] == [config_id]
-    assert [call["connector_config_id"] for call in disable_url_calls] == [config_id]
-
-
-def test_github_repo_acl_paths_use_run_config_id(monkeypatch) -> None:
-    config_id = str(uuid4())
-    run = _make_run(connector_id="github_repo", config_id=config_id)
-    delta_calls: list[dict[str, object]] = []
-    disable_calls: list[dict[str, object]] = []
-
-    monkeypatch.setattr(
-        connectors_github_repo,
-        "_leader_module",
-        SimpleNamespace(
-            _connector_config_id_from_run=lambda _run: config_id,
-            _delta_sync_connector_documents_acl_by_source_url=lambda *_args, **kwargs: delta_calls.append(kwargs) or 3,
-            _github_raw_url=lambda **kwargs: (
-                f"https://raw.example/{kwargs['owner']}/{kwargs['repo']}/{kwargs['branch']}/{kwargs['path']}"
-            ),
-            _soft_disable_connector_documents_by_source_url=lambda *_args, **kwargs: disable_calls.append(kwargs) or 1,
-            _append_connector_error=lambda stats, **_kwargs: stats,
-            _finalize_connector_stats=lambda stats: stats,
-        ),
-        raising=False,
-    )
-
-    source_acl_access = {"mode": "partial_members"}
-    updated = connectors_github_repo._apply_github_repo_source_acl_delta_sync(
-        object(),
-        run=run,
-        tenant_id=run.tenant_id,
-        requested_by="tester",
-        raw_url="https://raw.example/acme/repo/main/README.md",
-        effective_access=source_acl_access,
-        source_acl_context={
-            "source_acl_access": source_acl_access,
-            "source_acl_provenance": {"source": "acl"},
-        },
-    )
-    reconciled = connectors_github_repo._reconcile_removed_github_repo_paths(
-        object(),
-        run=run,
-        tenant_id=run.tenant_id,
-        settings_map={"owner": "acme", "repo_name": "repo", "branch": "main"},
-        removed_paths=["README.md"],
-    )
-
-    assert updated == 3
-    assert reconciled == (1, 1)
-    assert delta_calls == [
-        {
-            "tenant_id": run.tenant_id,
-            "dataset_id": run.dataset_id,
-            "connector_id": "github_repo",
-            "source_url": "https://raw.example/acme/repo/main/README.md",
-            "requested_by": "tester",
-            "access": source_acl_access,
-            "acl_provenance": {"source": "acl"},
-            "connector_config_id": config_id,
-        }
-    ]
-    assert [call["connector_config_id"] for call in disable_calls] == [config_id]
+    assert result == ("skipped", None, None)
+    assert saved.last_error == "unsupported_connector_id"
+    assert db.added == []
 
 
 def test_db_row_sidecar_paths_are_config_scoped_and_legacy_safe() -> None:
@@ -248,16 +152,14 @@ def test_upsert_db_row_sidecar_document_uses_config_scoped_identity(monkeypatch)
 
     monkeypatch.setattr(
         connectors_artifacts,
-        "_leader_module",
-        SimpleNamespace(
-            _now=lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
-            _connector_config_id_from_run=lambda _run: config_id,
-        ),
+        "_now",
+        lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
         raising=True,
     )
+    monkeypatch.setattr(connectors_artifacts, "_connector_config_id_from_run", lambda _run: config_id, raising=True)
 
     monkeypatch.setattr(
-        "app.services.table_store_service.import_db_row_snapshots",
+        "app.services.tables.store.import_db_row_snapshots",
         lambda **_kwargs: [
             SimpleNamespace(
                 table_id=uuid4(),
@@ -319,15 +221,13 @@ def test_upsert_db_row_sidecar_document_migrates_matching_legacy_identity(monkey
 
     monkeypatch.setattr(
         connectors_artifacts,
-        "_leader_module",
-        SimpleNamespace(
-            _now=lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
-            _connector_config_id_from_run=lambda _run: config_id,
-        ),
+        "_now",
+        lambda: SimpleNamespace(isoformat=lambda: "2026-07-25T00:00:00+00:00"),
         raising=True,
     )
+    monkeypatch.setattr(connectors_artifacts, "_connector_config_id_from_run", lambda _run: config_id, raising=True)
     monkeypatch.setattr(
-        "app.services.table_store_service.import_db_row_snapshots",
+        "app.services.tables.store.import_db_row_snapshots",
         lambda **_kwargs: [],
         raising=True,
     )
@@ -351,7 +251,7 @@ def test_upsert_db_row_sidecar_document_migrates_matching_legacy_identity(monkey
 
 
 def test_url_batch_connector_reuses_shared_url_ingest_helper(monkeypatch) -> None:
-    import app.api.v1.connectors as connectors_module
+    import app.services.documents.ingestion as ingestion_service
 
     run = _make_run(connector_id="url_batch", config_id=None)
     db = _FakeDB()
@@ -361,9 +261,13 @@ def test_url_batch_connector_reuses_shared_url_ingest_helper(monkeypatch) -> Non
         calls.append(dict(kwargs))
         return SimpleNamespace(id=uuid4(), doc_metadata={})
 
-    monkeypatch.setattr(connectors_module, "_ingest_url_upload_request", _shared_ingest, raising=True)
-    monkeypatch.setattr(connectors_module, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(connectors_module, "_apply_connector_identity_metadata", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_service, "ingest_url", _shared_ingest, raising=True)
+    monkeypatch.setattr(
+        connectors_url_batch, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True
+    )
+    monkeypatch.setattr(
+        connectors_url_batch, "_apply_connector_identity_metadata", lambda *_a, **_k: None, raising=True
+    )
 
     document_id = asyncio.run(
         connectors_url_batch._ingest_url_batch_url(
@@ -403,14 +307,9 @@ def test_confluence_api_view_connector_reuses_shared_local_html_ingest_helper(mo
 
     monkeypatch.setattr(connectors_confluence, "_fetch_confluence_page_view_html", _fetch_html, raising=True)
     monkeypatch.setattr(
-        connectors_confluence,
-        "_leader_module",
-        SimpleNamespace(
-            LocalHtmlIngestRequest=lambda **kwargs: SimpleNamespace(**kwargs),
-            _ingest_local_html_request=_shared_local_html,
-        ),
-        raising=False,
+        connectors_confluence, "LocalHtmlIngestRequest", lambda **kwargs: SimpleNamespace(**kwargs), raising=True
     )
+    monkeypatch.setattr(connectors_confluence.ingestion_service, "ingest_html", _shared_local_html, raising=True)
 
     asyncio.run(
         connectors_confluence._ingest_confluence_page_api_view(

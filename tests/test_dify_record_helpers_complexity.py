@@ -1,13 +1,14 @@
 from typing import Any
 
-from app.services.dify_integration.record_helpers import (
-    compact_fast_record_content,
+from app.services.dify import compaction
+from app.services.dify.compaction import (
+    _compact_fast_record_content,
     compact_mixed_intent_exact_anchor_records,
     compact_records_for_response,
 )
 
 
-def test_compact_fast_record_content_preserves_metadata_precedence_and_line_order() -> None:
+def test_compact_fast_record_content_preserves_metadata_precedence_and_line_order(monkeypatch) -> None:
     def structured_fields(text: str) -> dict[str, str]:
         if text == "body":
             return {"问题": "Q", "答案": "Long answer", "材料": "ID"}
@@ -15,56 +16,59 @@ def test_compact_fast_record_content_preserves_metadata_precedence_and_line_orde
             return {"地点": "窗口"}
         return {}
 
-    result = compact_fast_record_content(
+    monkeypatch.setattr(compaction, "_dify_fast_content_max_chars", lambda: 200)
+    monkeypatch.setattr(compaction, "_structured_label_values_from_content", structured_fields)
+    monkeypatch.setattr(
+        compaction,
+        "_response_hints_for_metadata",
+        lambda metadata, *, policy_plugin_refs: {"enabled": bool(metadata and policy_plugin_refs)},
+    )
+    monkeypatch.setattr(
+        compaction.answer_hints, "_metadata_answer_highlights", lambda metadata, **kwargs: ["地点：窗口"]
+    )
+    monkeypatch.setattr(
+        compaction.answer_hints,
+        "_requested_fast_response_labels",
+        lambda query, fields, **kwargs: ("问题", "答案", "材料"),
+    )
+    monkeypatch.setattr(compaction, "_fast_response_always_labels_for_policy_refs", lambda refs: ("问题", "答案"))
+    monkeypatch.setattr(compaction, "_requested_label_prefixes_for_policy_refs", lambda refs: ("命中字段",))
+    monkeypatch.setattr(compaction, "_compact_fast_answer_value", lambda value, **kwargs: "Short")
+
+    result = _compact_fast_record_content(
         " body ",
         query="where",
         policy_plugin_refs=("policy",),
         metadata={"region": "north"},
-        max_chars=200,
-        structured_label_values_from_content=structured_fields,
-        response_hints_for_metadata=lambda metadata, refs: {"enabled": bool(metadata and refs)},
-        metadata_answer_highlights=lambda metadata, hints, query, refs: ["地点：窗口"],
-        requested_fast_response_labels=lambda query, fields, refs: ("问题", "答案", "材料"),
-        fast_response_always_labels_for_policy_refs=lambda refs: ("问题", "答案"),
-        requested_label_prefixes_for_policy_refs=lambda refs: ("命中字段",),
-        clamp_hint_value=lambda value, limit: value[:limit],
-        compact_fast_answer_value=lambda value, query, limit: "Short",
     )
 
     assert result == "命中字段：材料\n问题：Q\n答案：Short\n材料：ID"
 
 
-def test_compact_fast_record_content_falls_back_to_metadata_then_body() -> None:
-    common: dict[str, Any] = {
-        "query": "q",
-        "policy_plugin_refs": (),
-        "max_chars": 8,
-        "structured_label_values_from_content": lambda text: {},
-        "response_hints_for_metadata": lambda metadata, refs: {},
-        "requested_fast_response_labels": lambda query, fields, refs: (),
-        "fast_response_always_labels_for_policy_refs": lambda refs: (),
-        "requested_label_prefixes_for_policy_refs": lambda refs: (),
-        "clamp_hint_value": lambda value, limit: value[:limit],
-        "compact_fast_answer_value": lambda value, query, limit: value,
-    }
+def test_compact_fast_record_content_falls_back_to_metadata_then_body(monkeypatch) -> None:
+    monkeypatch.setattr(compaction, "_dify_fast_content_max_chars", lambda: 8)
+    monkeypatch.setattr(compaction, "_structured_label_values_from_content", lambda text: {})
+    monkeypatch.setattr(compaction, "_response_hints_for_metadata", lambda metadata, **kwargs: {})
+    monkeypatch.setattr(compaction.answer_hints, "_requested_fast_response_labels", lambda *args, **kwargs: ())
+    monkeypatch.setattr(
+        compaction.answer_hints, "_metadata_answer_highlights", lambda metadata, **kwargs: ["metadata text"]
+    )
 
     assert (
-        compact_fast_record_content(
+        _compact_fast_record_content(
             "body text",
+            query="q",
             metadata={"x": 1},
-            metadata_answer_highlights=lambda metadata, hints, query, refs: ["metadata text"],
-            **common,
         )
-        == "metadata"
+        == "metad..."
     )
     assert (
-        compact_fast_record_content(
+        _compact_fast_record_content(
             "body text",
+            query="q",
             metadata=None,
-            metadata_answer_highlights=lambda metadata, hints, query, refs: [],
-            **common,
         )
-        == "body tex"
+        == "body..."
     )
 
 

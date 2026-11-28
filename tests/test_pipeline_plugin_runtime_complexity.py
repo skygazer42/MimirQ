@@ -1,13 +1,31 @@
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from langchain_core.documents import Document
 
+from app.rag.pipeline_plugins.registry import compute_plugin_package_hash
 from app.rag.pipeline_plugins.runtime import (
     PythonPipelinePluginError,
     _coerce_kg_event,
     _invoke_plugin,
 )
+
+
+def test_plugin_package_hash_matches_for_relative_and_absolute_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = tmp_path / "sample-plugin"
+    package.mkdir()
+    manifest = package / "mimirq-plugin.json"
+    manifest.write_text("{}", encoding="utf-8")
+    (package / "plugin.py").write_text("def transform(items): return items\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    relative = Path(package.name)
+    assert compute_plugin_package_hash(relative, relative / manifest.name, {}) == compute_plugin_package_hash(
+        package, manifest, {}
+    )
 
 
 def test_invoke_plugin_maps_supported_names_and_context_values() -> None:

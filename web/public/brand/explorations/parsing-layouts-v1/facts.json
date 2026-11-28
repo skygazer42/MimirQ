@@ -1,0 +1,31 @@
+{
+  "scope": "全部数据集与解析工作台",
+  "folder": "设备资料",
+  "selectedId": "file-01",
+  "files": [
+    {"id":"file-01","name":"设备维护手册.pdf","kind":"pdf","size":"2.4 MB","pages":18,"status":"parsed","parser":"Docling","duration":"12.6 秒","time":"10/22 14:32","review":true},
+    {"id":"file-02","name":"产品使用指南.pdf","kind":"pdf","size":"1.8 MB","pages":24,"status":"parsed","parser":"Docling","duration":"15.2 秒","time":"10/22 14:30"},
+    {"id":"file-03","name":"现场操作规程.docx","kind":"docx","size":"684 KB","pages":12,"status":"parsed","parser":"MarkItDown","duration":"3.8 秒","time":"10/22 14:28"},
+    {"id":"file-04","name":"巡检记录表.xlsx","kind":"xlsx","size":"326 KB","pages":3,"status":"parsed","parser":"Excel","duration":"2.1 秒","time":"10/22 14:26"},
+    {"id":"file-05","name":"备件更换说明.pdf","kind":"pdf","size":"956 KB","pages":8,"status":"parsed","parser":"Docling","duration":"6.4 秒","time":"10/22 14:24"},
+    {"id":"file-06","name":"安全检查清单.docx","kind":"docx","size":"412 KB","pages":6,"status":"parsed","parser":"MarkItDown","duration":"2.5 秒","time":"10/22 14:22"},
+    {"id":"file-07","name":"故障处理记录.md","kind":"md","size":"48 KB","pages":null,"status":"parsed","parser":"基础解析","duration":"0.4 秒","time":"10/22 14:20"},
+    {"id":"file-08","name":"设备安装图册.pdf","kind":"pdf","size":"6.2 MB","pages":32,"status":"parsing","parser":"Docling","progress":68,"time":"10/22 14:33"},
+    {"id":"file-09","name":"运行参数汇总.xlsx","kind":"xlsx","size":"1.1 MB","pages":5,"status":"parsing","parser":"Excel","progress":42,"time":"10/22 14:33"},
+    {"id":"file-10","name":"培训资料.pptx","kind":"pptx","size":"4.6 MB","pages":26,"status":"pending","parser":"自动选择","time":"10/22 14:33"},
+    {"id":"file-11","name":"验收技术规范.pdf","kind":"pdf","size":"1.5 MB","pages":16,"status":"pending","parser":"自动选择","time":"10/22 14:33"},
+    {"id":"file-12","name":"扫描维修记录.pdf","kind":"pdf","size":"3.8 MB","pages":9,"status":"error","parser":"PaddleOCR-VL","error":"解析服务连接超时","time":"10/22 14:31"}
+  ],
+  "detail": {
+    "page":3,"pageCount":18,"title":"3. 维护与保养","subtitle":"3.1 日常检查","nextHeading":"3.2 定期维护",
+    "paragraphs":["设备运行前，应检查电源连接、紧固件和防护装置。确认各部件处于正常状态后，再进行开机操作。","巡检时记录设备温度、运行声音和压力变化。发现异常时，应停止运行，核实原因并完成处理记录。"],
+    "tableTitle":"表 3-1  日常维护项目",
+    "columns":["检查项目","维护周期","处理要求"],
+    "rows":[["外观与紧固件","每日","检查松动与破损"],["润滑与密封","每周","补充润滑并检查渗漏"],["电气连接","每月","断电后检查接线"],["安全防护装置","每季度","执行联锁功能测试"]],
+    "after":"定期维护应由具备相应资质的人员执行。更换部件后，先完成空载测试，再逐步恢复正常运行。",
+    "note":"维护前请切断电源，确认设备完全停止后再开展作业。",
+    "review":"第 3 页表格存在合并单元格，请核对行列关系。",
+    "stats":{"blocks":74,"headings":12,"tables":4,"images":6,"paragraphs":52},
+    "outline":["1. 产品概述","2. 安装与调试","3. 维护与保养","3.1 日常检查","3.2 定期维护","4. 常见故障处理","5. 附录"]
+  }
+}

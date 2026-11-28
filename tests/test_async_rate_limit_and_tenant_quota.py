@@ -35,7 +35,7 @@ async def test_redis_rate_limiter_acheck_offloads_sync_check(
 async def test_enforce_tenant_qps_quota_async_uses_async_limiter_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     class _Limiter:
         def check(self, _key: str) -> tuple[bool, float]:
@@ -61,7 +61,7 @@ async def test_enforce_tenant_qps_quota_async_uses_async_limiter_path(
 async def test_enforce_tenant_qps_quota_async_raises_blocking_http_429(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     class _Limiter:
         async def acheck(self, _key: str) -> tuple[bool, float]:
@@ -85,7 +85,7 @@ async def test_enforce_tenant_qps_quota_async_raises_blocking_http_429(
 async def test_enforce_tenant_qps_quota_async_degrades_open_on_backend_error_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     metrics: list[dict[str, object]] = []
     tenant_id = uuid4()
@@ -125,7 +125,7 @@ async def test_enforce_tenant_qps_quota_async_degrades_open_on_backend_error_by_
 async def test_enforce_tenant_qps_quota_async_fails_closed_on_backend_error_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     metrics: list[dict[str, object]] = []
 
@@ -158,7 +158,7 @@ async def test_enforce_tenant_qps_quota_async_fails_closed_on_backend_error_when
 def test_enforce_tenant_upload_quotas_degrades_open_on_db_fault_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     metrics: list[dict[str, object]] = []
     audits: list[dict[str, object]] = []
@@ -232,7 +232,7 @@ def test_enforce_tenant_upload_quotas_degrades_open_on_db_fault_by_default(
 def test_enforce_tenant_upload_quotas_fails_closed_on_db_fault_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     class _Query:
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
@@ -272,7 +272,7 @@ def test_enforce_tenant_upload_quotas_fails_closed_on_db_fault_when_enabled(
 def test_enforce_tenant_embedding_char_quota_fails_closed_on_db_fault_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     class _Query:
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003

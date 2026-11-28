@@ -1,27 +1,20 @@
-import type {
-  ConnectorRunCreateRequest,
-  DocumentAccessMode,
-  DocumentPipelineOptions,
-  JiraProjectConnectorConfig,
-  WebCrawlAuthConfig,
-} from '@/types'
-import { trimTrailingSlashes } from '@/lib/utils'
+import type { DocumentAccessMode } from '@/types/common'
+import type { ConnectorRunCreateRequest, JiraProjectConnectorConfig, WebCrawlAuthConfig } from '@/types/connectors'
+import type { DocumentPipelineOptions } from '@/types/processing'
+import { parseAccessMembers } from './knowledge-import-parsers'
 
-type JiraSyncMode = 'auto' | 'full' | 'incremental'
-type JiraSourceAclFallbackMode = 'only_me' | 'partial_members'
-
-export type JiraProjectRunPayloadInput = {
+type JiraProjectRunPayloadInput = {
   datasetId: string
   datasetDefaultValue: string
   baseUrl: string
   projectKey: string
   jql: string
   auth: WebCrawlAuthConfig | null
-  syncMode: JiraSyncMode
+  syncMode: NonNullable<JiraProjectConnectorConfig['sync_mode']>
   maxIssues: number
   pageSize: number
   includeComments: boolean
-  maxCommentsPerIssue: number
+  maxCommentsPerIssue?: number
   userAgent: string
   parserBackend: string
   chunkStrategy: string
@@ -30,35 +23,14 @@ export type JiraProjectRunPayloadInput = {
   accessMembers: string
   accessGroupIds: string[]
   sourceAclEnabled: boolean
-  sourceAclFallbackMode: JiraSourceAclFallbackMode
-}
-
-function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
-  }
-
-  return out
+  sourceAclFallbackMode: 'only_me' | 'partial_members'
 }
 
 export function buildJiraProjectRunPayload(
-  input: JiraProjectRunPayloadInput
+  input: JiraProjectRunPayloadInput,
 ): Extract<ConnectorRunCreateRequest, { connector_id: 'jira_project' }> {
-  const trimmedBaseUrl = trimTrailingSlashes(input.baseUrl)
-  const trimmedProjectKey = input.projectKey.trim().toUpperCase()
   const trimmedJql = input.jql.trim()
   const trimmedUserAgent = input.userAgent.trim()
-  const hasManualAccessOverride = input.accessMode !== 'inherit'
 
   const access =
     input.accessMode === 'inherit'
@@ -70,22 +42,22 @@ export function buildJiraProjectRunPayload(
         }
 
   const config: JiraProjectConnectorConfig = {
-    base_url: trimmedBaseUrl,
-    project_key: trimmedProjectKey,
-    jql: trimmedJql || undefined,
+    base_url: input.baseUrl,
+    project_key: input.projectKey,
+    jql: trimmedJql.length === 0 ? undefined : trimmedJql,
     auth: input.auth,
     sync_mode: input.syncMode,
-    max_issues: Number.isFinite(input.maxIssues) ? Math.trunc(input.maxIssues) : 50,
-    page_size: Number.isFinite(input.pageSize) ? Math.trunc(input.pageSize) : 25,
-    include_comments: Boolean(input.includeComments),
-    max_comments_per_issue: Number.isFinite(input.maxCommentsPerIssue) ? Math.trunc(input.maxCommentsPerIssue) : 20,
-    user_agent: trimmedUserAgent || undefined,
+    max_issues: input.maxIssues,
+    page_size: input.pageSize,
+    include_comments: input.includeComments,
+    max_comments_per_issue: input.maxCommentsPerIssue,
+    user_agent: trimmedUserAgent.length === 0 ? undefined : trimmedUserAgent,
     parser_backend: input.parserBackend,
     chunk_strategy: input.chunkStrategy,
     pipeline: input.pipeline,
     access,
     source_acl:
-      input.sourceAclEnabled && !hasManualAccessOverride
+      input.sourceAclEnabled && input.accessMode === 'inherit'
         ? {
             mode: 'inherit',
             fallback_mode: input.sourceAclFallbackMode,

@@ -1,0 +1,199 @@
+"""
+MediaWiki section-aware chunking strategy.
+
+Targets wiki markup with headings like:
+== Heading ==
+=== Subheading ===
+
+The chunker splits the document into heading sections while preserving
+character offsets.
+"""
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.ingestion.chunking.base import BaseChunker
+from app.rag.ingestion.chunking.strategies.markup import _update_heading_path
+from app.rag.ingestion.chunking.utils.source_lines import apply_splitter_span
+from app.rag.ingestion.chunking.utils.source_lines import iter_source_lines as _iter_lines
+
+
+@dataclass(frozen=True)
+class WikiHeading:
+    start: int
+    end: int
+    level: int
+    title: str
+
+
+@dataclass(frozen=True)
+class _Section:
+    start: int
+    end: int
+    heading: WikiHeading | None
+
+
+_WIKI_HINT_RE = re.compile(r"(\[\[[^\]]+\]\])|(\{\{[^}]+\}\})")
+
+
+def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
+    """
+    Parse a MediaWiki heading like:
+      == Heading ==
+      === Subheading ===
+
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
+    """
+    raw = line.rstrip("\r\n")
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    i = 0
+    while i < len(s) and s[i] == "=":
+        i += 1
+    if i < 2 or i > 6:
+        return None
+    j = len(s)
+    while j > 0 and s[j - 1] == "=":
+        j -= 1
+    if (len(s) - j) != i:
+        return None
+    title = s[i:j].strip()
+    if not title:
+        return None
+    level = max(1, min(6, i - 1))
+    return level, title
+
+
+def _iter_headings(text: str) -> list[WikiHeading]:
+    headings: list[WikiHeading] = []
+    for ln in _iter_lines(text):
+        parsed = _parse_wiki_heading(ln.plain)
+        if not parsed:
+            continue
+        level, title = parsed
+        headings.append(
+            WikiHeading(
+                start=ln.start,
+                end=ln.end,
+                level=level,
+                title=title,
+            )
+        )
+    return headings
+
+
+def _build_sections(text: str, headings: list[WikiHeading]) -> list[_Section]:
+    if not headings:
+        return [_Section(start=0, end=len(text), heading=None)]
+
+    sections: list[_Section] = []
+    first = headings[0]
+    if first.start > 0:
+        sections.append(_Section(start=0, end=first.start, heading=None))
+    for idx, h in enumerate(headings):
+        start = h.start
+        end = headings[idx + 1].start if idx + 1 < len(headings) else len(text)
+        sections.append(_Section(start=start, end=end, heading=h))
+    return sections
+
+
+def looks_like_mediawiki(text: str) -> bool:
+    if not text or len(text) < 40:
+        return False
+    headings = _iter_headings(text)
+    if len(headings) >= 2:
+        return True
+    if len(headings) == 1 and _WIKI_HINT_RE.search(text):
+        return True
+    return False
+
+
+class MediaWikiSectionsChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", ". ", "。", "！", "？", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def _append_section_chunks(
+        self,
+        out: list[Document],
+        *,
+        section: _Section,
+        section_text: str,
+        base_meta: dict[str, Any],
+        path: list[str],
+    ) -> None:
+        path_str = " / ".join(path) if path else None
+        split_docs = self._fallback_splitter.create_documents(texts=[section_text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None)
+
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata)
+            meta["chunk_strategy"] = "mediawiki_sections"
+            apply_splitter_span(meta, start_index=local_start, content=sd.page_content, base_offset=section.start)
+            meta.setdefault("doc_type_kwd", "wiki")
+
+            if section.heading is not None:
+                meta["wiki_heading"] = section.heading.title
+                meta["wiki_level"] = section.heading.level
+            if path:
+                meta["wiki_path"] = path
+            if path_str:
+                meta["wiki_path_str"] = path_str
+
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
+
+        for doc in documents:
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
+            if not text.strip():
+                continue
+
+            headings = _iter_headings(text)
+            sections = _build_sections(text, headings)
+
+            heading_stack: list[tuple[int, str]] = []
+            for section in sections:
+                sec_text = text[section.start : section.end]
+                if not sec_text.strip():
+                    continue
+
+                if section.heading is not None:
+                    _update_heading_path(
+                        heading_stack,
+                        level=section.heading.level,
+                        heading_text=section.heading.title,
+                    )
+
+                self._append_section_chunks(
+                    out,
+                    section=section,
+                    section_text=sec_text,
+                    base_meta=base_meta,
+                    path=[title for _, title in heading_stack],
+                )
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata)
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out

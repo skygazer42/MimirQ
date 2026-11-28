@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from scripts.convert_text_encoding import convert_encoding

@@ -16,7 +16,16 @@ import {
 
 describe('computeThresholdMask', () => {
   it('keeps only finite values within [min, max]', () => {
-    expect(computeThresholdMask([[0.2, 0.8], [0.5, Number.NaN]], 0.4, 1)).toEqual([
+    expect(
+      computeThresholdMask(
+        [
+          [0.2, 0.8],
+          [0.5, Number.NaN],
+        ],
+        0.4,
+        1,
+      ),
+    ).toEqual([
       [false, true],
       [true, false],
     ])
@@ -48,7 +57,7 @@ describe('applyTopKByColumn', () => {
       ],
       mask,
       2,
-      1
+      1,
     )
     expect(mask).toEqual([
       [false, true],
@@ -70,8 +79,8 @@ describe('computeTopKMask', () => {
           [0.2, 0.7],
         ],
         1,
-        'x'
-      )
+        'x',
+      ),
     ).toEqual([
       [true, false],
       [false, true],
@@ -90,8 +99,8 @@ describe('combineWithAND', () => {
         [
           [true, false],
           [true, true],
-        ]
-      )
+        ],
+      ),
     ).toEqual([
       [true, false],
       [false, true],
@@ -115,7 +124,7 @@ describe('combineWithOR', () => {
           [false, false],
           [false, true],
         ],
-      ])
+      ]),
     ).toEqual([
       [true, false],
       [false, true],
@@ -132,8 +141,8 @@ describe('computeFinalMask', () => {
           [0.3, 0.8],
         ],
         { min: 0.4, max: 1 },
-        { value: 1, axis: 'x' }
-      )
+        { value: 1, axis: 'x' },
+      ),
     ).toEqual([
       [true, false],
       [false, true],
@@ -152,8 +161,8 @@ describe('applyMask', () => {
         [
           [true, false],
           [false, true],
-        ]
-      )
+        ],
+      ),
     ).toEqual([
       [0.1, null],
       [null, 0.4],
@@ -169,8 +178,8 @@ describe('calculateNormalModeStatistics', () => {
           [true, false],
           [false, false],
         ],
-        'x'
-      )
+        'x',
+      ),
     ).toEqual({
       totalCount: 4,
       currentDisplayCount: 1,
@@ -182,9 +191,7 @@ describe('calculateNormalModeStatistics', () => {
   })
 
   it('reports zero missing matches when no top-k axis is active', () => {
-    expect(
-      calculateNormalModeStatistics([[false]], 'none').missingMatchCount
-    ).toBe(0)
+    expect(calculateNormalModeStatistics([[false]], 'none').missingMatchCount).toBe(0)
   })
 })
 
@@ -199,8 +206,8 @@ describe('calculateDifferenceModeStatistics', () => {
         [
           [true, true],
           [false, false],
-        ]
-      )
+        ],
+      ),
     ).toEqual({
       truePositive: 1,
       trueNegative: 1,

@@ -1,22 +1,9 @@
-import builtins
-
-import starlette.status as _starlette_status
 from fastapi.routing import APIRoute
-from pydantic import ConfigDict as _PydanticConfigDict
 
-if not hasattr(_starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
-    _starlette_status.HTTP_413_CONTENT_TOO_LARGE = _starlette_status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
-if not hasattr(_starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
-    _starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = _starlette_status.HTTP_422_UNPROCESSABLE_ENTITY
-if not hasattr(builtins, "ConfigDict"):
-    builtins.ConfigDict = _PydanticConfigDict
-
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1.document_assets import _authorize_bound_preview_document
-from app.api.v1.integrations_dify import _require_dify_actor
-from app.api.v1.metrics import require_metrics_access
-from app.api.v1.scim import _require_scim_actor
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.identity.scim import _require_scim_actor
+from app.api.v1.integrations.dify import _require_dify_actor
+from app.api.v1.system.metrics import require_metrics_access
 from app.main import app
 
 _PUBLIC_API_PATHS = {
@@ -24,6 +11,8 @@ _PUBLIC_API_PATHS = {
     "/api/v1/health/ready",
     "/api/v1/meta",
     "/api/v1/auth/register",
+    "/api/v1/auth/signup",
+    "/api/v1/auth/policy",
     "/api/v1/auth/login",
     "/api/v1/auth/saml/exchange",
     "/api/v1/auth/saml/bridge/consume",
@@ -45,7 +34,6 @@ _AUTH_CALLS = {
     _require_scim_actor,
     _require_dify_actor,
     require_metrics_access,
-    _authorize_bound_preview_document,
 }
 
 
@@ -87,11 +75,7 @@ def test_api_routes_require_explicit_auth_dependencies() -> None:
 
 
 def test_auth_contract_exception_lists_are_explicit_and_current() -> None:
-    api_paths = {
-        route.path
-        for route in app.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/api/")
-    }
+    api_paths = {route.path for route in app.routes if isinstance(route, APIRoute) and route.path.startswith("/api/")}
 
     assert _PUBLIC_API_PATHS.isdisjoint(_SELF_AUTHORIZING_API_PATHS)
     assert (_PUBLIC_API_PATHS | _SELF_AUTHORIZING_API_PATHS) <= api_paths

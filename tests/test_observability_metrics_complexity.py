@@ -2,7 +2,10 @@ import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from app.services import document_retrieval_hit_frequency, lineage_service, online_eval_service
+from app.services.documents import lineage as lineage_service
+from app.services.documents import retrieval_hit_frequency as document_retrieval_hit_frequency
+from app.services.evaluation import online as online_eval_service
+from app.services.observability.jsonl_tail import read_jsonl_tail
 
 
 def _write_jsonl(path, records: list[object]) -> None:
@@ -16,7 +19,7 @@ def test_jsonl_tail_readers_preserve_invalid_line_and_object_filtering(tmp_path)
     path = tmp_path / "metrics.jsonl"
     _write_jsonl(path, ["not-json", {"id": 1}, ["not", "an", "object"], {"id": 2}])
 
-    assert document_retrieval_hit_frequency._read_jsonl_tail(path, max_bytes=10_000) == (
+    assert read_jsonl_tail(path, max_bytes=10_000) == (
         [{"id": 1}, {"id": 2}],
         False,
     )

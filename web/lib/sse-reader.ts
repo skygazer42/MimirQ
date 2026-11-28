@@ -1,33 +1,48 @@
+import { extractHeaderRequestId, withRequestId } from '@/lib/api-errors'
+import { reportClientWarning } from '@/lib/client-logging'
 import { createSseDataParser } from '@/lib/sse'
 
+function createSseResponseError(response: Response, message: string): Error {
+  const requestId = extractHeaderRequestId(response.headers)
+  return Object.assign(new Error(withRequestId(message, requestId)), {
+    requestId,
+    response: { status: response.status, headers: response.headers },
+  })
+}
+
 export async function readSseDataStrings(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
+  response: Response,
   onData: (data: string) => void,
-  onError?: (error: unknown) => void
+  onStart?: () => void,
 ): Promise<void> {
-  const decoder = new TextDecoder()
-  const sse = createSseDataParser()
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    const chunkText = decoder.decode(value, { stream: true })
-    for (const data of sse.feed(chunkText)) {
-      try {
-        onData(data)
-      } catch (e) {
-        onError?.(e)
-      }
-    }
+  if (response.body === null) {
+    throw createSseResponseError(response, 'SSE response has no body')
   }
 
-  // Flush remaining decoder output (best-effort).
-  for (const data of sse.feed(decoder.decode())) {
-    try {
-      onData(data)
-    } catch (e) {
-      onError?.(e)
+  const reader = response.body.getReader()
+  try {
+    const contentType = response.headers.get('Content-Type')
+    if (contentType === null || contentType.split(';')[0].trim().toLowerCase() !== 'text/event-stream') {
+      throw createSseResponseError(response, 'Expected a text/event-stream response')
     }
+    onStart?.()
+
+    const decoder = new TextDecoder()
+    const parser = createSseDataParser()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      for (const data of parser.feed(decoder.decode(value, { stream: true }))) onData(data)
+    }
+    for (const data of parser.feed(decoder.decode())) onData(data)
+  } catch (error) {
+    try {
+      await reader.cancel(error)
+    } catch (cleanupError) {
+      if (!Object.is(cleanupError, error)) reportClientWarning('Failed to cancel SSE response reader', cleanupError)
+    }
+    throw error
+  } finally {
+    reader.releaseLock()
   }
 }

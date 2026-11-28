@@ -1,6 +1,7 @@
+import math
 from typing import Any
 
-from app.rag.core.confidence import compute_confidence_score
+from app.rag.safety.answer_quality import ConfidenceScore, compute_confidence_score
 
 FLARE_REFINEMENT_SCHEMA_V1 = "mimirq.flare_refinement.v1"
 
@@ -12,10 +13,11 @@ def _resolve_confidence(
     claim_total: int | None,
     claim_supported: int | None,
     evidence_gap: dict[str, Any] | None,
-) -> dict[str, Any]:
+) -> ConfidenceScore:
     if confidence_score is not None:
         try:
-            score = max(0.0, min(1.0, float(confidence_score)))
+            value = float(confidence_score)
+            score = max(0.0, min(1.0, value)) if math.isfinite(value) else None
         except (TypeError, ValueError):
             score = None
         if score is not None:
@@ -58,8 +60,8 @@ def run_flare_refinement(
         claim_supported=claim_supported,
         evidence_gap=evidence_gap,
     )
-    score = confidence.get("score")
-    need_retrieval = bool(score is not None and float(score) < 0.5)
+    score = confidence["score"]
+    need_retrieval = score is not None and score < 0.5
 
     reason_codes: list[str] = []
     if need_retrieval:
@@ -69,10 +71,10 @@ def run_flare_refinement(
         "schema": FLARE_REFINEMENT_SCHEMA_V1,
         "granularity": "paragraph",
         "need_retrieval": need_retrieval,
-        "rewrite_query": str(question or "").strip() or None if need_retrieval else None,
+        "rewrite_query": question if need_retrieval else None,
         "confidence_score": score,
-        "confidence_band": confidence.get("band"),
-        "confidence_reasons": list(confidence.get("reasons") or []),
+        "confidence_band": confidence["band"],
+        "confidence_reasons": list(confidence["reasons"]),
         "reason_codes": reason_codes,
     }
 

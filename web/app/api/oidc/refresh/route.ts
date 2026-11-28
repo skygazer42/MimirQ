@@ -1,52 +1,30 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 
+import { readOidcExpiresIn } from '@/lib/auth-response-schema'
 import { getOidcServerProvidersFromEnv, resolveOidcServerProvider } from '@/lib/oidc-providers'
+import { readNonEmptyString } from '@/lib/primitive-text'
 import {
   OIDC_PROVIDER_COOKIE_NAME,
   OIDC_REFRESH_COOKIE_NAME,
+  discoverOidcTokenEndpoint,
   isFalsey,
   jsonNoStore,
+  normalizeOidcTokenType,
+  oidcClientBasicAuthorization,
   readEnv,
   requireSameOrigin,
 } from '@/lib/server-auth-route'
 
 export const runtime = 'nodejs'
 
-type OidcDiscovery = {
-  token_endpoint: string
-}
-
 type TokenResponse = {
   access_token?: string
   token_type?: string
-  expires_in?: number
+  expires_in?: unknown
   refresh_token?: string
   id_token?: string
   error?: string
   error_description?: string
-}
-
-async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
-  const url = `${issuer}/.well-known/openid-configuration`
-  const res = await fetch(url, { method: 'GET' })
-  if (!res.ok) {
-    throw new Error(`oidc_discovery_failed_${res.status}`)
-  }
-  const data = (await res.json().catch(() => null))
-  const tokenEndpoint = typeof data?.token_endpoint === 'string' ? data.token_endpoint.trim() : ''
-  if (!tokenEndpoint) {
-    throw new Error('oidc_discovery_missing_endpoints')
-  }
-  return { token_endpoint: tokenEndpoint }
-}
-
-function normalizeTokenType(raw: unknown): string {
-  const t = typeof raw === 'string' ? raw.trim() : ''
-  return t ? t.toLowerCase() : 'bearer'
-}
-
-function isTerminalRefreshFailure(errorCode: string): boolean {
-  return errorCode === 'invalid_grant'
 }
 
 export async function POST(req: NextRequest) {
@@ -58,7 +36,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: 'oidc_invalid_origin' }, { status: 403 })
   }
 
-  const providerId = String(req.cookies.get(OIDC_PROVIDER_COOKIE_NAME)?.value || '').trim() || undefined
+  const providerId = req.cookies.get(OIDC_PROVIDER_COOKIE_NAME)?.value.trim()
   const provider = resolveOidcServerProvider(providerId)
   if (!provider) {
     const available = getOidcServerProvidersFromEnv()
@@ -70,17 +48,17 @@ export async function POST(req: NextRequest) {
   const issuer = provider.issuer.trim()
   const clientId = provider.client_id.trim()
 
-  const refreshToken = req.cookies.get(OIDC_REFRESH_COOKIE_NAME)?.value?.trim() ?? ''
+  const refreshToken = req.cookies.get(OIDC_REFRESH_COOKIE_NAME)?.value.trim()
   if (!refreshToken) {
     return jsonNoStore({ error: 'oidc_missing_refresh_token' }, { status: 401 })
   }
 
-  let tokenEndpoint = ''
+  let tokenEndpoint: string
   try {
-    tokenEndpoint = (await discoverTokenEndpoint(issuer)).token_endpoint
+    tokenEndpoint = await discoverOidcTokenEndpoint(issuer)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'oidc_discovery_failed'
-    return jsonNoStore({ error: String(message || 'oidc_discovery_failed') }, { status: 400 })
+    return jsonNoStore({ error: message || 'oidc_discovery_failed' }, { status: 400 })
   }
 
   const secret = provider.client_secret?.trim() ?? ''
@@ -96,24 +74,28 @@ export async function POST(req: NextRequest) {
 
   const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
   if (secret && authMethod === 'basic') {
-    const credentials = `${clientId}:${secret}`
-    headers.Authorization = `Basic ${Buffer.from(credentials).toString('base64')}`
+    headers.Authorization = oidcClientBasicAuthorization(clientId, secret)
   }
 
   const res = await fetch(tokenEndpoint, {
     method: 'POST',
     headers,
     body: form.toString(),
-  })
+  }).catch(() => null)
+  if (res === null) return jsonNoStore({ error: 'oidc_token_endpoint_unavailable' }, { status: 502 })
 
   const data = (await res.json().catch(() => null)) as TokenResponse | null
   if (!res.ok) {
-    const errorCode = String(data?.error || '').trim().toLowerCase()
-    const msg = String(data?.error_description || data?.error || '').trim()
+    const error = readNonEmptyString(data?.error)
+    const errorCode = error?.toLowerCase()
+    const message = readNonEmptyString(data?.error_description) ?? error
     const secure = process.env.NODE_ENV === 'production'
     const status = res.status === 429 || res.status >= 500 ? res.status : 400
-    const resp = jsonNoStore({ error: msg || `oidc_token_refresh_failed_${res.status}` }, { status })
-    if (isTerminalRefreshFailure(errorCode)) {
+    const resp = jsonNoStore(
+      { error: message ?? `oidc_token_refresh_failed_${res.status}`, code: errorCode },
+      { status },
+    )
+    if (errorCode === 'invalid_grant') {
       // Terminal OAuth failures mean the stored refresh token is no longer usable.
       resp.cookies.set({
         name: OIDC_REFRESH_COOKIE_NAME,
@@ -137,21 +119,24 @@ export async function POST(req: NextRequest) {
     return resp
   }
 
-  const accessToken = String(data?.access_token || '').trim()
+  const accessToken = readNonEmptyString(data?.access_token)
   if (!accessToken) {
     return jsonNoStore({ error: 'oidc_missing_access_token' }, { status: 400 })
   }
 
+  const expiresIn = readOidcExpiresIn(data?.expires_in)
+  if (expiresIn === null) return jsonNoStore({ error: 'oidc_invalid_expiry' }, { status: 502 })
+
   const out = {
     access_token: accessToken,
-    token_type: normalizeTokenType(data?.token_type),
-    expires_in: Number.isFinite(Number(data?.expires_in)) ? Number(data?.expires_in) : 3600,
-    id_token: data?.id_token ? String(data.id_token) : undefined,
+    token_type: normalizeOidcTokenType(data?.token_type),
+    expires_in: expiresIn,
+    id_token: readNonEmptyString(data?.id_token),
   }
 
   const resp = jsonNoStore(out)
   const secure = process.env.NODE_ENV === 'production'
-  const nextRefresh = String(data?.refresh_token || '').trim()
+  const nextRefresh = readNonEmptyString(data?.refresh_token)
   if (nextRefresh) {
     resp.cookies.set({
       name: OIDC_REFRESH_COOKIE_NAME,

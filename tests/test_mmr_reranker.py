@@ -1,9 +1,8 @@
-
-from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.reranking.types import RerankCandidate
 
 
 def test_mmr_reranker_prefers_relevant_but_diverse_candidates() -> None:
-    from app.rag.reranker.mmr import MMRReranker
+    from app.rag.retrieval.reranking.mmr import MMRReranker
 
     reranker = MMRReranker(lambda_mult=0.5)
     candidates = [
@@ -20,7 +19,8 @@ def test_mmr_reranker_prefers_relevant_but_diverse_candidates() -> None:
 
 
 def test_factory_resolves_mmr_provider() -> None:
-    from app.rag.reranker.factory import describe_reranker_provider, get_reranker
+    from app.rag.retrieval.reranking.factory import get_reranker
+    from app.rag.retrieval.reranking.providers import describe_reranker_provider
 
     inst = get_reranker("mmr")
     assert inst.__class__.__name__ == "MMRReranker"

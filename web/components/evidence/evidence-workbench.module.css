@@ -1,0 +1,138 @@
+.suiteBar {
+  margin-bottom: 20px;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 16px;
+}
+.suiteHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.suiteIdentity {
+  min-width: 0;
+}
+.suiteName {
+  overflow-wrap: anywhere;
+}
+.suiteActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.suiteTotal,
+.syncShortLabel,
+.menuStats {
+  display: none;
+}
+.itemToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.itemSearch {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.itemStatus {
+  width: 160px;
+}
+@media (max-width: 640px) {
+  .suiteBar {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+  .suiteHeader {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+  .suiteIdentity {
+    flex: 1;
+  }
+  .suiteActions {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+  }
+  .suiteStats,
+  .syncLabel,
+  .menuLabel {
+    display: none;
+  }
+  .suiteTotal {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 20px;
+    color: hsl(var(--muted-foreground));
+  }
+  .syncShortLabel {
+    display: inline;
+  }
+  .syncButton {
+    min-height: 44px;
+    padding-inline: 12px;
+  }
+  .suiteMenuTrigger {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+  .suiteMenu {
+    max-width: calc(100vw - 32px);
+  }
+  .menuStats {
+    display: block;
+    max-width: 256px;
+    white-space: normal;
+    color: hsl(var(--muted-foreground));
+    font-size: 12px;
+    line-height: 20px;
+    font-weight: 400;
+  }
+  .itemToolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px auto;
+    gap: 8px;
+  }
+  .itemSearch {
+    grid-column: 1 / -1;
+  }
+  .itemSearch input,
+  .itemStatus,
+  .itemCreate {
+    min-height: 44px;
+  }
+  .itemStatus {
+    width: 100%;
+    min-width: 0;
+  }
+  .itemRefresh {
+    width: 44px;
+    height: 44px;
+  }
+  .itemCreate {
+    padding-inline: 12px;
+  }
+
+  .itemTable {
+    min-width: 480px;
+    table-layout: fixed;
+  }
+  .itemTable thead th,
+  .itemTable tbody td {
+    padding-inline: 8px;
+  }
+  .questionColumn {
+    width: 180px;
+  }
+  .statusColumn {
+    width: 56px;
+  }
+  .citationsColumn {
+    width: 52px;
+  }
+}

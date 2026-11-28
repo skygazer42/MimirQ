@@ -1,9 +1,10 @@
 import uuid
 
-from app.models.chat import Conversation, Message
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document, DocumentChunk
-from app.models.tenant import Tenant, TenantMember
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.models.conversations.chat import Conversation, Message
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document, DocumentChunk
+from app.models.identity.workspaces import Tenant, TenantMember
 
 
 def test_migrated_schema_supports_core_knowledge_flow(pg_session) -> None:  # noqa: ANN001

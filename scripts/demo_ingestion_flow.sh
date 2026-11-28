@@ -26,8 +26,10 @@ DRY_RUN="${DRY_RUN:-0}"
 
 json_get() {
   local expr="$1"
-  python3 - "$expr" <<'PY'
-import json, sys
+  python3 -c '
+import json
+import sys
+
 expr = sys.argv[1]
 data = json.load(sys.stdin)
 cur = data
@@ -40,7 +42,7 @@ for part in expr.split("."):
         cur = None
         break
 print("" if cur is None else cur)
-PY
+' "$expr"
 }
 
 echo "[demo] BASE_URL=$BASE_URL"
@@ -64,19 +66,33 @@ if [[ -z "$TOKEN" ]]; then
     exit 1
   fi
   echo "[demo] Login..."
+  login_payload="$(IDENTIFIER="$IDENTIFIER" PASSWORD="$PASSWORD" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({"identifier": os.environ["IDENTIFIER"], "password": os.environ["PASSWORD"]}))
+PY
+  )"
   login_json="$(curl -fsS "$BASE_URL/auth/login" \
     -H "Content-Type: application/json" \
-    -d "{\"identifier\": \"${IDENTIFIER}\", \"password\": \"${PASSWORD}\"}")"
+    -d "$login_payload")"
   TOKEN="$(printf '%s' "$login_json" | json_get "token.access_token")"
 fi
 
 auth=(-H "Authorization: Bearer $TOKEN")
 
 echo "[demo] Create dataset: $DATASET_NAME"
+dataset_payload="$(DATASET_NAME="$DATASET_NAME" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({"name": os.environ["DATASET_NAME"], "description": "demo (scripted) ingestion flow"}))
+PY
+)"
 dataset_json="$(curl -fsS "$BASE_URL/datasets/" \
   "${auth[@]}" \
   -H "Content-Type: application/json" \
-  -d "{\"name\": \"${DATASET_NAME}\", \"description\": \"demo (scripted) ingestion flow\"}")"
+  -d "$dataset_payload")"
 DATASET_ID="$(printf '%s' "$dataset_json" | json_get "id")"
 
 echo "[demo] Upload document..."

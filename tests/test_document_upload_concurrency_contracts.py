@@ -9,31 +9,15 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 from starlette.datastructures import UploadFile
 
-from app.api.v1 import documents as documents_module
-
-document_upload = documents_module.document_upload
-
-
-def _build_overrides_form() -> document_upload.PipelineOverridesFormFields:
-    return document_upload.PipelineOverridesFormFields(
-        governance_enabled=None,
-        governance_remove_toc_lines=None,
-        governance_remove_noise_lines=None,
-        governance_unwrap_lines=None,
-        governance_remove_common_lines=None,
-        governance_unwrap_max_line_length=None,
-        governance_noise_min_chars=None,
-        governance_noise_ratio_threshold=None,
-        governance_common_lines_min_docs=None,
-        governance_common_lines_min_ratio=None,
-        chunk_size=None,
-        chunk_overlap=None,
-        chunk_vector_enabled=None,
-        bm25_index_enabled=None,
-        kg_enabled=None,
-        event_vector_enabled=None,
-        entity_vector_enabled=None,
-    )
+import app.services.documents.batch_ingestion as batch_owner
+import app.services.documents.ingestion as upload_owner
+import app.services.documents.ingestion_policy as ingestion_policy_owner
+import app.services.documents.processing_dispatch as document_dispatch
+import app.services.documents.source_persistence as source_owner
+from app.api.schemas.documents import UploadDocumentFormFields, UploadDocumentsBatchFormFields
+from app.api.v1.documents import upload as document_upload
+from app.services.documents import source_persistence as document_dedup_service
+from app.services.documents.ingestion import DUPLICATE_DOCUMENT_PROCESSING_DETAIL
 
 
 def _make_upload(filename: str, content: str = "hello") -> UploadFile:
@@ -41,12 +25,18 @@ def _make_upload(filename: str, content: str = "hello") -> UploadFile:
 
 
 def _patch_quota(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import tenant_quota_service
+    from app.services.identity import tenant_quotas as tenant_quota_service
 
     monkeypatch.setattr(
         tenant_quota_service,
         "enforce_tenant_upload_quotas",
         lambda *args, **kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        batch_owner,
+        "enforce_tenant_upload_quotas",
+        tenant_quota_service.enforce_tenant_upload_quotas,
         raising=True,
     )
 
@@ -58,39 +48,42 @@ def _patch_minimal_document_resolution(
     pipeline_hash: str = "pipeline-hash",
 ) -> SimpleNamespace:
     dataset = SimpleNamespace(id=dataset_id, dataset_metadata={})
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *args, **kwargs: dataset, raising=True)
-    monkeypatch.setattr(documents_module, "_parse_pipeline_json", lambda raw: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_to_pipeline_options",
-        lambda *args, **kwargs: documents_module.PipelineOptions(),
+        upload_owner.dataset_service, "resolve_writable_dataset", lambda *args, **kwargs: dataset, raising=True
+    )
+    monkeypatch.setattr(upload_owner, "parse_pipeline_json", lambda raw: None, raising=True)
+    monkeypatch.setattr(batch_owner, "parse_pipeline_json", upload_owner.parse_pipeline_json, raising=True)
+    monkeypatch.setattr(
+        ingestion_policy_owner,
+        "to_pipeline_options",
+        lambda *args, **kwargs: upload_owner.PipelineOptions(),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "match_ingestion_rule", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(ingestion_policy_owner, "match_ingestion_rule", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.parser_factory,
+        ingestion_policy_owner.parser_factory,
         "resolve_backend",
         lambda *args, **kwargs: "auto",
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.chunker_factory,
+        ingestion_policy_owner.chunker_factory,
         "resolve_strategy",
         lambda *args, **kwargs: "langchain_recursive",
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
+        ingestion_policy_owner,
         "resolve_pipeline_effective",
         lambda *args, **kwargs: SimpleNamespace(chunk_size=1000, chunk_overlap=100),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_validate_chunk_params", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "upsert_pipeline_metadata", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda meta: pipeline_hash, raising=True)
-    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_find_duplicate_document_by_sha", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(ingestion_policy_owner, "validate_chunk_params", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(upload_owner, "upsert_pipeline_metadata", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(upload_owner, "compute_pipeline_hash", lambda meta: pipeline_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(upload_owner.ingestion_run_service, "create_run", lambda *args, **kwargs: None, raising=True)
     return dataset
 
 
@@ -106,6 +99,7 @@ class _DetachedStatusDocument:
     def __init__(self, **kwargs) -> None:  # noqa: ANN003
         self.id = kwargs["id"]
         self.filename = kwargs["filename"]
+        self.file_path = kwargs["file_path"]
         self.doc_metadata = kwargs["doc_metadata"]
         self._status = kwargs["status"]
         self._session = None
@@ -148,8 +142,9 @@ class _OuterDB:
     def commit(self) -> None:
         return None
 
-    def refresh(self, _obj) -> None:  # noqa: ANN001
-        return None
+    def refresh(self, obj) -> None:  # noqa: ANN001
+        if isinstance(obj, batch_owner.DBDatasetPrecheckScanRun) and obj.id is None:
+            obj.id = uuid.uuid4()
 
     def query(self, _model):  # noqa: ANN001, ANN201
         return _OuterQuery(self.document)
@@ -160,8 +155,8 @@ async def test_upload_batch_rejects_nonpositive_max_concurrent() -> None:
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("bad.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("bad.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -172,7 +167,6 @@ async def test_upload_batch_rejects_nonpositive_max_concurrent() -> None:
                 user_metadata_map=None,
                 max_concurrent=0,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -205,7 +199,7 @@ async def test_gather_with_concurrency_limit_preserves_order_and_bounds_inflight
         return _run
 
     runner = asyncio.create_task(
-        document_upload._gather_with_concurrency_limit([_factory(index) for index in range(4)], limit=2)
+        batch_owner._gather_with_concurrency_limit([_factory(index) for index in range(4)], limit=2)
     )
 
     await asyncio.wait_for(first_wave_ready.wait(), timeout=1)
@@ -238,7 +232,7 @@ async def test_gather_with_concurrency_limit_cancels_inflight_tasks() -> None:
         return _run
 
     runner = asyncio.create_task(
-        document_upload._gather_with_concurrency_limit([_factory(index) for index in range(4)], limit=2)
+        batch_owner._gather_with_concurrency_limit([_factory(index) for index in range(4)], limit=2)
     )
 
     await asyncio.wait_for(first_wave_ready.wait(), timeout=1)
@@ -261,8 +255,8 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(document_upload, "_document_object_storage_enabled", lambda: False, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(upload_owner, "document_object_storage_enabled", lambda: False, raising=True)
 
     async def _slow_save(file: UploadFile, file_path: Path, max_bytes: int) -> tuple[int, str]:
         data = await file.read()
@@ -274,13 +268,13 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
         await asyncio.Event().wait()
         return len(data), f"sha-{file.filename}"
 
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _slow_save, raising=True)
+    monkeypatch.setattr(batch_owner, "save_upload_file_with_hash", _slow_save, raising=True)
 
     task = asyncio.create_task(
         document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("staged.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("staged.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -291,7 +285,6 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
                 user_metadata_map=None,
                 max_concurrent=1,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -318,8 +311,8 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(batch_owner, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(batch_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     def _new_item_session() -> _FakeItemSession:
         session = _FakeItemSession(name=f"item-{len(item_sessions) + 1}")
@@ -333,29 +326,30 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
     async def _store(file_path: Path, **_kwargs) -> str:  # noqa: ANN003, ANN202
         return str(file_path)
 
-    monkeypatch.setattr(documents_module, "SessionLocal", _new_item_session, raising=True)
-    monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
-    monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
+    monkeypatch.setattr(batch_owner, "SessionLocal", _new_item_session, raising=True)
+    monkeypatch.setattr(source_owner, "persist_uploaded_document", _persist, raising=True)
+    monkeypatch.setattr(source_owner, "store_document_source", _store, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("one.txt"), _make_upload("two.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=False,
-            precheck_only=False,
-            upload_only=True,
-            user_metadata_map=None,
-            max_concurrent=2,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=uuid.uuid4(),
-        account_id="acct-1",
-        db=outer_db,
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("one.txt"), _make_upload("two.txt")],
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=False,
+                precheck_only=False,
+                upload_only=True,
+                user_metadata_map=None,
+                max_concurrent=2,
+            ),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=outer_db,
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 2
     assert [entry["filename"] for entry in result["successful"]] == ["one.txt", "two.txt"]
@@ -384,17 +378,17 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(batch_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document",
+        source_owner,
+        "find_duplicate_document",
         lambda *_args, file_sha256=None, **_kwargs: duplicate if file_sha256 == "sha-dup.txt" else None,
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: ingestion_run, raising=True
+        upload_owner.ingestion_run_service, "create_run", lambda *args, **kwargs: ingestion_run, raising=True
     )
 
     def _add_document(*_args, **kwargs) -> None:  # noqa: ANN003
@@ -404,39 +398,38 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
         events.append("close")
         close_calls.append(kwargs)
 
-    monkeypatch.setattr(documents_module.IngestionRunService, "add_document", _add_document, raising=True)
-    monkeypatch.setattr(documents_module.IngestionRunService, "close_intake", _close_intake, raising=True)
-    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(
-        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
-    )
+    monkeypatch.setattr(upload_owner.ingestion_run_service, "add_document", _add_document, raising=True)
+    monkeypatch.setattr(upload_owner.ingestion_run_service, "close_intake", _close_intake, raising=True)
+    monkeypatch.setattr(batch_owner, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(batch_owner, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
 
     def _new_item_session() -> _FakeItemSession:
         session = _FakeItemSession(name=f"item-{len(item_sessions) + 1}")
         item_sessions.append(session)
         return session
 
-    monkeypatch.setattr(documents_module, "SessionLocal", _new_item_session, raising=True)
+    monkeypatch.setattr(batch_owner, "SessionLocal", _new_item_session, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=precheck_first,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=2,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=tenant_id,
-        account_id="acct-1",
-        db=outer_db,
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=precheck_first,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=2,
+            ),
+            tenant_id=tenant_id,
+            account_id="acct-1",
+            db=outer_db,
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 1
     assert result["failed_count"] == 1
@@ -460,12 +453,12 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document",
+        source_owner,
+        "find_duplicate_document",
         lambda *args, **kwargs: SimpleNamespace(id=uuid.uuid4(), status="completed", doc_metadata={}),
         raising=True,
     )
@@ -485,15 +478,14 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
@@ -512,13 +504,13 @@ async def test_single_upload_uses_timeout_based_ingest_lock_ttl(monkeypatch: pyt
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_JOB_TIMEOUT_SEC", 4_000, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_JOB_TIMEOUT_SEC", 4_000, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document",
+        source_owner,
+        "find_duplicate_document",
         lambda *args, **kwargs: SimpleNamespace(id=uuid.uuid4(), status="completed", doc_metadata={}),
         raising=True,
     )
@@ -539,15 +531,14 @@ async def test_single_upload_uses_timeout_based_ingest_lock_ttl(monkeypatch: pyt
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
@@ -562,10 +553,10 @@ async def test_ingest_lock_contention_falls_through_to_database_dedup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     metadata: dict[str, str] = {}
-    lease = document_upload._IngestLockLease()
+    lease = upload_owner._IngestLockLease()
 
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
 
     async def _queue() -> object:
         return object()
@@ -576,7 +567,7 @@ async def test_ingest_lock_contention_falls_through_to_database_dedup(
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
 
-    await document_upload._maybe_acquire_ingest_lock(
+    await upload_owner._maybe_acquire_ingest_lock(
         tenant_id=uuid.uuid4(),
         dataset_id=uuid.uuid4(),
         file_sha256="sha-1",
@@ -604,27 +595,21 @@ async def test_single_upload_returns_pending_same_pipeline_follower(monkeypatch:
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
-    monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate, raising=True)
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(),
@@ -647,35 +632,29 @@ async def test_single_upload_keeps_pending_different_pipeline_conflict(monkeypat
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
-    monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("dup.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("dup.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=tenant_id,
             account_id="acct-1",
             db=SimpleNamespace(),
         )
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL
+    assert exc_info.value.detail == DUPLICATE_DOCUMENT_PROCESSING_DETAIL
 
 
 @pytest.mark.asyncio
@@ -683,17 +662,17 @@ async def test_ingest_lock_is_skipped_when_upload_dedup_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     metadata: dict[str, str] = {}
-    lease = document_upload._IngestLockLease()
+    lease = upload_owner._IngestLockLease()
 
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", False, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
 
     async def _queue() -> object:
         raise AssertionError("queue probe should be skipped when upload dedup is disabled")
 
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
 
-    await document_upload._maybe_acquire_ingest_lock(
+    await upload_owner._maybe_acquire_ingest_lock(
         tenant_id=uuid.uuid4(),
         dataset_id=uuid.uuid4(),
         file_sha256="sha-1",
@@ -713,9 +692,9 @@ async def test_single_upload_fails_closed_when_ingest_lock_queue_unavailable(mon
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         raise RuntimeError("redis unavailable")
@@ -725,22 +704,21 @@ async def test_single_upload_fails_closed_when_ingest_lock_queue_unavailable(mon
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("queue-down.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("queue-down.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == document_upload.INGEST_LOCK_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == "Ingest lock unavailable"
 
 
 @pytest.mark.asyncio
@@ -749,9 +727,9 @@ async def test_single_upload_fails_closed_when_ingest_lock_set_fails(monkeypatch
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     class _FailingRedis:
         async def set(self, *_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
@@ -765,22 +743,21 @@ async def test_single_upload_fails_closed_when_ingest_lock_set_fails(monkeypatch
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("set-fails.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("set-fails.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == document_upload.INGEST_LOCK_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == "Ingest lock unavailable"
 
 
 @pytest.mark.asyncio
@@ -789,10 +766,10 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         raise AssertionError("queue probe should be skipped when disabled")
@@ -807,22 +784,21 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
         return True
 
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
-    monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
-    monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(source_owner, "persist_uploaded_document", _persist, raising=True)
+    monkeypatch.setattr(source_owner, "store_document_source", _store, raising=True)
+    monkeypatch.setattr(upload_owner, "dispatch_uploaded_document", _schedule, raising=True)
 
     db = _FakeItemSession("single-disabled")
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("local-disabled.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("local-disabled.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=uuid.uuid4(),
         account_id="acct-1",
         db=db,
@@ -838,10 +814,10 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -864,22 +840,21 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
-    monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(source_owner, "persist_uploaded_document", _persist, raising=True)
+    monkeypatch.setattr(source_owner, "store_document_source", _store, raising=True)
+    monkeypatch.setattr(upload_owner, "dispatch_uploaded_document", _schedule, raising=True)
 
     db = _FakeItemSession("single")
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("local.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("local.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=uuid.uuid4(),
         account_id="acct-1",
         db=db,
@@ -902,15 +877,10 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
-    monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -929,20 +899,19 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(upload_owner, "retry_document", _retry, raising=True)
 
     db = SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None)
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("queued.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("queued.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=uuid.uuid4(),
         account_id="acct-1",
         db=db,
@@ -972,29 +941,25 @@ async def test_single_upload_reuses_matching_sha_only_duplicate_while_pending_or
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
-    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.ingestion_run_service, "create_run", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate_document,
-        raising=True,
+        source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate_document, raising=True
     )
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
@@ -1010,9 +975,9 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -1029,20 +994,19 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(document_upload, "_store_document_source", _boom, raising=True)
+    monkeypatch.setattr(source_owner, "store_document_source", _boom, raising=True)
 
     with pytest.raises(RuntimeError, match="store failed"):
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("boom.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("boom.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -1067,11 +1031,11 @@ async def test_persist_uploaded_document_reuses_duplicate_after_integrity_error(
             return None
 
         class _Diag:
-            constraint_name = document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME
+            constraint_name = source_owner.DOCUMENT_DEDUP_CONSTRAINT_NAME
 
         class _OrigError(Exception):
             def __init__(self) -> None:
-                super().__init__(document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME)
+                super().__init__(source_owner.DOCUMENT_DEDUP_CONSTRAINT_NAME)
                 self.diag = _FakeDB._Diag()
 
         def commit(self) -> None:
@@ -1080,12 +1044,7 @@ async def test_persist_uploaded_document_reuses_duplicate_after_integrity_error(
         def rollback(self) -> None:
             return None
 
-    monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
+    monkeypatch.setattr(source_owner, "find_duplicate_document", lambda *args, **kwargs: duplicate, raising=True)
 
     db_document = SimpleNamespace(
         id=uuid.uuid4(),
@@ -1095,8 +1054,8 @@ async def test_persist_uploaded_document_reuses_duplicate_after_integrity_error(
         file_path=str(file_path),
     )
 
-    with pytest.raises(document_upload._DuplicatePersistedDocumentError) as exc_info:
-        await document_upload._persist_uploaded_document(_FakeDB(), db_document, file_path=file_path)
+    with pytest.raises(source_owner.DuplicatePersistedDocumentError) as exc_info:
+        await source_owner.persist_uploaded_document(_FakeDB(), db_document, file_path=file_path)
 
     assert exc_info.value.document is duplicate
     assert not file_path.exists()
@@ -1124,7 +1083,7 @@ async def test_persist_uploaded_document_cleans_source_for_unrelated_integrity_e
         def rollback(self) -> None:
             return None
 
-    monkeypatch.setattr(document_upload, "_cleanup_unpersisted_source", _cleanup, raising=True)
+    monkeypatch.setattr(source_owner, "cleanup_unpersisted_source", _cleanup, raising=True)
     db_document = SimpleNamespace(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
@@ -1134,7 +1093,7 @@ async def test_persist_uploaded_document_cleans_source_for_unrelated_integrity_e
     )
 
     with pytest.raises(IntegrityError, match="uq_documents_other_constraint"):
-        await document_upload._persist_uploaded_document(_FakeDB(), db_document, file_path=file_path)
+        await source_owner.persist_uploaded_document(_FakeDB(), db_document, file_path=file_path)
 
     assert cleaned == ["minio://documents/upload.txt"]
     assert not file_path.exists()
@@ -1153,11 +1112,11 @@ async def test_failed_persisted_duplicate_reuses_existing_retry_path(monkeypatch
         def refresh(self, _document) -> None:  # noqa: ANN001
             return None
 
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(upload_owner, "retry_document", _retry, raising=True)
     db = _FakeDB()
     background_tasks = BackgroundTasks()
 
-    await document_upload._retry_failed_persisted_duplicate(
+    await upload_owner._retry_failed_persisted_duplicate(
         document,
         background_tasks=background_tasks,
         tenant_id=tenant_id,
@@ -1187,12 +1146,12 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -1208,38 +1167,38 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
         return str(file_path)
 
     async def _schedule(**kwargs) -> bool:  # noqa: ANN003, ANN202
+        kwargs["file_path"] = kwargs["source"].path
         assert kwargs["file_path"].exists()
         raise HTTPException(
             status_code=503,
-            detail=documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL,
+            detail=document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL,
         )
 
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
-    monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
-    monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(source_owner, "persist_uploaded_document", _persist, raising=True)
+    monkeypatch.setattr(source_owner, "store_document_source", _store, raising=True)
+    monkeypatch.setattr(upload_owner, "dispatch_uploaded_document", _schedule, raising=True)
 
     db = _FakeItemSession("single-local-queue-fail")
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("local-queue-fail.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("local-queue-fail.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=db,
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert len(captured_paths) == 1
     assert captured_paths[0].exists()
 
@@ -1257,17 +1216,12 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(batch_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module,
+        batch_owner,
         "SessionLocal",
         lambda: SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None, close=lambda: None),
         raising=True,
@@ -1290,27 +1244,28 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(upload_owner, "retry_document", _retry, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("batch.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=False,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=1,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=uuid.uuid4(),
-        account_id="acct-1",
-        db=SimpleNamespace(),
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("batch.txt")],
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=False,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=SimpleNamespace(),
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 1
     assert released == []
@@ -1346,53 +1301,49 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
         def commit(self) -> None:
             return None
 
-        def refresh(self, _obj) -> None:  # noqa: ANN001
-            return None
+        def refresh(self, obj) -> None:  # noqa: ANN001
+            if isinstance(obj, batch_owner.DBDatasetPrecheckScanRun) and obj.id is None:
+                obj.id = uuid.uuid4()
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
-    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
+    monkeypatch.setattr(batch_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module,
+        batch_owner,
         "SessionLocal",
         lambda: SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None, close=lambda: None),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(
-        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
-    )
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("batch.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=precheck_first,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=1,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=tenant_id,
-        account_id="acct-1",
-        db=_OuterDB(),
-    )
+    monkeypatch.setattr(batch_owner, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(batch_owner, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
+
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("batch.txt")],
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=precheck_first,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            tenant_id=tenant_id,
+            account_id="acct-1",
+            db=_OuterDB(),
+        )
+    ).model_dump(mode="json")
 
     if same_pipeline:
         assert result["successful_count"] == 1
@@ -1403,7 +1354,7 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
         assert result["failed_count"] == 1
         error = result["failed"][0]["error"]
         assert error.startswith("409:")
-        assert error.endswith(documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
+        assert error.endswith(DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
 
 @pytest.mark.asyncio
@@ -1421,11 +1372,11 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
     )
 
     class _DedupDiag:
-        constraint_name = document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME
+        constraint_name = source_owner.DOCUMENT_DEDUP_CONSTRAINT_NAME
 
     class _DedupOrigError(Exception):
         def __init__(self) -> None:
-            super().__init__(document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME)
+            super().__init__(source_owner.DOCUMENT_DEDUP_CONSTRAINT_NAME)
             self.diag = _DedupDiag()
 
     class _ConflictDB:
@@ -1448,9 +1399,9 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(upload_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     duplicate_hits = {"count": 0}
 
@@ -1460,25 +1411,25 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
             return None
         return duplicate_document
 
-    monkeypatch.setattr(documents_module, "_find_duplicate_document", _find_duplicate_document, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document", _find_duplicate_document, raising=True)
+    monkeypatch.setattr(document_dedup_service, "find_duplicate_document", _find_duplicate_document, raising=True)
 
     async def _schedule(**_kwargs) -> bool:  # noqa: ANN003, ANN202
         raise AssertionError("dedup conflict should return the winning document without requeueing")
 
-    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+    monkeypatch.setattr(upload_owner, "dispatch_uploaded_document", _schedule, raising=True)
 
     db = _ConflictDB()
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
@@ -1510,31 +1461,26 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
         def commit(self) -> None:
             return None
 
-        def refresh(self, _obj) -> None:  # noqa: ANN001
-            return None
+        def refresh(self, obj) -> None:  # noqa: ANN001
+            if isinstance(obj, batch_owner.DBDatasetPrecheckScanRun) and obj.id is None:
+                obj.id = uuid.uuid4()
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(upload_owner.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(upload_owner.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(batch_owner, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(source_owner, "find_duplicate_document_by_sha", lambda *args, **kwargs: duplicate, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: duplicate,
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module,
+        batch_owner,
         "SessionLocal",
         lambda: SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None, close=lambda: None),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(
-        documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True
-    )
+
+    monkeypatch.setattr(batch_owner, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(batch_owner, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
 
     async def _queue() -> object:
         return object()
@@ -1553,27 +1499,28 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
     monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
     monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
-    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    monkeypatch.setattr(upload_owner, "retry_document", _retry, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("batch.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=True,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=1,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=uuid.uuid4(),
-        account_id="acct-1",
-        db=_OuterDB(),
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("batch.txt")],
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=True,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=_OuterDB(),
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 1
     assert released == []

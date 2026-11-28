@@ -5,24 +5,21 @@ belongs outside MimirQ; MimirQ only validates and imports curated entity/relatio
 rows into the existing KG storage model with document-level provenance.
 """
 
-
 import hashlib
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal, NotRequired, TypedDict
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document, DocumentChunk
-from app.rag.core.logging import get_logger
-from app.rag.kg.models import KgEntity, KgEntityAlias, KgEventEntity, KgRelation, KgSourceEvent
-from app.rag.kg.schemas import (
+import app.services.datasets.management as dataset_service
+from app.api.schemas.knowledge_graph import (
     KGManualEntityInput,
     KGManualEntityRef,
     KGManualImportDeleteResponse,
@@ -35,11 +32,16 @@ from app.rag.kg.schemas import (
     KGManualImportStats,
     KGManualRelationInput,
 )
-from app.services.dataset_embedding_config import create_embeddings_for_runtime
-from app.services.dataset_service import DatasetService
-from app.services.indexer import Indexer
+from app.models.datasets.access import DatasetPermissionEnum
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document, DocumentChunk
+from app.models.knowledge_graph.entities import KgEntity, KgEntityAlias, KgEventEntity, KgRelation, KgSourceEvent
+from app.rag.embedding.utils import validate_embedding_vectors
+from app.rag.ingestion.indexing.indexer import Indexer, build_entity_vector_item, build_event_vector_item
+from app.services.datasets.embedding_config import create_embeddings_for_runtime, resolve_dataset_embedding_runtime
+from app.services.documents.access import assert_document_writable_for_lifecycle
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 MANUAL_KG_NAMESPACE = uuid.UUID("f69d7ee1-a4d5-45f4-89e1-bfd23315f4a9")
 MANUAL_KG_FORMAT = "mimirq_manual_kg_v1"
@@ -53,7 +55,7 @@ REGISTRY_EVENT_ENTITY_BATCH = 200
 def _norm(value: Any) -> str:
     if value is None:
         return ""
-    return re.sub(r"\s+", " ", str(value).replace("\u3000", " ")).strip()
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 def _normalized_key(value: Any) -> str:
@@ -76,8 +78,6 @@ def _compact_entity_label(value: str, *, allow: bool) -> tuple[str, dict[str, An
         raise ValueError("Entity name exceeds KG label limit")
     digest = _short_hash(text, 10)
     compact = f"{text[:ENTITY_NAME_HEAD]} ... {text[-ENTITY_NAME_TAIL:]} [{digest}]"
-    if len(compact) > ENTITY_NAME_MAX:
-        compact = f"{text[: ENTITY_NAME_MAX - 16]} [{digest}]"
     return compact, {
         "full_value": text,
         "full_value_hash": digest,
@@ -121,6 +121,16 @@ class _RelationRow:
 EmbeddingJob = tuple[str, KgSourceEvent | KgEntity, str, str]
 
 
+class _ManualVectorStatus(TypedDict):
+    status: str
+    events_embedded: int
+    entities_embedded: int
+    event_vectors: int
+    entity_vectors: int
+    reason: NotRequired[str]
+    error: NotRequired[str]
+
+
 @dataclass
 class _NormalizedImport:
     import_id: str
@@ -136,7 +146,7 @@ class _NormalizedImport:
 
     def stats(self) -> KGManualImportStats:
         relation_entity_keys = {rel.subject_key for rel in self.relations} | {rel.object_key for rel in self.relations}
-        isolated_entities = max(0, len([ent for ent in self.entities if ent.key not in relation_entity_keys]))
+        isolated_entities = sum(ent.key not in relation_entity_keys for ent in self.entities)
         registry_events = (isolated_entities + REGISTRY_EVENT_ENTITY_BATCH - 1) // REGISTRY_EVENT_ENTITY_BATCH
         events = len(self.relations) + registry_events
         return KGManualImportStats(
@@ -145,7 +155,7 @@ class _NormalizedImport:
             events=events,
             chunks=events,
             aliases=sum(len(ent.aliases) for ent in self.entities),
-            warnings=len([issue for issue in self.issues if issue.level == "warning"]),
+            warnings=sum(issue.level == "warning" for issue in self.issues),
         )
 
 
@@ -249,7 +259,7 @@ def _normalize_entity_input(
         )
         return None
 
-    aliases = [_norm(alias) for alias in item.aliases if _norm(alias)]
+    aliases = [normalized for alias in item.aliases if (normalized := _norm(alias))]
     return (
         key,
         (ent_type, _normalized_key(ent_name)),
@@ -257,7 +267,7 @@ def _normalize_entity_input(
             key=key,
             name=ent_name,
             type=ent_type,
-            description=_norm(item.description) or None,
+            description=item.description,
             aliases=aliases,
             extra_data=_json_dict(item.extra_data),
             row=row_index,
@@ -296,8 +306,6 @@ def _normalize_entity_rows(
         seen_type_name.add(type_name)
         entities_by_key[key] = row
 
-    if not entities_by_key:
-        _add_issue(issues, level="error", field_name="entities", message="At least one entity is required")
     return entities_by_key
 
 
@@ -383,6 +391,8 @@ def normalize_manual_import(payload: KGManualImportRequest) -> _NormalizedImport
     name = _norm(payload.name) or "手动知识图谱导入"
     entities_by_key = _normalize_entity_rows(payload, issues)
     relations = _normalize_relation_rows(payload, entities_by_key=entities_by_key, issues=issues)
+    if not entities_by_key:
+        _add_issue(issues, level="error", field_name="entities", message="At least one entity is required")
 
     return _NormalizedImport(
         import_id=import_id,
@@ -414,17 +424,17 @@ def _ensure_import_dataset(
     payload: KGManualImportRequest,
 ) -> Dataset:
     if payload.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
         return dataset
 
     dataset_name = _norm(payload.dataset_name) or DEFAULT_MANUAL_DATASET_NAME
     existing = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.name == dataset_name).first()
     if existing:
-        DatasetService.assert_dataset_writable(db, existing, account_id)
+        dataset_service.assert_dataset_writable(db, existing, account_id)
         return existing
 
-    return DatasetService.create_dataset(
+    return dataset_service.create_dataset(
         db,
         tenant_id,
         name=dataset_name,
@@ -509,7 +519,9 @@ def _prune_manual_import_entities(db: Session, *, tenant_id: UUID, import_id: st
         return 0
 
     _delete_manual_import_vectors(db=db, event_ids=[], entity_ids=prune_ids)
-    db.query(KgEntityAlias).filter(KgEntityAlias.canonical_entity_id.in_(prune_ids)).delete(synchronize_session=False)
+    db.query(KgEntityAlias).filter(
+        KgEntityAlias.tenant_id == tenant_id, KgEntityAlias.canonical_entity_id.in_(prune_ids)
+    ).delete(synchronize_session=False)
     return int(
         db.query(KgEntity)
         .filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(prune_ids))
@@ -567,9 +579,7 @@ def delete_manual_import(
     document = _find_import_document(db, tenant_id=tenant_id, import_id=import_id)
     if not document:
         raise HTTPException(status_code=404, detail="Manual KG import not found")
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+    assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=document)
     out = _delete_import_rows(
         db, tenant_id=tenant_id, import_id=import_id, document=document, prune_entities=prune_entities
     )
@@ -634,7 +644,7 @@ def _get_or_create_entity(
 def _manual_event_embedding_text(event: KgSourceEvent) -> str:
     parts: list[str] = []
     seen: set[str] = set()
-    for value in (getattr(event, "title", None), getattr(event, "summary", None), getattr(event, "content", None)):
+    for value in (event.title, event.summary, event.content):
         text = _norm(value)
         if text and text not in seen:
             parts.append(text)
@@ -644,11 +654,11 @@ def _manual_event_embedding_text(event: KgSourceEvent) -> str:
 
 def _manual_entity_embedding_text(entity: KgEntity) -> str:
     parts: list[str] = []
-    for value in (getattr(entity, "name", None), getattr(entity, "type", None), getattr(entity, "description", None)):
+    for value in (entity.name, entity.type, entity.description):
         text = _norm(value)
         if text:
             parts.append(text)
-    extra = getattr(entity, "extra_data", None)
+    extra = entity.extra_data
     if isinstance(extra, dict):
         full_value = _norm(extra.get("full_value"))
         if full_value and full_value not in parts:
@@ -656,7 +666,7 @@ def _manual_entity_embedding_text(entity: KgEntity) -> str:
     return "\n".join(parts)
 
 
-def _initial_manual_vector_status() -> dict[str, Any]:
+def _initial_manual_vector_status() -> _ManualVectorStatus:
     return {
         "status": "skipped",
         "events_embedded": 0,
@@ -706,60 +716,50 @@ def _collect_manual_embedding_jobs(
     )
 
 
-def _flush_if_supported(db: Session) -> None:
-    flush = getattr(db, "flush", None)
-    if callable(flush):
-        flush()
-
-
 def _embed_manual_vector_jobs(
     *,
-    db: Session,
-    indexer: Indexer,
-    tenant_id: UUID,
-    document: Document,
     jobs: list[EmbeddingJob],
-    status: dict[str, Any],
-) -> None:
+) -> list[list[float]]:
     if not jobs:
-        return
-    runtime = indexer._embedding_runtime_for_document(tenant_id=tenant_id, document_id=document.id)
+        return []
+    # KG events and entities use the global collections and the global query model.
+    runtime = resolve_dataset_embedding_runtime(None)
     embeddings = create_embeddings_for_runtime(runtime)
-    vectors = embeddings.embed_documents([text for _kind, _row, _attr, text in jobs])
-    for (kind, row, attr, _text), vector in zip(jobs, vectors, strict=False):
-        setattr(row, attr, list(vector))
-        counter = "events_embedded" if kind == "event" else "entities_embedded"
-        status[counter] += 1
-    _flush_if_supported(db)
+    return validate_embedding_vectors(
+        embeddings.embed_documents([text for _kind, _row, _attr, text in jobs]), count=len(jobs)
+    )
 
 
-def _index_manual_vector_candidates(
+def _manual_vector_candidates(
     *,
-    indexer: Indexer,
     events: list[KgSourceEvent],
     entities: list[KgEntity],
     event_enabled: bool,
     entity_enabled: bool,
-) -> tuple[list[str], list[str], int]:
-    event_candidates = [event for event in events if getattr(event, "content_vector", None)]
-    entity_candidates = [entity for entity in entities if getattr(entity, "vector", None)]
-    event_vector_ids = indexer._index_event_vectors(event_candidates) if event_enabled and event_candidates else []
-    entity_vector_ids = indexer._index_entity_vectors(entity_candidates) if entity_enabled and entity_candidates else []
-    return event_vector_ids, entity_vector_ids, len(event_candidates) + len(entity_candidates)
+) -> tuple[list[tuple[dict[str, Any], list[float]]], list[tuple[dict[str, Any], list[float]]]]:
+    event_candidates = (
+        [item for event in events if (item := build_event_vector_item(event)) is not None] if event_enabled else []
+    )
+    entity_candidates = (
+        [item for entity in entities if (item := build_entity_vector_item(entity)) is not None]
+        if entity_enabled
+        else []
+    )
+    return event_candidates, entity_candidates
 
 
-def _set_manual_vector_status(status: dict[str, Any], *, expected_vectors: int, stored_vectors: int) -> None:
+def _set_manual_vector_status(status: _ManualVectorStatus, *, expected_vectors: int, stored_vectors: int) -> None:
     if expected_vectors == 0:
         status["status"] = "skipped"
         status["reason"] = "no_vector_candidates"
     elif stored_vectors == expected_vectors:
         status["status"] = "indexed"
-    elif stored_vectors > 0:
+    elif 0 < stored_vectors < expected_vectors:
         status["status"] = "partial"
         status["reason"] = "vector_store_returned_fewer_ids"
     else:
         status["status"] = "failed"
-        status["reason"] = "vector_store_returned_no_ids"
+        status["reason"] = "vector_store_returned_no_ids" if stored_vectors == 0 else "invalid_vector_store_count"
 
 
 def _index_manual_import_vectors(
@@ -770,54 +770,73 @@ def _index_manual_import_vectors(
     events: list[KgSourceEvent],
     entities: list[KgEntity],
     enabled: bool,
-) -> dict[str, Any]:
+) -> _ManualVectorStatus:
     status = _initial_manual_vector_status()
     if not enabled:
         status["reason"] = "disabled_by_request"
         return status
 
-    try:
-        indexer = Indexer(db)
-        event_enabled = indexer._resolve_event_vector_enabled(None)
-        entity_enabled = indexer._resolve_entity_vector_enabled(None)
-        if not event_enabled and not entity_enabled:
-            status["reason"] = "disabled_by_settings"
-            return status
-
-        embedding_jobs = _collect_manual_embedding_jobs(
-            events=events,
-            entities=entities,
-            event_enabled=event_enabled,
-            entity_enabled=entity_enabled,
-        )
-        _embed_manual_vector_jobs(
-            db=db,
-            indexer=indexer,
-            tenant_id=tenant_id,
-            document=document,
-            jobs=embedding_jobs,
-            status=status,
-        )
-        event_vector_ids, entity_vector_ids, expected_vectors = _index_manual_vector_candidates(
-            indexer=indexer,
-            events=events,
-            entities=entities,
-            event_enabled=event_enabled,
-            entity_enabled=entity_enabled,
-        )
-
-        status["event_vectors"] = len(event_vector_ids)
-        status["entity_vectors"] = len(entity_vector_ids)
-        stored_vectors = len(event_vector_ids) + len(entity_vector_ids)
-        _set_manual_vector_status(status, expected_vectors=expected_vectors, stored_vectors=stored_vectors)
+    document_id = document.id
+    indexer = Indexer(db)
+    event_enabled = indexer._resolve_event_vector_enabled(None)
+    entity_enabled = indexer._resolve_entity_vector_enabled(None)
+    if not event_enabled and not entity_enabled:
+        status["reason"] = "disabled_by_settings"
         return status
+
+    embedding_jobs = _collect_manual_embedding_jobs(
+        events=events,
+        entities=entities,
+        event_enabled=event_enabled,
+        entity_enabled=entity_enabled,
+    )
+    try:
+        vectors = _embed_manual_vector_jobs(jobs=embedding_jobs)
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Manual KG vector indexing failed document=%s: %s", getattr(document, "id", None), str(exc)[:300]
-        )
+        logger.warning("Manual KG embedding failed document=%s: %s", document_id, str(exc)[:300])
         status["status"] = "failed"
         status["error"] = str(exc)[:500]
         return status
+
+    for (kind, row, attr, _text), vector in zip(embedding_jobs, vectors, strict=True):
+        setattr(row, attr, vector)
+        counter: Literal["events_embedded", "entities_embedded"] = (
+            "events_embedded" if kind == "event" else "entities_embedded"
+        )
+        status[counter] += 1
+    if embedding_jobs:
+        db.flush()
+
+    event_candidates, entity_candidates = _manual_vector_candidates(
+        events=events,
+        entities=entities,
+        event_enabled=event_enabled,
+        entity_enabled=entity_enabled,
+    )
+    expected_vectors = len(event_candidates) + len(entity_candidates)
+    for channel, adapter, candidates in (
+        ("event_vectors", indexer._event_vector, event_candidates),
+        ("entity_vectors", indexer._entity_vector, entity_candidates),
+    ):
+        if not candidates:
+            continue
+        items = [item for item, _vector in candidates]
+        embeddings = [vector for _item, vector in candidates]
+        try:
+            vector_ids = adapter.add_vectors(items, embeddings=embeddings)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Manual KG vector indexing failed document=%s: %s", document_id, str(exc)[:300])
+            status["status"] = "partial" if status["event_vectors"] + status["entity_vectors"] else "failed"
+            status["error"] = str(exc)[:500]
+            return status
+        status[channel] = len(vector_ids)
+        if len(vector_ids) > len(candidates):
+            status["status"] = "failed"
+            status["reason"] = "invalid_vector_store_count"
+            return status
+    stored_vectors = status["event_vectors"] + status["entity_vectors"]
+    _set_manual_vector_status(status, expected_vectors=expected_vectors, stored_vectors=stored_vectors)
+    return status
 
 
 def _delete_manual_import_vectors(
@@ -828,14 +847,11 @@ def _delete_manual_import_vectors(
 ) -> None:
     if not event_ids and not entity_ids:
         return
-    try:
-        indexer = Indexer(db)
-        if event_ids:
-            indexer._event_vector.delete([str(event_id) for event_id in event_ids])
-        if entity_ids:
-            indexer._entity_vector.delete([str(entity_id) for entity_id in entity_ids])
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete manual KG vectors: %s", str(exc)[:300])
+    indexer = Indexer(db)
+    if event_ids:
+        indexer._event_vector.delete([str(event_id) for event_id in event_ids])
+    if entity_ids:
+        indexer._entity_vector.delete([str(entity_id) for entity_id in entity_ids])
 
 
 def _create_document(
@@ -845,6 +861,7 @@ def _create_document(
     dataset: Dataset,
     account_id: str,
     normalized: _NormalizedImport,
+    stats: KGManualImportStats,
 ) -> Document:
     document_id = _stable_uuid("document", f"{tenant_id}|{normalized.import_id}|{normalized.pipeline_hash}")
     filename = f"{normalized.name}.manual-kg.json"
@@ -855,7 +872,7 @@ def _create_document(
         "pipeline_hash": normalized.pipeline_hash,
         "format": MANUAL_KG_FORMAT,
         "import_name": normalized.name,
-        "import_stats": normalized.stats().model_dump(),
+        "import_stats": stats.model_dump(),
     }
     document = Document(
         id=document_id,
@@ -1175,13 +1192,12 @@ def _finalize_manual_import_document(
     *,
     tenant_id: UUID,
     document: Document,
-    normalized: _NormalizedImport,
     state: _ManualImportWriteState,
     entity_result: _EntityInsertResult,
     inserted_relations: int,
 ) -> dict[str, int]:
     total_chars = _document_content_size(db, tenant_id=tenant_id, document=document)
-    document.chunk_count = int(state.chunk_index)
+    document.chunk_count = state.chunk_index
     document.total_characters = total_chars
     document.file_size = total_chars
     inserted = {
@@ -1192,7 +1208,6 @@ def _finalize_manual_import_document(
         "relations": inserted_relations,
     }
     meta = dict(document.doc_metadata or {})
-    meta["import_stats"] = normalized.stats().model_dump()
     meta["inserted"] = inserted
     document.doc_metadata = meta
     return inserted
@@ -1210,7 +1225,7 @@ def _commit_and_index_manual_import(
     payload: KGManualImportRequest,
     state: _ManualImportWriteState,
     entity_by_key: dict[str, KgEntity],
-) -> tuple[dict[str, int], dict[str, Any]]:
+) -> tuple[dict[str, int], _ManualVectorStatus]:
     db.commit()
     vector_status = _index_manual_import_vectors(
         db=db,
@@ -1222,8 +1237,8 @@ def _commit_and_index_manual_import(
     )
     meta = dict(document.doc_metadata or {})
     inserted = dict(meta.get("inserted") or {})
-    inserted["event_vectors"] = int(vector_status.get("event_vectors") or 0)
-    inserted["entity_vectors"] = int(vector_status.get("entity_vectors") or 0)
+    inserted["event_vectors"] = vector_status["event_vectors"]
+    inserted["entity_vectors"] = vector_status["entity_vectors"]
     meta["inserted"] = inserted
     meta["vector_index"] = vector_status
     document.doc_metadata = meta
@@ -1257,6 +1272,9 @@ def apply_manual_import(
             status_code=409, detail="Manual KG import_id already exists. Use replace_existing=true to replace it."
         )
 
+    if existing_doc:
+        assert_document_writable_for_lifecycle(db, tenant_id=tenant_id, account_id=account_id, document=existing_doc)
+
     dataset = _ensure_import_dataset(db=db, tenant_id=tenant_id, account_id=account_id, payload=payload)
     if existing_doc:
         _delete_import_rows(
@@ -1264,12 +1282,14 @@ def apply_manual_import(
         )
         db.flush()
 
+    stats = normalized.stats()
     document = _create_document(
         db,
         tenant_id=tenant_id,
         dataset=dataset,
         account_id=account_id,
         normalized=normalized,
+        stats=stats,
     )
 
     entity_result = _insert_manual_entities(
@@ -1297,7 +1317,6 @@ def apply_manual_import(
         db,
         tenant_id=tenant_id,
         document=document,
-        normalized=normalized,
         state=write_state,
         entity_result=entity_result,
         inserted_relations=inserted_relations,
@@ -1318,7 +1337,7 @@ def apply_manual_import(
         valid=True,
         dataset_id=dataset.id,
         document_id=document.id,
-        stats=normalized.stats(),
+        stats=stats,
         issues=normalized.issues[:200],
         inserted=inserted,
         vector_index=vector_status,
@@ -1347,7 +1366,7 @@ def list_manual_imports(
     for doc in rows:
         if doc.dataset_id:
             dataset = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == doc.dataset_id).first()
-            if not dataset or not DatasetService.check_dataset_permission(db, dataset, account_id):
+            if not dataset or not dataset_service.check_dataset_permission(db, dataset, account_id):
                 continue
         meta = doc.doc_metadata or {}
         items.append(

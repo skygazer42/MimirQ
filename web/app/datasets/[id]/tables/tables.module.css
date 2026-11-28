@@ -1,0 +1,4 @@
+.tableRow.tableRow[data-selected='true'] {
+  background: hsl(var(--muted));
+  box-shadow: inset 3px 0 hsl(var(--foreground) / 0.4);
+}

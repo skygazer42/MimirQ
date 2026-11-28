@@ -1,18 +1,18 @@
 'use client'
-
-import { useState, type ReactNode } from 'react'
-import { Activity, Download, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Activity, Download, RefreshCw, ShieldCheck } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
-
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Panel } from '@/components/ui/panel'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
-import { observabilityApi } from '@/lib/api'
+import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
+import { boundedNumberDraft } from '@/lib/number-draft-schema'
 import { detachPromise } from '@/lib/utils'
 
 type ResultState = {
@@ -20,133 +20,258 @@ type ResultState = {
   payload: unknown
 }
 
-function downloadArrayBuffer(data: ArrayBuffer, filename: string) {
-  const blob = new Blob([data], { type: 'application/jsonl;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+const MAX_WINDOW_MINUTES = 7 * 24 * 60
+const MAX_PERF_ITERATIONS = 200
+const metricsWindowSchema = boundedNumberDraft('时间窗口', 1, MAX_WINDOW_MINUTES).refine(Number.isInteger)
+const perfIterationsSchema = boundedNumberDraft('性能迭代次数', 1, MAX_PERF_ITERATIONS).refine(Number.isInteger)
 
-export function ObservabilityOpsPanel() {
+export function ObservabilityOpsPanel({ initialWindowMinutes }: Readonly<{ initialWindowMinutes: number }>) {
   const [datasetId, setDatasetId] = useState('')
   const [documentId, setDocumentId] = useState('')
   const [driftItemId, setDriftItemId] = useState('')
   const [resolutionNote, setResolutionNote] = useState('')
-  const [windowMinutes, setWindowMinutes] = useState(60)
-  const [iterations, setIterations] = useState(3)
+  const [windowMinutes, setWindowMinutes] = useState(() => String(initialWindowMinutes))
+  const [iterations, setIterations] = useState('3')
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<ResultState | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const activeActionRef = useRef<symbol | null>(null)
+  useLayoutEffect(
+    () => () => {
+      activeActionRef.current = null
+    },
+    [],
+  )
 
-  async function runAction(key: string, title: string, action: () => Promise<unknown>) {
+  async function runAction(key: string, title: string, action: (ownsAction: () => boolean) => Promise<unknown>) {
+    if (activeActionRef.current !== null) return
+    const request = Symbol()
+    const sessionKey = getAuthSessionKey()
+    activeActionRef.current = request
+    const ownsAction = () => activeActionRef.current === request && getAuthSessionKey() === sessionKey
     setBusy(key)
+    setActionError(null)
     try {
-      const payload = await action()
+      const payload = await action(ownsAction)
+      if (!ownsAction()) return
       setResult({ title, payload })
-      toast.success(`${title}完成`)
+      toast.success(key === 'tail' ? '指标日志下载已开始' : `${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      if (ownsAction()) setActionError(formatApiError(error, `${title}失败`))
     } finally {
-      setBusy(null)
+      if (activeActionRef.current === request) {
+        activeActionRef.current = null
+        setBusy(null)
+      }
     }
   }
 
-  const dataset = datasetId.trim()
-  const doc = documentId.trim()
-  const actionButtonClass = 'h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold'
+  function metricsWindowParams() {
+    const parsedWindow = metricsWindowSchema.safeParse(windowMinutes)
+    if (!parsedWindow.success) throw new Error(`时间窗口必须是 1 到 ${MAX_WINDOW_MINUTES} 的整数`)
+    return { window_minutes: parsedWindow.data }
+  }
+
+  const scopedDatasetId = datasetId === '' ? undefined : datasetId
+  const documentFilter = documentId.trim()
+  const driftTargetId = driftItemId.trim()
 
   return (
-    <Panel padding="md" className="mt-4 border-border/70 bg-card/95">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">观测运维操作</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            聚合在线质量、成本、依赖、队列和 SLO；文档级漂移、Trace 上报和 drift 解决放到高级参数。
-          </p>
-        </div>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
-      </div>
-
-      <div className="mt-3 grid gap-2 md:grid-cols-4">
+    <fieldset disabled={busy !== null} className="space-y-5">
+      <legend className="sr-only">观测运维操作</legend>
+      <div className="grid gap-4 md:grid-cols-3">
         <Field label="时间窗口（分钟）">
-          <Input value={String(windowMinutes)} onChange={(event) => setWindowMinutes(Number.parseInt(event.target.value || '0', 10) || 60)} className="h-8 text-xs" inputMode="numeric" />
+          <Input value={windowMinutes} onChange={(event) => setWindowMinutes(event.target.value)} inputMode="numeric" />
         </Field>
-        <DatasetSelectField value={datasetId} onChange={setDatasetId} label="数据集范围" allowAll />
+        <DatasetSelectField
+          value={datasetId}
+          onChange={setDatasetId}
+          label="数据集范围"
+          allowAll
+          className="space-y-2"
+          labelClassName="text-[13px]"
+          triggerClassName="h-11 text-base sm:h-9 sm:text-sm"
+        />
         <Field label="性能迭代次数">
-          <Input value={String(iterations)} onChange={(event) => setIterations(Number.parseInt(event.target.value || '0', 10) || 3)} className="h-8 text-xs" inputMode="numeric" />
+          <Input value={iterations} onChange={(event) => setIterations(event.target.value)} inputMode="numeric" />
         </Field>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <ActionButton icon={Activity} label="在线质量" busy={busy === 'online'} disabled={Boolean(busy)} onClick={() => runAction('online', '在线质量摘要', () => observabilityApi.getOnlineQualitySummary({ window_minutes: windowMinutes }))} />
-        <ActionButton icon={Activity} label="成本归因" busy={busy === 'cost'} disabled={Boolean(busy)} onClick={() => runAction('cost', 'RAG 成本归因', () => observabilityApi.getRagCostAttribution({ window_minutes: windowMinutes }))} />
-        <Button variant="outline" className={actionButtonClass} disabled={Boolean(busy)} onClick={() => detachPromise(runAction('tail', '下载 metrics tail', async () => {
-          const data = await observabilityApi.getRagMetricsTail({ window_minutes: windowMinutes })
-          downloadArrayBuffer(data, `rag-metrics-tail.${Date.now()}.jsonl`)
-          return { bytes: data.byteLength }
-        }))}>
-          {busy === 'tail' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Download className="h-3.5 w-3.5" />}
-          Metrics Tail
-        </Button>
-        <ActionButton icon={ShieldCheck} label="依赖健康" busy={busy === 'deps'} disabled={Boolean(busy)} onClick={() => runAction('deps', '依赖诊断快照', () => observabilityApi.getDepsDiagnosticsSnapshot())} />
-        <ActionButton icon={ShieldCheck} label="定时任务" busy={busy === 'jobs'} disabled={Boolean(busy)} onClick={() => runAction('jobs', '定时任务新鲜度', () => observabilityApi.getPeriodicJobFreshness())} />
-        <ActionButton icon={ShieldCheck} label="任务队列" busy={busy === 'queue'} disabled={Boolean(busy)} onClick={() => runAction('queue', '任务队列快照', () => observabilityApi.getTaskQueueSnapshot({ force_refresh: true }))} />
-        <ActionButton icon={ShieldCheck} label="SLO" busy={busy === 'slo'} disabled={Boolean(busy)} onClick={() => runAction('slo', 'SLO 快照', () => observabilityApi.getSloSnapshot())} />
-        <ActionButton icon={RefreshCw} label="失效缓存" busy={busy === 'cache'} disabled={Boolean(busy) || !dataset} onClick={() => runAction('cache', '数据集缓存失效', () => observabilityApi.invalidateDatasetCache(dataset))} />
-        <ActionButton icon={Activity} label="Index Drift" busy={busy === 'index'} disabled={Boolean(busy)} onClick={() => runAction('index', 'Index drift 列表', () => observabilityApi.listIndexDrift({ dataset_id: dataset || undefined, limit: 20 }))} />
+        <ActionButton
+          icon={Activity}
+          label="在线质量"
+          busy={busy === 'online'}
+          onClick={() =>
+            runAction('online', '在线质量摘要', () => observabilityApi.getOnlineQualitySummary(metricsWindowParams()))
+          }
+        />
+        <ActionButton
+          icon={Activity}
+          label="成本归因"
+          busy={busy === 'cost'}
+          onClick={() =>
+            runAction('cost', 'RAG 成本归因', () => observabilityApi.getRagCostAttribution(metricsWindowParams()))
+          }
+        />
+        <ActionButton
+          icon={Download}
+          label="Metrics Tail"
+          busy={busy === 'tail'}
+          onClick={() =>
+            runAction('tail', '指标日志导出', async (ownsAction) => {
+              const data = await observabilityApi.getRagMetricsTail(metricsWindowParams())
+              if (!ownsAction()) return
+              downloadBlob(`rag-metrics-tail.${Date.now()}.jsonl.gz`, new Blob([data], { type: 'application/gzip' }))
+              return { bytes: data.byteLength }
+            })
+          }
+        />
+        <ActionButton
+          icon={ShieldCheck}
+          label="依赖健康"
+          busy={busy === 'deps'}
+          onClick={() => runAction('deps', '依赖诊断快照', () => observabilityApi.getDepsDiagnosticsSnapshot())}
+        />
+        <ActionButton
+          icon={ShieldCheck}
+          label="定时任务"
+          busy={busy === 'jobs'}
+          onClick={() => runAction('jobs', '定时任务新鲜度', () => observabilityApi.getPeriodicJobFreshness())}
+        />
+        <ActionButton
+          icon={ShieldCheck}
+          label="任务队列"
+          busy={busy === 'queue'}
+          onClick={() =>
+            runAction('queue', '任务队列快照', () => observabilityApi.getTaskQueueSnapshot({ force_refresh: true }))
+          }
+        />
+        <ActionButton
+          icon={ShieldCheck}
+          label="SLO"
+          busy={busy === 'slo'}
+          onClick={() => runAction('slo', 'SLO 快照', () => observabilityApi.getSloSnapshot())}
+        />
+        <ActionButton
+          icon={RefreshCw}
+          label="失效缓存"
+          busy={busy === 'cache'}
+          disabled={datasetId === ''}
+          onClick={() => runAction('cache', '数据集缓存失效', () => observabilityApi.invalidateDatasetCache(datasetId))}
+        />
+        <ActionButton
+          icon={Activity}
+          label="Index Drift"
+          busy={busy === 'index'}
+          onClick={() =>
+            runAction('index', 'Index drift 列表', () =>
+              observabilityApi.listIndexDrift({ dataset_id: scopedDatasetId, limit: 20 }),
+            )
+          }
+        />
       </div>
 
-      <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">仅在排查单文档 embedding drift、性能探针、手动 trace 或解决 index drift 时使用。</p>
+      <details className="border-t border-border pt-4">
+        <summary className="cursor-pointer text-[13px] font-medium text-foreground">高级参数</summary>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
           <Field label="文档标识">
-            <Input value={documentId} onChange={(event) => setDocumentId(event.target.value)} className="h-8 font-mono text-xs" placeholder="Embedding drift 可选" />
+            <Input
+              value={documentId}
+              onChange={(event) => setDocumentId(event.target.value)}
+              className="font-mono"
+              placeholder="Embedding drift 可选"
+            />
           </Field>
           <Field label="Drift 项">
-            <Input value={driftItemId} onChange={(event) => setDriftItemId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input value={driftItemId} onChange={(event) => setDriftItemId(event.target.value)} className="font-mono" />
           </Field>
           <Field label="处理备注">
-            <Input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} className="h-8 text-xs" />
+            <Input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} />
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <ActionButton icon={Activity} label="Embedding Drift" busy={busy === 'embedding'} disabled={Boolean(busy)} onClick={() => runAction('embedding', 'Embedding drift 快照', () => observabilityApi.getEmbeddingDriftSnapshot({ dataset_id: dataset || undefined, document_id: doc || undefined }))} />
-          <ActionButton icon={Activity} label="Perf Suite" busy={busy === 'perf'} disabled={Boolean(busy)} onClick={() => runAction('perf', '性能套件', () => observabilityApi.runPerfSuite({ iterations, timeout_sec: 2 }))} />
-          <ActionButton icon={Activity} label="Trace 上报" busy={busy === 'frontend-trace'} disabled={Boolean(busy)} onClick={() => runAction('frontend-trace', '前端 Trace 上报', async () => {
-            await observabilityApi.reportFrontendTrace({
-              event: 'manual_observability_probe',
-              duration_ms: 1,
-              component: 'ObservabilityOpsPanel',
-              page: '/observability',
-              input_node_count: 0,
-              input_link_count: 0,
-              output_node_count: 0,
-              output_link_count: 0,
-              active_filter_count: 0,
-            })
-            return { reported: true, event: 'manual_observability_probe' }
-          })} />
-          <Button variant="outline" className={actionButtonClass} disabled={Boolean(busy) || !driftItemId.trim()} onClick={() => detachPromise(runAction('resolve-index', '解决 Index drift', () => observabilityApi.resolveIndexDrift(driftItemId.trim(), { resolution_note: resolutionNote.trim() })))}>
-            <ShieldCheck className="h-3.5 w-3.5" />
-            标记已解决
-          </Button>
+          <ActionButton
+            icon={Activity}
+            label="Embedding Drift"
+            busy={busy === 'embedding'}
+            onClick={() =>
+              runAction('embedding', 'Embedding drift 快照', () =>
+                observabilityApi.getEmbeddingDriftSnapshot({
+                  dataset_id: scopedDatasetId,
+                  document_id: documentFilter === '' ? undefined : documentFilter,
+                }),
+              )
+            }
+          />
+          <ActionButton
+            icon={Activity}
+            label="Perf Suite"
+            busy={busy === 'perf'}
+            onClick={() =>
+              runAction('perf', '性能套件', () => {
+                const count = perfIterationsSchema.safeParse(iterations)
+                if (!count.success) throw new Error(`性能迭代次数必须是 1 到 ${MAX_PERF_ITERATIONS} 的整数`)
+                return observabilityApi.runPerfSuite({ iterations: count.data, timeout_sec: 2 })
+              })
+            }
+          />
+          <ActionButton
+            icon={Activity}
+            label="Trace 上报"
+            busy={busy === 'frontend-trace'}
+            onClick={() =>
+              runAction('frontend-trace', '前端 Trace 上报', async () => {
+                await observabilityApi.reportFrontendTrace({
+                  event: 'manual_observability_probe',
+                  duration_ms: 1,
+                  component: 'ObservabilityOpsPanel',
+                  page: '/observability',
+                  input_node_count: 0,
+                  input_link_count: 0,
+                  output_node_count: 0,
+                  output_link_count: 0,
+                  active_filter_count: 0,
+                })
+                return { reported: true, event: 'manual_observability_probe' }
+              })
+            }
+          />
+          <ActionButton
+            icon={ShieldCheck}
+            label="标记已解决"
+            busy={busy === 'resolve-index'}
+            disabled={driftTargetId === ''}
+            onClick={() =>
+              runAction('resolve-index', '解决 Index drift', () =>
+                observabilityApi.resolveIndexDrift(driftTargetId, { resolution_note: resolutionNote.trim() }),
+              )
+            }
+          />
         </div>
       </details>
 
-      <OperationResultPanel className="mt-3" title="观测运维结果" result={result} emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。" />
-    </Panel>
+      {result === null ? (
+        <p className="text-[13px] text-muted-foreground">尚无执行结果。</p>
+      ) : (
+        <OperationResultPanel
+          className="rounded-none border-0 bg-transparent p-0"
+          title="观测运维结果"
+          result={result}
+          emptyMessage="尚无执行结果。"
+        />
+      )}
+      {actionError ? <WorkspaceNotice placement="floating">{actionError}</WorkspaceNotice> : null}
+    </fieldset>
   )
 }
 
 function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+    <label className="block space-y-2 text-[13px]">
+      <span className="font-medium text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </label>
   )
 }
 
@@ -158,15 +283,21 @@ function ActionButton({
   onClick,
 }: Readonly<{
   busy: boolean
-  disabled: boolean
-  icon: LucideIcon
+  disabled?: boolean
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
+    <LoadingButton
+      variant="outline"
+      className="gap-2 text-[13px]"
+      loading={busy}
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
+      <Icon className="size-4" />
       {label}
-    </Button>
+    </LoadingButton>
   )
 }

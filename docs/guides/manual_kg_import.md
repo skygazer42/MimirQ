@@ -1,8 +1,8 @@
 # Manual KG Import
 
-MimirQ supports importing a manually governed knowledge graph into the existing
+Ragvia supports importing a manually governed knowledge graph into the existing
 KG tables. Domain-specific extraction and alignment should happen outside the
-core application; MimirQ only validates, stores, scopes, queries, and rolls back
+core application; Ragvia only validates, stores, scopes, queries, and rolls back
 curated graph rows.
 
 ## Payload

@@ -2,7 +2,12 @@ import path from 'node:path'
 
 import { expect, test, type Page, type Route } from '@playwright/test'
 
-import { installCommonApiMocks, installDeterministicRandom, type EnterpriseTelemetryMockState } from './enterprise-quality-telemetry.helpers'
+import {
+  fulfillChatStream,
+  installCommonApiMocks,
+  installDeterministicRandom,
+  type EnterpriseTelemetryMockState,
+} from './enterprise-quality-telemetry.helpers'
 
 async function fulfillJson(route: Route, payload: unknown) {
   await route.fulfill({
@@ -10,6 +15,11 @@ async function fulfillJson(route: Route, payload: unknown) {
     contentType: 'application/json',
     body: JSON.stringify(payload),
   })
+}
+
+async function openAppearance(page: Page) {
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
+  await page.getByRole('button', { name: '界面外观', exact: true }).click()
 }
 
 async function documentHorizontalOverflow(page: Page) {
@@ -53,33 +63,24 @@ async function captureGuideScreenshot(page: Page, filename: string) {
     document.querySelectorAll('nextjs-portal').forEach((portal) => portal.remove())
   })
   await page.screenshot({
-    path: path.resolve(__dirname, '../../docs/images/screenshots', filename),
+    path: path.join(
+      process.env.CAPTURE_DOCS_SCREENSHOTS_DIR || path.resolve(__dirname, '../../docs/images/screenshots'),
+      filename,
+    ),
     fullPage: false,
   })
 }
 
 async function expectReadableManagementHeaders(
   page: Page,
-  surfaces: ReadonlyArray<{ route: string; heading: string }>
+  surfaces: ReadonlyArray<{ route: string; heading: string }>,
 ) {
   for (const surface of surfaces) {
     await page.goto(surface.route, { waitUntil: 'domcontentloaded' })
 
-    if (surface.route === '/evaluations') {
-      const heading = page.getByRole('heading', { name: surface.heading }).first()
-      await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 60_000 })
-      await expect(
-        heading.locator('xpath=ancestor::section[contains(@class, "overflow-hidden")][1]'),
-        `${surface.route} header shell`
-      ).toBeVisible({ timeout: 15_000 })
-    } else {
-      const header = page.getByTestId('page-title-shell').first()
-      await expect(header, `${surface.route} header shell`).toBeVisible({ timeout: 60_000 })
-      await expect(
-        header.getByRole('heading', { name: surface.heading }),
-        `${surface.route} heading`
-      ).toBeVisible({ timeout: 15_000 })
-    }
+    const heading = page.getByRole('heading', { name: surface.heading, exact: true }).first()
+    await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 60_000 })
+    await expect(heading.locator('xpath=ancestor::header[1]'), `${surface.route} header shell`).toBeVisible()
 
     expect(await documentHorizontalOverflow(page), `${surface.route} page overflow`).toBeLessThanOrEqual(1)
   }
@@ -117,17 +118,20 @@ async function visibleLegacyDarkSurfaceClasses(page: Page) {
 }
 
 async function textAndSemanticForeground(page: Page, selector: string) {
-  return page.locator(selector).first().evaluate((element) => {
-    const probe = document.createElement('span')
-    probe.style.color = 'hsl(var(--foreground))'
-    document.body.appendChild(probe)
-    const result = {
-      actual: window.getComputedStyle(element).color,
-      expected: window.getComputedStyle(probe).color,
-    }
-    probe.remove()
-    return result
-  })
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((element) => {
+      const probe = document.createElement('span')
+      probe.style.color = 'hsl(var(--foreground))'
+      document.body.appendChild(probe)
+      const result = {
+        actual: window.getComputedStyle(element).color,
+        expected: window.getComputedStyle(probe).color,
+      }
+      probe.remove()
+      return result
+    })
 }
 
 async function installManagementSurfaceMocks(page: Page) {
@@ -159,6 +163,27 @@ async function installManagementSurfaceMocks(page: Page) {
 
   await installDeterministicRandom(page)
   await installCommonApiMocks(page, state)
+
+  await page.route('**/api/v1/rbac/me', (route) =>
+    fulfillJson(route, {
+      tenant_id: '00000000-0000-0000-0000-000000000000',
+      account_id: 'demo',
+      role: 'owner',
+      permissions: ['settings.read', 'settings.write', 'observability.read', 'usage.read', 'audit.read'],
+      navigation_user_visible_modules: [],
+      is_active: true,
+      is_current: true,
+    }),
+  )
+  await page.route('**/api/v1/settings', (route) =>
+    fulfillJson(route, {
+      feature_flags: { kg_enabled: false },
+      llm: { api_key: '', api_base: '', model: '', temperature: 0.7, timeout: 60 },
+      embedding: { provider: 'openai_compatible', model: '', api_key: '', api_base: '' },
+      rag: { retrieval_top_k: 5, similarity_threshold: 0.7 },
+      navigation: { user_visible_modules: [] },
+    }),
+  )
 
   await page.route('**/api/v1/datasets**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
@@ -219,46 +244,52 @@ async function installManagementSurfaceMocks(page: Page) {
     })
   })
 
+  const evaluationConversationId = '50665a37-631c-4916-86b7-1fe300ebdc2f'
   await page.route('**/api/v1/chat/conversations**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     return fulfillJson(route, {
       items: [
         {
-          id: 'conv-smoke',
+          id: evaluationConversationId,
           title: 'Smoke Conversation',
+          message_count: 3,
           created_at: '2026-04-09T00:00:00Z',
           updated_at: '2026-04-09T00:00:00Z',
         },
       ],
       total: 1,
+      returned: 1,
+      has_more: false,
+      next_skip: null,
     })
   })
 
+  const evaluationRun = {
+    id: 'fd13b91e-3ca8-42d3-8c40-e9742573056e',
+    conversation_id: evaluationConversationId,
+    status: 'completed',
+    metrics: ['faithfulness', 'response_relevancy'],
+    params: {},
+    summary: { faithfulness: 0.92 },
+    error_message: null,
+    created_at: '2026-04-09T00:00:00Z',
+    started_at: '2026-04-09T00:00:00Z',
+    finished_at: '2026-04-09T00:01:00Z',
+  }
   await page.route('**/api/v1/evaluations/ragas/runs**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
-    return fulfillJson(route, {
-      items: [
-        {
-          id: 'run-smoke',
-          conversation_id: 'conv-smoke',
-          status: 'completed',
-          metrics: ['faithfulness', 'response_relevancy'],
-          params: {},
-          summary: { faithfulness: 0.92 },
-          created_at: '2026-04-09T00:00:00Z',
-        },
-      ],
-      total: 1,
-    })
+    return fulfillJson(route, { items: [evaluationRun], total: 1 })
   })
 
   await page.route('**/api/v1/evaluations/ragas/conversation-readiness', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
     return fulfillJson(route, {
+      total: 1,
       items: [
         {
-          conversation_id: 'conv-smoke',
-          is_known: true,
+          conversation_id: evaluationConversationId,
+          assistant_turns: 1,
+          evaluable_turns: 1,
           is_evaluable: true,
           citations_count: 2,
         },
@@ -266,29 +297,22 @@ async function installManagementSurfaceMocks(page: Page) {
     })
   })
 
-  await page.route('**/api/v1/evaluations/ragas/runs/run-smoke**', async (route) => {
+  await page.route(`**/api/v1/evaluations/ragas/runs/${evaluationRun.id}**`, async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
-    return fulfillJson(route, {
-      run: {
-        id: 'run-smoke',
-        conversation_id: 'conv-smoke',
-        status: 'completed',
-        metrics: ['faithfulness', 'response_relevancy'],
-        params: {},
-        summary: { faithfulness: 0.92 },
-        created_at: '2026-04-09T00:00:00Z',
-      },
-      items: [],
-    })
+    return fulfillJson(route, { run: evaluationRun, items: [] })
   })
 
   await page.route('**/api/v1/usage/chat/tokens/summary**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     return fulfillJson(route, {
+      window_start: '2026-04-08T00:00:00Z',
+      window_end: '2026-04-09T00:00:00Z',
+      total_assistant_messages: 4,
       total_assistant_tokens: 128,
       by_dataset: [
         {
           dataset_id: 'ds-smoke',
+          assistant_messages: 4,
           assistant_tokens: 128,
         },
       ],
@@ -298,6 +322,8 @@ async function installManagementSurfaceMocks(page: Page) {
   await page.route('**/api/v1/usage/chat/cost/summary**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     return fulfillJson(route, {
+      window_start: '2026-04-08T00:00:00Z',
+      window_end: '2026-04-09T00:00:00Z',
       total_llm_total_tokens: 256,
       total_llm_prompt_tokens: 160,
       total_llm_completion_tokens: 96,
@@ -309,6 +335,7 @@ async function installManagementSurfaceMocks(page: Page) {
       by_dataset: [
         {
           dataset_id: 'ds-smoke',
+          assistant_messages: 4,
           llm_total_tokens: 256,
           llm_prompt_tokens: 160,
           llm_completion_tokens: 96,
@@ -326,8 +353,13 @@ async function installManagementSurfaceMocks(page: Page) {
     return fulfillJson(route, {
       enabled: true,
       exceeded: false,
-      used_tokens: 128,
-      max_tokens: 1000,
+      mode: 'block',
+      limit: 1000,
+      used: 128,
+      remaining: 872,
+      window_hours: 24,
+      window_start: '2026-04-08T00:00:00Z',
+      window_end: '2026-04-09T00:00:00Z',
     })
   })
 
@@ -336,13 +368,17 @@ async function installManagementSurfaceMocks(page: Page) {
     return fulfillJson(route, {
       items: [
         {
-          id: 'audit-smoke',
+          id: '0847a411-1b8b-4031-ba0f-eeb3000d0081',
+          tenant_id: '00000000-0000-0000-0000-000000000000',
           action: 'smoke.audit.view',
           actor_id: 'demo',
           resource_type: 'dataset',
           resource_id: 'ds-smoke',
           created_at: '2026-04-09T00:00:00Z',
           request_id: 'req-smoke',
+          ip: null,
+          user_agent: null,
+          details: {},
         },
       ],
       total: 1,
@@ -468,8 +504,8 @@ test.describe('management surfaces smoke', () => {
 
   test('loads prompts page with the managed prompt shell', async ({ page }) => {
     await page.goto('/prompts')
-    await expect(page.getByTestId('page-title-shell').getByText('提示词模板')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('创建模板')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '提示词', exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator('header').getByRole('button', { name: '创建模板', exact: true })).toBeVisible()
   })
 
   test('loads reports page with mocked dataset data', async ({ page }) => {
@@ -480,10 +516,14 @@ test.describe('management surfaces smoke', () => {
 
   test('loads evaluations page with conversation and run data', async ({ page }) => {
     await page.goto('/evaluations')
-    await expect(page.getByRole('heading', { name: '实时会话评分' })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByRole('button', { name: '对话评测' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Golden 评测集' })).toBeVisible()
-    await expect(page.getByRole('combobox').first()).toContainText('Smoke Conversation')
+    await expect(page.getByRole('heading', { name: 'RAG 评测', exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('tab', { name: '对话评测', exact: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Golden 评测集', exact: true })).toBeVisible()
+    const evaluation = page.getByRole('tabpanel', { name: '对话评测', exact: true })
+    await expect(evaluation.getByRole('button', { name: 'Smoke Conversation', exact: true })).toBeVisible()
+    await expect(evaluation.getByRole('button', { name: '开始评测', exact: true })).toBeEnabled()
+    await evaluation.getByRole('button', { name: '运行记录 1', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '运行记录', exact: true })).toContainText('已完成')
   })
 
   test('renders the datasets management header contract', async ({ page }) => {
@@ -491,41 +531,37 @@ test.describe('management surfaces smoke', () => {
     const toolbar = page.getByTestId('datasets-page-toolbar')
     await expect(toolbar).toBeVisible({ timeout: 60_000 })
     await expect(toolbar.getByRole('heading', { name: '数据集' })).toBeVisible()
-    await expect(toolbar.getByText('管理知识库集合与访问权限')).toBeVisible()
-    await expect(toolbar.getByRole('button', { name: '刷新' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '刷新数据集', exact: true })).toBeVisible()
     await expect(toolbar.getByRole('button', { name: '新建数据集' })).toBeVisible()
     expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
   })
 
   test('renders the knowledge workbench header contract', async ({ page }) => {
+    await installCommonApiMocks(page, { uploaded: true, parsingDocuments: [] })
     await page.goto('/knowledge')
     const toolbar = page.getByTestId('knowledge-page-toolbar')
     await expect(toolbar).toBeVisible({ timeout: 60_000 })
-    await expect(toolbar.getByRole('heading', { name: '知识库管理' })).toBeVisible()
-    await expect(toolbar.getByText('管理您的文档资产，构建专属知识大脑')).toBeVisible()
-    await expect(page.getByRole('button', { name: '文档列表' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '检索测试' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '配置' })).toBeVisible()
+    await expect(toolbar.getByRole('heading', { name: '知识库', exact: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /^文档/ })).toBeVisible()
+    await expect(page.getByRole('tab', { name: '检索测试', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '更多筛选', exact: true })).toBeVisible()
+    await expect(toolbar.getByRole('button', { name: '导入文档', exact: true })).toBeVisible()
     expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
   })
 
   test('uses readable semantic foreground titles on custom management headers', async ({ page }) => {
     for (const surface of [
       { route: '/datasets', heading: '数据集' },
-      { route: '/knowledge', heading: '知识库管理' },
-      { route: '/evaluations', heading: '实时会话评分' },
+      { route: '/knowledge', heading: '知识库' },
+      { route: '/evaluations', heading: 'RAG 评测' },
     ] as const) {
       await page.goto(surface.route, { waitUntil: 'domcontentloaded' })
       const heading = page.getByRole('heading', { name: surface.heading }).first()
       await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 60_000 })
 
       const colors = await textAndSemanticForeground(page, `h1:has-text("${surface.heading}")`)
-      expect(colors.actual, `${surface.route} title should use semantic foreground ink`).toBe(
-        colors.expected
-      )
-      expect(colors.actual, `${surface.route} title should stay opaque`).not.toBe(
-        'rgba(0, 0, 0, 0)'
-      )
+      expect(colors.actual, `${surface.route} title should use semantic foreground ink`).toBe(colors.expected)
+      expect(colors.actual, `${surface.route} title should stay opaque`).not.toBe('rgba(0, 0, 0, 0)')
     }
   })
 
@@ -535,19 +571,20 @@ test.describe('management surfaces smoke', () => {
     for (const surface of [
       {
         route: '/knowledge/quarantine',
-        heading: '隔离审核中心',
-        description: '集中复核隔离样本，支持原文预览、规则调参与回放。',
+        heading: '隔离队列',
+        action: '同步隔离队列',
       },
       {
         route: '/knowledge/feedback',
-        heading: '反馈分析中心',
-        description: '汇总反馈与低分原因，定位待回归问题。',
+        heading: '反馈质检',
+        action: '反哺候选',
       },
     ]) {
       await page.goto(surface.route)
       const heading = page.getByRole('heading', { name: surface.heading }).first()
       await expect(heading).toBeVisible({ timeout: 60_000 })
-      await expect(page.getByText(surface.description)).toBeVisible()
+      const header = heading.locator('xpath=ancestor::header[1]')
+      await expect(header.getByRole('button', { name: surface.action, exact: true })).toBeVisible()
       expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
     }
   })
@@ -557,24 +594,20 @@ test.describe('management surfaces smoke', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
 
     await expectReadableManagementHeaders(page, [
-      { route: '/evaluations', heading: '实时会话评分' },
-      { route: '/prompts', heading: '提示词模板' },
-      { route: '/diagnostics', heading: '诊断中心' },
-      { route: '/usage', heading: '用量/配额' },
+      { route: '/evaluations', heading: 'RAG 评测' },
+      { route: '/prompts', heading: '提示词' },
+      { route: '/diagnostics', heading: '诊断' },
+      { route: '/usage', heading: '用量／配额' },
     ])
 
     await page.setViewportSize({ width: 1280, height: 768 })
     await page.goto('/evaluations', { waitUntil: 'domcontentloaded' })
-    const evaluationHeading = page.getByRole('heading', { name: '实时会话评分' }).last()
+    const evaluationHeading = page.getByRole('heading', { name: 'RAG 评测', exact: true })
     await expect(evaluationHeading).toBeVisible({ timeout: 15_000 })
-    const evaluationHero = evaluationHeading.locator(
-      'xpath=ancestor::section[contains(@class, "overflow-hidden")][1]'
-    )
+    const evaluationHero = evaluationHeading.locator('xpath=ancestor::header[1]')
     const evaluationGeometry = await evaluationHero.evaluate((element) => ({
       height: element.getBoundingClientRect().height,
-      pageOverflow:
-        Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) -
-        window.innerWidth,
+      pageOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
     }))
     expect(evaluationGeometry.height).toBeGreaterThan(0)
     expect(evaluationGeometry.pageOverflow).toBeLessThanOrEqual(1)
@@ -588,7 +621,7 @@ test.describe('management surfaces smoke', () => {
       { route: '/audit', heading: '审计日志' },
       { route: '/settings/rbac', heading: '成员权限' },
       { route: '/settings/groups', heading: '组管理' },
-      { route: '/settings', heading: '设置与配置' },
+      { route: '/settings', heading: '系统设置' },
     ])
   })
 
@@ -596,17 +629,14 @@ test.describe('management surfaces smoke', () => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1280, height: 720 })
     await page.goto('/evaluations', { waitUntil: 'domcontentloaded' })
-    await expect(
-      page.getByRole('heading', { name: '实时会话评分' }).first()
-    ).toBeVisible({ timeout: 60_000 })
-    await page.getByRole('button', { name: '切换主题' }).last().click()
-    const darkThemeItem = page.getByRole('menuitem', { name: '深色' })
-    await expect(darkThemeItem).toBeVisible({ timeout: 10_000 })
-    await darkThemeItem.click()
+    await expect(page.getByRole('heading', { name: 'RAG 评测', exact: true })).toBeVisible({ timeout: 60_000 })
+    await openAppearance(page)
+    await page.getByRole('radio', { name: '深色', exact: true }).press('Space')
+    await page.keyboard.press('Escape')
     await expect(page.locator('html')).toHaveClass(/dark/)
 
     for (const surface of [
-      { route: '/evaluations', heading: '实时会话评分' },
+      { route: '/evaluations', heading: 'RAG 评测' },
       { route: '/evaluations/ablations', heading: '检索调参对比' },
       { route: '/reports', heading: '数据报告' },
       { route: '/datasets', heading: '数据集' },
@@ -616,17 +646,118 @@ test.describe('management surfaces smoke', () => {
       await expect(heading).toBeVisible({ timeout: 60_000 })
 
       const legacyClasses = await visibleLegacyDarkSurfaceClasses(page)
-      expect(
-        legacyClasses,
-        `${surface.route} still renders light-only utility classes in dark mode`
-      ).toEqual([])
+      expect(legacyClasses, `${surface.route} still renders light-only utility classes in dark mode`).toEqual([])
 
-      const colors = await textAndSemanticForeground(
-        page,
-        `h1:has-text("${surface.heading}")`
-      )
+      const colors = await textAndSemanticForeground(page, `h1:has-text("${surface.heading}")`)
       expect(colors.actual).toBe(colors.expected)
     }
+  })
+
+  test('keeps appearance surfaces and action colors in sync', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.goto('/datasets', { waitUntil: 'domcontentloaded' })
+    const header = page.getByTestId('datasets-page-toolbar')
+    const create = header.getByRole('button', { name: '新建数据集', exact: true })
+    await expect(create).toBeVisible({ timeout: 60_000 })
+
+    const colors = async () =>
+      page.evaluate(() => {
+        const probe = document.createElement('span')
+        document.body.appendChild(probe)
+        const value = (token: string) => {
+          probe.style.backgroundColor = `hsl(var(${token}))`
+          return getComputedStyle(probe).backgroundColor
+        }
+        const result = {
+          background: value('--background'),
+          sidebar: value('--sidebar-background'),
+          primary: value('--primary'),
+          accent: value('--accent'),
+          accentForeground: value('--accent-foreground'),
+        }
+        probe.remove()
+        return result
+      })
+
+    for (const preset of [
+      { key: 'ocean', label: '暖石默认' },
+      { key: 'neutral', label: '纯白' },
+      { key: 'classic', label: '浅灰' },
+      { key: 'earth', label: '米白' },
+    ]) {
+      await openAppearance(page)
+      const radio = page.getByRole('radio', { name: preset.label, exact: true })
+      await expect(radio).toBeVisible()
+      await radio.press('Space')
+      await page.keyboard.press('Escape')
+      await expect(page.locator('html')).toHaveAttribute('data-surface-theme', preset.key)
+      const expected = await colors()
+      await expect(page.getByRole('navigation', { name: '主导航', exact: true })).toHaveCSS(
+        'background-color',
+        expected.sidebar,
+      )
+      await expect(header).toHaveCSS('background-color', expected.background)
+      await expect(create).toHaveCSS('background-color', expected.accent)
+      await expect(create).toHaveCSS('color', expected.accentForeground)
+    }
+
+    const before = await colors()
+    await openAppearance(page)
+    await page.getByRole('radio', { name: '靛蓝', exact: true }).press('Space')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('html')).toHaveAttribute('data-theme-color', '4f46e5')
+    await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
+    const updated = await colors()
+    expect(updated.accent).not.toBe(before.accent)
+    expect(updated.background).toBe(before.background)
+    await expect(create).toHaveCSS('background-color', updated.accent)
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(create).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
+    await expect(page.locator('html')).toHaveAttribute('data-theme-color', '4f46e5')
+    await expect(create).toHaveCSS('background-color', updated.accent)
+
+    await page.goto('/knowledge/ingestion', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
+    await page.locator('[data-ingestion-import-trigger]').click()
+    const dialog = page.getByRole('dialog', { name: '导入文档', exact: true })
+    await expect(dialog).toBeVisible()
+    const settings = dialog.locator('[data-ingestion-context-panel]')
+    await expect(settings.getByRole('combobox', { name: '目标数据集', exact: true })).toContainText('Smoke Dataset')
+    await dialog.getByLabel('选择待入库文件', { exact: true }).setInputFiles({
+      name: 'theme-check.docx',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('UI appearance test only'),
+    })
+    const submit = dialog.locator('[data-ingestion-submit]')
+    await expect(submit).toBeEnabled()
+    const expected = await colors()
+    await expect(submit).toHaveCSS('background-color', expected.accent)
+    await expect(settings.locator('input[value="upload_only"]')).toHaveCSS('accent-color', expected.accent)
+  })
+
+  test('synchronizes appearance controls between open pages', async ({ page, context }) => {
+    test.setTimeout(180_000)
+    await page.goto('/datasets', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByTestId('datasets-page-toolbar')).toBeVisible({ timeout: 60_000 })
+    await openAppearance(page)
+    await page.getByRole('radio', { name: '米白', exact: true }).press('Space')
+
+    const other = await context.newPage()
+    await installManagementSurfaceMocks(other)
+    await other.goto('/datasets', { waitUntil: 'domcontentloaded' })
+    await expect(other.getByTestId('datasets-page-toolbar')).toBeVisible({ timeout: 60_000 })
+    await openAppearance(other)
+    await expect(other.getByRole('radio', { name: '米白', exact: true })).toBeChecked()
+    await page.getByRole('radio', { name: '纯白', exact: true }).press('Space')
+    await page.getByRole('radio', { name: '靛蓝', exact: true }).press('Space')
+    await expect(other.locator('html')).toHaveAttribute('data-surface-theme', 'neutral')
+    await expect(other.locator('html')).toHaveAttribute('data-theme-color', '4f46e5')
+    await expect(other.getByRole('radio', { name: '纯白', exact: true })).toBeChecked()
+    await expect(other.getByRole('radio', { name: '靛蓝', exact: true })).toBeChecked()
+    await expect(other.getByRole('radio', { name: '米白', exact: true })).not.toBeChecked()
+    await other.close()
   })
 
   test('keeps similarity workbench readable at laptop width', async ({ page }) => {
@@ -638,12 +769,19 @@ test.describe('management surfaces smoke', () => {
       timeout: 150_000,
     })
     const similarityTitle = page.getByRole('heading', {
-      name: '跨集合相似度热力图',
+      name: '向量相似度诊断',
+      exact: true,
     })
     await expect(similarityTitle).toBeVisible({ timeout: 60_000 })
-    const similarityTitleBox = await similarityTitle.boundingBox()
-    expect(similarityTitleBox?.width).toBeGreaterThan(160)
-    expect(similarityTitleBox?.height).toBeLessThan(60)
+    await expect(similarityTitle).toBeInViewport({ ratio: 1 })
+    expect(
+      await similarityTitle.evaluate((heading) => {
+        const text = document.createRange()
+        text.selectNodeContents(heading)
+        return text.getClientRects().length
+      }),
+    ).toBe(1)
+    expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
   })
 
   test('keeps Golden workspace readable at laptop width', async ({ page }) => {
@@ -654,50 +792,49 @@ test.describe('management surfaces smoke', () => {
       waitUntil: 'domcontentloaded',
       timeout: 150_000,
     })
-    const goldenWorkspaceTitle = page
-      .getByText('Golden 评测集', { exact: true })
-      .last()
+    const goldenWorkspaceTitle = page.getByRole('tab', { name: 'Golden 评测集', exact: true })
     await expect(goldenWorkspaceTitle).toBeVisible({ timeout: 60_000 })
-    const goldenTitleBox = await goldenWorkspaceTitle.boundingBox()
-    expect(goldenTitleBox?.width).toBeGreaterThan(90)
-    expect(goldenTitleBox?.height).toBeLessThan(40)
+    await expect(goldenWorkspaceTitle).toHaveAttribute('aria-selected', 'true')
+    expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
 
     const runHistoryTitle = page.getByText('运行历史', { exact: true })
     const runHistoryCardHeight = await runHistoryTitle.evaluate(
-      (element) =>
-        element.parentElement?.parentElement?.parentElement?.getBoundingClientRect()
-          .height ?? 0
+      (element) => element.parentElement?.parentElement?.parentElement?.getBoundingClientRect().height ?? 0,
     )
     expect(runHistoryCardHeight).toBeGreaterThan(100)
   })
 
-  test('keeps knowledge ingestion vertically scrollable at laptop heights', async ({ page }) => {
+  test('keeps the ingestion import dialog scrollable with visible actions at laptop heights', async ({ page }) => {
     test.setTimeout(180_000)
     for (const viewport of [
       { width: 1024, height: 768 },
       { width: 1280, height: 720 },
       { width: 1366, height: 768 },
+      { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport)
-      await page.goto('/knowledge/ingestion', {
-        waitUntil: 'domcontentloaded',
-        timeout: 150_000,
-      })
-      await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({
-        timeout: 60_000,
-      })
-
-      await expect(page.locator('[data-ingestion-operation-root="true"]')).toBeVisible()
+      await page.goto('/knowledge/ingestion', { waitUntil: 'domcontentloaded', timeout: 150_000 })
+      await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
       await expect(page.locator('[data-ingestion-operation-workspace="true"]')).toBeVisible()
-      await expect(page.locator('[data-ingestion-context-panel="true"]')).toBeVisible()
-
-      const metrics = await scrollContainerMetrics(page, '[data-ingestion-operation-root="true"]')
+      await expect(page.getByRole('navigation', { name: '文件来源' })).toHaveCount(0)
+      const trigger = page.locator('[data-ingestion-import-trigger]')
+      await trigger.click()
+      const dialog = page.getByRole('dialog', { name: '导入文档', exact: true })
+      await expect(dialog).toBeVisible()
+      await dialog.locator('[data-ingestion-advanced-settings] summary').click()
+      const metrics = await scrollContainerMetrics(page, '[data-ingestion-dialog-body]')
       expect(metrics.clientHeight).toBeGreaterThan(0)
-      expect(['auto', 'scroll']).toContain(metrics.overflowY)
-      expect(metrics.scrollHeight).toBeGreaterThanOrEqual(metrics.clientHeight)
-      if (metrics.scrollHeight > metrics.clientHeight + 20) {
-        expect(metrics.scrolled).toBe(true)
-      }
+      expect(metrics.overflowY).toBe('auto')
+      if (metrics.scrollHeight > metrics.clientHeight + 20) expect(metrics.scrolled).toBe(true)
+      const directory = dialog.getByLabel('目标目录', { exact: true })
+      await directory.scrollIntoViewIfNeeded()
+      await expect(directory).toBeInViewport()
+      await expect(dialog.locator('[data-ingestion-submit]')).toBeInViewport({ ratio: 1 })
+      await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeInViewport({ ratio: 1 })
+      expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
+      await page.keyboard.press('Escape')
+      await expect(dialog).toHaveCount(0)
+      await expect(trigger).toBeFocused()
     }
   })
 
@@ -713,13 +850,13 @@ test.describe('management surfaces smoke', () => {
         waitUntil: 'domcontentloaded',
         timeout: 150_000,
       })
-      await expect(page.getByText('隔离审核中心', { exact: true })).toBeVisible({
+      await expect(page.getByRole('heading', { name: '隔离队列', exact: true })).toBeVisible({
         timeout: 60_000,
       })
 
       const metrics = await scrollContainerMetrics(
         page,
-        '[data-quarantine-page-root="true"] [data-page-scroll-container]'
+        '[data-quarantine-page-root="true"] [data-page-scroll-container]',
       )
       expect(metrics.clientHeight).toBeGreaterThan(0)
       expect(['auto', 'scroll']).toContain(metrics.overflowY)
@@ -738,9 +875,11 @@ test.describe('management surfaces smoke', () => {
       waitUntil: 'domcontentloaded',
       timeout: 150_000,
     })
-    await expect(page.locator('[data-chunk-empty-intake-panel]')).toBeVisible({
+    await expect(page.getByRole('heading', { name: '预览文档切片', exact: true })).toBeVisible({
       timeout: 60_000,
     })
+    await expect(page.getByRole('button', { name: '选择已有文档', exact: true })).toBeInViewport()
+    await expect(page.getByRole('button', { name: '上传文件', exact: true })).toBeInViewport()
 
     expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
   })
@@ -760,65 +899,72 @@ test.describe('management surfaces smoke', () => {
     expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
   })
 
-  test('keeps evidence workbench usable at 1024px and 1280px widths', async ({ page }) => {
+  test('keeps evidence workbench usable at 960px, 1024px and 1280px widths', async ({ page }) => {
     test.setTimeout(180_000)
     for (const viewport of [
-      { width: 1024, height: 768, stacked: true },
-      { width: 1280, height: 720, stacked: false },
+      { width: 960, height: 768, compact: true },
+      { width: 1024, height: 768, compact: false },
+      { width: 1280, height: 720, compact: false },
     ]) {
       await page.setViewportSize(viewport)
       await page.goto('/datasets/ds-smoke/evidence', {
         waitUntil: 'domcontentloaded',
         timeout: 150_000,
       })
-      await expect(
-        page.getByRole('heading', { name: '证据库（Evidence Workbench）' })
-      ).toBeVisible({ timeout: 60_000 })
-
-      const suitePanel = page.getByText('Evidence Suites', { exact: true })
-      const itemPanel = page.getByText('Evidence Items', { exact: true })
-      const detailPanel = page.getByText('Detail', { exact: true })
-      await expect(suitePanel).toBeVisible()
-      await expect(itemPanel).toBeVisible()
+      await expect(page.getByRole('heading', { name: '证据库', exact: true })).toBeVisible({ timeout: 60_000 })
+      const navigation = page.getByRole('navigation', { name: '工作区视图', exact: true })
       const suiteButton = page.getByRole('button', {
         name: /Smoke Evidence Suite/,
       })
       await expect(suiteButton).toBeVisible({ timeout: 60_000 })
       await suiteButton.click()
-      await itemPanel.scrollIntoViewIfNeeded()
-      await expect(itemPanel).toBeVisible()
-      const evidenceItem = page.getByText('How does the smoke evidence item behave at laptop widths?', {
+      if (viewport.compact) {
+        await expect(navigation.getByRole('button', { name: '证据条目', exact: true })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        )
+        await expect(suiteButton).toBeHidden()
+      } else {
+        await expect(navigation).toBeHidden()
+        await expect(suiteButton).toBeVisible()
+      }
+      await expect(page.getByRole('heading', { name: '证据条目', exact: true })).toBeVisible()
+      const evidenceItem = page.getByRole('button', {
+        name: 'How does the smoke evidence item behave at laptop widths?',
         exact: true,
       })
       await expect(evidenceItem).toBeVisible({ timeout: 10_000 })
       await evidenceItem.click()
-      await detailPanel.scrollIntoViewIfNeeded()
-      await expect(detailPanel).toBeVisible()
+      const detail = page.getByRole('dialog', { name: '证据条目', exact: true })
+      await expect(detail).toBeInViewport({ ratio: 1 })
+      await expect(detail).toContainText('It should stay readable and selectable.')
       expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
-
-      const suiteBox = await suitePanel.boundingBox()
-      const detailBox = await detailPanel.boundingBox()
-      if (viewport.stacked) {
-        expect(detailBox?.y).toBeGreaterThan((suiteBox?.y ?? 0) + 120)
+      await page.keyboard.press('Escape')
+      await expect(evidenceItem).toBeFocused()
+      if (viewport.compact) {
+        await navigation.getByRole('button', { name: '证据集', exact: true }).click()
+        await expect(suiteButton).toBeInViewport()
       }
     }
   })
 
-  test('keeps the knowledge scope panel scrollable at low height', async ({ page }) => {
+  test('keeps knowledge filters in a scrollable drawer at low height', async ({ page }) => {
     test.setTimeout(180_000)
+    await installCommonApiMocks(page, { uploaded: true, parsingDocuments: [] })
     await page.setViewportSize({ width: 1280, height: 720 })
 
     await page.goto('/knowledge', {
       waitUntil: 'domcontentloaded',
       timeout: 150_000,
     })
-    await expect(page.getByText('Scope Navigator', { exact: true })).toBeVisible({
+    await expect(page.getByRole('heading', { name: '知识库', exact: true })).toBeVisible({
       timeout: 60_000,
     })
-    await expect(page.locator('[data-knowledge-scope-panel]')).toBeVisible()
-    await expect(page.getByRole('button', { name: '筛选数据集' })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: '数据集与目录', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '更多筛选', exact: true }).click()
+    await expect(page.getByRole('dialog').getByRole('heading', { name: '更多筛选' })).toBeVisible()
 
-    const metrics = await scrollContainerMetrics(page, '[data-knowledge-scope-panel]')
+    const metrics = await scrollContainerMetrics(page, '[data-knowledge-scope-content]')
     expect(metrics.clientHeight).toBeGreaterThan(0)
     expect(['auto', 'scroll']).toContain(metrics.overflowY)
     expect(metrics.scrollHeight).toBeGreaterThanOrEqual(metrics.clientHeight)
@@ -850,20 +996,22 @@ test.describe('management surfaces smoke', () => {
       waitUntil: 'domcontentloaded',
       timeout: 150_000,
     })
-    await expect(
-      page.getByRole('heading', { name: '跨集合相似度热力图' })
-    ).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('heading', { name: '向量相似度诊断' })).toBeVisible({ timeout: 60_000 })
 
-    const dataSourcePanelTitle = page.getByText('数据源配置', { exact: true }).last()
-    await expect(dataSourcePanelTitle).not.toBeVisible()
+    const source = page.getByRole('dialog', { name: '数据源与计算', exact: true })
+    await expect(source).toBeHidden()
+    await page.getByRole('button', { name: '数据源与计算', exact: true }).click()
+    await expect(source).toBeInViewport({ ratio: 1 })
+    await page.keyboard.press('Escape')
+    await expect(source).toBeHidden()
 
     await page.setViewportSize({ width: 1366, height: 768 })
-    await expect(dataSourcePanelTitle).not.toBeVisible()
+    await expect(source).toBeHidden()
   })
 
   test('loads usage page with token and quota summaries', async ({ page }) => {
     await page.goto('/usage')
-    await expect(page.getByRole('heading', { name: '用量/配额' })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('heading', { name: '用量／配额' })).toBeVisible({ timeout: 60_000 })
     await expect(page.getByRole('row', { name: /Smoke Dataset.*128/ })).toBeVisible()
   })
 
@@ -937,6 +1085,9 @@ test.describe('management surfaces smoke', () => {
         nestedControlErrors.push(text)
       }
     })
+    await page.route('**/api/v1/documents/stats**', (route) =>
+      fulfillJson(route, { total: 1, total_chunks: 1, total_size: 1024, by_status: { completed: 1 } }),
+    )
     await page.route('**/api/v1/rag/retrieve', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback()
       return fulfillJson(route, {
@@ -951,39 +1102,41 @@ test.describe('management surfaces smoke', () => {
             score: 0.94,
           },
         ],
+        metrics: {},
         has_evidence: true,
         abstain_triggered: false,
       })
     })
 
     await page.goto('/knowledge?tab=retrieval&dataset=ds-smoke')
-    const searchInput = page.getByPlaceholder(
-      '例如：请按第十二条说明例外条件，并指出适用范围与例外条款'
-    )
+    const searchInput = page.getByRole('textbox', { name: '检索问题', exact: true })
     await expect(searchInput).toBeVisible({ timeout: 60_000 })
     await searchInput.fill('发布验收')
-    await page.getByRole('button', { name: '开始检索' }).click()
-    await expect(page.getByText('发布验收规范.pdf').first()).toBeVisible()
-    await expect(
-      page.locator('[aria-label="检索结果排名列表"] button button')
-    ).toHaveCount(0)
+    const search = page.getByRole('button', { name: '检索', exact: true })
+    await expect(search).toBeEnabled()
+    await search.click()
+    const results = page.getByRole('list', { name: '命中片段', exact: true })
+    await expect(results.getByText('发布验收规范.pdf', { exact: true })).toBeVisible()
+    await expect(results.locator('button button')).toHaveCount(0)
     expect(nestedControlErrors).toEqual([])
   })
 
   test('captures the documented knowledge-base journey on demand', async ({ page }) => {
     test.skip(
       process.env.CAPTURE_DOCS_SCREENSHOTS !== '1',
-      'Set CAPTURE_DOCS_SCREENSHOTS=1 to refresh committed guide screenshots.'
+      'Set CAPTURE_DOCS_SCREENSHOTS=1 to refresh committed guide screenshots.',
     )
     test.setTimeout(240_000)
     await page.setViewportSize({ width: 1600, height: 1000 })
 
+    await page.route('**/api/v1/documents/stats**', (route) =>
+      fulfillJson(route, { total: 1, total_chunks: 2, total_size: 1024, by_status: { completed: 1 } }),
+    )
     const evidence = {
       document_id: 'doc-guide-1',
       document_name: '企业知识库操作规范.pdf',
       chunk_id: 'chunk-guide-1',
-      chunk_content:
-        '正式发布前应完成数据集权限检查、真实检索验证与引用核对，并保留可回归的 Golden 题集。',
+      chunk_content: '正式发布前应完成数据集权限检查、真实检索验证与引用核对，并保留可回归的 Golden 题集。',
       page_number: 12,
       score: 0.943,
       relevance_score: 0.943,
@@ -1006,8 +1159,7 @@ test.describe('management surfaces smoke', () => {
           {
             ...evidence,
             chunk_id: 'chunk-guide-2',
-            chunk_content:
-              '上线后应通过 request_id 关联 API、Worker、模型服务和检索 Trace，并持续复测关键问题。',
+            chunk_content: '上线后应通过 request_id 关联 API、Worker、模型服务和检索 Trace，并持续复测关键问题。',
             page_number: 13,
             score: 0.887,
             relevance_score: 0.887,
@@ -1030,37 +1182,10 @@ test.describe('management surfaces smoke', () => {
 
     await page.route('**/api/v1/chat/stream', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback()
-      const body = [
-        { type: 'citations', data: [evidence] },
-        {
-          type: 'token',
-          data: {
-            content:
-              '发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。',
-          },
-        },
-        {
-          type: 'done',
-          request_id: 'req-guide-screenshot',
-          data: {
-            conversation_id: 'conv-guide-screenshot',
-            assistant_message_id: 'assistant-guide-screenshot',
-            request_id: 'req-guide-screenshot',
-          },
-        },
-      ]
-        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
-        .join('')
-      return route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        headers: {
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Request-ID': 'req-guide-screenshot',
-          'X-Conversation-ID': 'conv-guide-screenshot',
-        },
-        body,
+      return fulfillChatStream(route, {
+        contentParts: ['发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。'],
+        citations: [evidence],
+        requestId: 'req-guide-screenshot',
       })
     })
 
@@ -1095,24 +1220,28 @@ test.describe('management surfaces smoke', () => {
     await captureGuideScreenshot(page, 'guide-ingestion.png')
 
     await page.goto('/knowledge?tab=retrieval&dataset=ds-smoke')
-    await expect(page.getByText('语义检索测试', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
-    await page.getByRole('button', { name: '收起侧栏' }).click()
-    await page
-      .getByPlaceholder('例如：请按第十二条说明例外条件，并指出适用范围与例外条款')
-      .fill('知识库发布前需要完成哪些验收？')
-    await page.getByRole('button', { name: '开始检索' }).click()
-    await expect(page.getByText('企业知识库操作规范.pdf').first()).toBeVisible()
+    const retrieval = page.getByRole('tabpanel', { name: '检索测试', exact: true })
+    const searchInput = retrieval.getByRole('textbox', { name: '检索问题', exact: true })
+    await expect(searchInput).toBeVisible({ timeout: 60_000 })
+    await searchInput.fill('知识库发布前需要完成哪些验收？')
+    await retrieval.getByRole('button', { name: '检索', exact: true }).click()
+    const results = retrieval.getByRole('list', { name: '命中片段', exact: true })
+    await expect(results.getByText('企业知识库操作规范.pdf', { exact: true }).first()).toBeVisible()
     await captureGuideScreenshot(page, 'guide-retrieval-test.png')
 
     await page.goto('/')
-    const conversationTools = page.locator('button[aria-controls="chat-conversation-tools"]')
-    await expect(conversationTools).toBeVisible({ timeout: 60_000 })
-    await conversationTools.click()
-    const datasetScope = page.getByRole('button', { name: '选择数据集', exact: true })
+    const composer = page.getByRole('textbox', { name: '消息输入框', exact: true })
+    await expect(composer).toBeVisible({ timeout: 60_000 })
+    const datasetScope = page
+      .getByRole('main')
+      .locator('button[aria-haspopup="dialog"]:has(svg[data-platform-icon="dataset"])')
     await expect(datasetScope).toBeVisible({ timeout: 60_000 })
     await datasetScope.click()
-    await page.getByRole('button', { name: /企业知识库示例/ }).last().click()
-    const composer = page.getByPlaceholder('问点什么... (Shift + Enter 换行)')
+    await page
+      .getByRole('dialog', { name: '数据集', exact: true })
+      .getByRole('button', { name: /^企业知识库示例(?:\s|$)/ })
+      .click()
+    await expect(datasetScope).toHaveAccessibleName('企业知识库示例')
     await composer.fill('知识库发布前需要完成哪些验收？')
     await page.getByRole('button', { name: '发送' }).click()
     await expect(page.getByText('发布前需要完成数据集权限检查')).toBeVisible({ timeout: 60_000 })

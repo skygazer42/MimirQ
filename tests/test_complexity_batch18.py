@@ -2,15 +2,15 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.chunking.roles import classify_chunk_semantic_role
-from app.rag.chunking.strategies.book_structured import BookStructuredChunker
-from app.rag.chunking.strategies.chat_history import ChatHistoryChunker
-from app.rag.chunking.strategies.docker_compose import DockerComposeChunker
-from app.rag.chunking.strategies.dockerfile import DockerfileChunker
-from app.rag.chunking.strategies.email_thread import EmailThreadChunker
-from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker
-from app.rag.chunking.strategies.github_actions import GitHubActionsChunker
-from app.rag.chunking.strategies.glossary import GlossaryChunker
+from app.rag.ingestion.chunking.roles import classify_chunk_semantic_role
+from app.rag.ingestion.chunking.strategies.config.docker_compose import DockerComposeChunker
+from app.rag.ingestion.chunking.strategies.config.dockerfile import DockerfileChunker
+from app.rag.ingestion.chunking.strategies.config.github_actions import GitHubActionsChunker
+from app.rag.ingestion.chunking.strategies.documents.book_structured import BookStructuredChunker
+from app.rag.ingestion.chunking.strategies.documents.glossary import GlossaryChunker
+from app.rag.ingestion.chunking.strategies.records.chat_history import ChatHistoryChunker
+from app.rag.ingestion.chunking.strategies.records.email_thread import EmailThreadChunker
+from app.rag.ingestion.chunking.strategies.records.git_commit_log import GitCommitLogChunker
 
 
 def _summarize_chunks(chunker: Any, text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -112,20 +112,6 @@ def test_chat_history_chunker_characterizes_structured_and_fallback_chunks() -> 
                 "chunk_index": 1,
             },
         ),
-        (
-            "[2024-01-01 10:02] Alice: Update\n",
-            {
-                "chunk_strategy": "chat_history",
-                "start_char": 59,
-                "end_char": 92,
-                "message_count": 1,
-                "participants": ["Alice"],
-                "has_timestamps": True,
-                "first_timestamp": "2024-01-01 10:02",
-                "last_timestamp": "2024-01-01 10:02",
-                "chunk_index": 2,
-            },
-        ),
     ]
     assert _summarize_chunks(ChatHistoryChunker(50, 0), fallback) == [
         (
@@ -223,6 +209,18 @@ def test_dockerfile_chunker_characterizes_stage_overlap_and_instruction_metadata
 
     assert _summarize_chunks(DockerfileChunker(55, 12), text) == [
         (
+            "# syntax=docker/dockerfile:1\n",
+            {
+                "chunk_strategy": "dockerfile",
+                "start_char": 0,
+                "end_char": 29,
+                "doc_type_kwd": "dockerfile",
+                "docker_stage_index": -1,
+                "dockerfile_preamble": True,
+                "chunk_index": 0,
+            },
+        ),
+        (
             "FROM python:3.12-slim AS base\nRUN apt-get update\n",
             {
                 "chunk_strategy": "dockerfile",
@@ -233,7 +231,7 @@ def test_dockerfile_chunker_characterizes_stage_overlap_and_instruction_metadata
                 "docker_from_image": "python:3.12-slim",
                 "docker_from_alias": "base",
                 "docker_instructions": ["FROM", "RUN"],
-                "chunk_index": 0,
+                "chunk_index": 1,
             },
         ),
         (
@@ -247,20 +245,6 @@ def test_dockerfile_chunker_characterizes_stage_overlap_and_instruction_metadata
                 "docker_from_image": "python:3.12-slim",
                 "docker_from_alias": "base",
                 "docker_instructions": ["RUN", "COPY"],
-                "chunk_index": 1,
-            },
-        ),
-        (
-            "COPY . /app\n",
-            {
-                "chunk_strategy": "dockerfile",
-                "start_char": 78,
-                "end_char": 90,
-                "doc_type_kwd": "dockerfile",
-                "docker_stage_index": 0,
-                "docker_from_image": "python:3.12-slim",
-                "docker_from_alias": "base",
-                "docker_instructions": ["COPY"],
                 "chunk_index": 2,
             },
         ),
@@ -276,20 +260,6 @@ def test_dockerfile_chunker_characterizes_stage_overlap_and_instruction_metadata
                 "docker_from_alias": "final",
                 "docker_instructions": ["FROM", "CMD"],
                 "chunk_index": 3,
-            },
-        ),
-        (
-            'CMD ["python", "app.py"]\n',
-            {
-                "chunk_strategy": "dockerfile",
-                "start_char": 109,
-                "end_char": 134,
-                "doc_type_kwd": "dockerfile",
-                "docker_stage_index": 1,
-                "docker_from_image": "base",
-                "docker_from_alias": "final",
-                "docker_instructions": ["CMD"],
-                "chunk_index": 4,
             },
         ),
     ]
@@ -331,6 +301,16 @@ def test_email_thread_chunker_characterizes_message_and_fallback_chunks() -> Non
             },
         ),
         (
+            "-----Original Message-----",
+            {
+                "chunk_strategy": "email_thread",
+                "start_char": 124,
+                "end_char": 150,
+                "email_thread_fallback": True,
+                "chunk_index": 1,
+            },
+        ),
+        (
             "From: Bob <bob@example.com>\n"
             "To: Team <team@example.com>\n"
             "Subject: Re: Status\n"
@@ -345,7 +325,7 @@ def test_email_thread_chunker_characterizes_message_and_fallback_chunks() -> Non
                 "email_subjects": ["Re: Status"],
                 "email_froms": ["Bob <bob@example.com>"],
                 "email_has_quotes": True,
-                "chunk_index": 1,
+                "chunk_index": 2,
             },
         ),
     ]
@@ -474,11 +454,7 @@ def test_github_actions_chunker_characterizes_job_and_fallback_chunks() -> None:
 
 
 def test_glossary_chunker_characterizes_entry_overlap_and_fallback_chunks() -> None:
-    structured = (
-        "API: Application programming interface\n"
-        "SDK: Software development kit\n"
-        "CLI: Command line interface\n"
-    )
+    structured = "API: Application programming interface\nSDK: Software development kit\nCLI: Command line interface\n"
     fallback = "random prose only\nno entries\n"
 
     assert _summarize_chunks(GlossaryChunker(65, 20), structured) == [
@@ -502,17 +478,6 @@ def test_glossary_chunker_characterizes_entry_overlap_and_fallback_chunks() -> N
                 "glossary_entry_count": 2,
                 "glossary_terms": ["SDK", "CLI"],
                 "chunk_index": 1,
-            },
-        ),
-        (
-            "CLI: Command line interface\n",
-            {
-                "chunk_strategy": "glossary",
-                "start_char": 69,
-                "end_char": 97,
-                "glossary_entry_count": 1,
-                "glossary_terms": ["CLI"],
-                "chunk_index": 2,
             },
         ),
     ]

@@ -1,9 +1,8 @@
-
 import pytest
 
 
 def test_aggregate_must_recall_summary_from_explicit_counts() -> None:
-    from app.services.report_service import _aggregate_must_recall_summary
+    from app.services.reports.aggregation import _aggregate_must_recall_summary
 
     out = _aggregate_must_recall_summary(
         latest_regression_summary={
@@ -22,7 +21,7 @@ def test_aggregate_must_recall_summary_from_explicit_counts() -> None:
 
 
 def test_aggregate_must_recall_summary_derives_counts_from_rate_and_total() -> None:
-    from app.services.report_service import _aggregate_must_recall_summary
+    from app.services.reports.aggregation import _aggregate_must_recall_summary
 
     out = _aggregate_must_recall_summary(
         latest_regression_summary={

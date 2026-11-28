@@ -1,4 +1,4 @@
-from app.rag.tools.pre_poc_scanner.simhash_similarity import build_simhash_review_candidates
+from app.rag.evaluation.scanning.simhash_similarity import build_simhash_review_candidates
 
 
 def test_simhash_review_candidates_groups_duplicates_and_picks_stable_keep_candidate() -> None:

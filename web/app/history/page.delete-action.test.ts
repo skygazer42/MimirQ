@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act, useState } from 'react'
+import React, { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +11,8 @@ const chatApiMock = vi.hoisted(() => ({
   listConversations: vi.fn(),
 }))
 
+const navigationMock = vi.hoisted(() => ({ search: '', push: vi.fn(), replace: vi.fn() }))
+
 vi.mock('@/components/app-frame', () => ({
   AppFrame: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', { 'data-app-frame': 'true' }, children),
@@ -20,28 +22,29 @@ vi.mock('@/i18n/navigation', () => ({
   Link: ({ prefetch: _prefetch, ...props }: React.ComponentProps<'a'> & { prefetch?: boolean }) =>
     React.createElement('a', props),
   usePathname: () => '/history',
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => navigationMock,
 }))
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigationMock.search),
 }))
 vi.mock('next-intl', () => ({
   useLocale: () => 'en',
   useTranslations: () => (key: string) => key,
 }))
 
-import HistoryPageClient, { ConversationItem, deleteConversationFromHistory } from './page-client'
+import HistoryPageClient from './page-client'
 import { queryKeys } from '@/lib/query-keys'
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  navigationMock.search = ''
   chatApiMock.deleteConversation.mockResolvedValue(undefined)
-  chatApiMock.getMessages.mockResolvedValue({
-    conversation_id: 'conversation-default',
+  chatApiMock.getMessages.mockImplementation(async (conversationId: string) => ({
+    conversation_id: conversationId,
     messages: [],
     returned: 0,
     has_more: false,
-  })
+  }))
   chatApiMock.listConversations.mockResolvedValue({
     items: [],
     total: 0,
@@ -94,34 +97,89 @@ describe('history page delete action', () => {
 
     act(() => {
       root.render(
-        React.createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          React.createElement(HistoryPageClient, { initialConversationId: null })
-        )
+        React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(HistoryPageClient)),
       )
     })
 
     await act(async () => {
       await vi.waitFor(() =>
-        expect(chatApiMock.listConversations).toHaveBeenCalledWith({
-          skip: 0,
-          limit: 100,
-        })
+        expect(chatApiMock.listConversations).toHaveBeenCalledWith(
+          {
+            skip: 0,
+            limit: 100,
+          },
+          { signal: expect.any(AbortSignal) },
+        ),
       )
-      await vi.waitFor(() =>
-        expect(container.querySelector('[data-history-empty-archive="true"]')).not.toBeNull()
-      )
-      await vi.waitFor(() =>
-        expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull()
-      )
+      await vi.waitFor(() => expect(container.querySelector('[data-history-empty-archive="true"]')).not.toBeNull())
+      await vi.waitFor(() => expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull())
     })
 
-    expect(container.querySelector('[data-history-main-empty="true"] a[href="/"]')?.textContent).toContain('startNewConversation')
+    expect(container.querySelector('[data-history-main-empty="true"] a[href="/"]')?.textContent).toContain(
+      'startNewConversation',
+    )
     expect(container.querySelector('[data-history-main-empty="true"] a[href="/evaluations"]')).toBeNull()
     expect(container.querySelector('[data-history-main-empty="true"] a[href="/observability"]')).toBeNull()
 
     act(() => root.unmount())
+  })
+
+  it('returns to the active conversation when it is selected again from the mobile list', async () => {
+    const conversation = {
+      id: 'conversation-mobile',
+      title: 'Mobile conversation',
+      message_count: 0,
+      created_at: '2026-10-20T08:00:00Z',
+      updated_at: '2026-10-20T08:00:00Z',
+    }
+    navigationMock.search = `id=${conversation.id}`
+    chatApiMock.listConversations.mockResolvedValue({
+      items: [conversation],
+      total: 1,
+      returned: 1,
+      has_more: false,
+      next_skip: null,
+    })
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      media: query,
+      matches: query === '(max-width: 767px)',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      act(() =>
+        root.render(
+          React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(HistoryPageClient)),
+        ),
+      )
+      await act(async () => {
+        await vi.waitFor(() => expect(container.textContent).toContain(conversation.title))
+      })
+      const sidebar = container.querySelector('[data-history-sidebar="true"]')
+      expect(sidebar?.classList.contains('hidden')).toBe(true)
+      const expandButton = container.querySelector<HTMLButtonElement>('[aria-label="expandHistory"]')
+      expect(expandButton).not.toBeNull()
+      act(() => expandButton?.click())
+      expect(sidebar?.classList.contains('hidden')).toBe(false)
+      const activeRow = Array.from(container.querySelectorAll('button')).find((button) =>
+        button.textContent?.includes(conversation.title),
+      )
+      expect(activeRow).not.toBeUndefined()
+      act(() => activeRow?.click())
+      expect(sidebar?.classList.contains('hidden')).toBe(true)
+    } finally {
+      act(() => root.unmount())
+      matchMedia.mockRestore()
+    }
   })
 
   it('searches the complete server-side history and renders zero-match semantics', async () => {
@@ -133,6 +191,7 @@ describe('history page delete action', () => {
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     }
+    navigationMock.search = `id=${selectedConversation.id}`
     const olderMatch = {
       id: 'conversation-101',
       title: 'Older matching conversation',
@@ -175,14 +234,7 @@ describe('history page delete action', () => {
 
     act(() => {
       root.render(
-        React.createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          React.createElement(HistoryPageClient, {
-            initialConversationId: selectedConversation.id,
-            initialSelectedConversation: selectedConversation,
-          })
-        )
+        React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(HistoryPageClient)),
       )
     })
     await act(async () => {
@@ -193,7 +245,7 @@ describe('history page delete action', () => {
     expect(input).not.toBeNull()
     expect(input?.maxLength).toBe(500)
     const recentButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-      (button) => button.textContent === '最近'
+      (button) => button.textContent === 'recentConversations',
     )
     expect(recentButton).not.toBeUndefined()
     act(() => recentButton?.click())
@@ -205,11 +257,14 @@ describe('history page delete action', () => {
 
     await act(async () => {
       await vi.waitFor(() =>
-        expect(chatApiMock.listConversations).toHaveBeenCalledWith({
-          skip: 0,
-          limit: 100,
-          q: 'needle',
-        })
+        expect(chatApiMock.listConversations).toHaveBeenCalledWith(
+          {
+            skip: 0,
+            limit: 100,
+            q: 'needle',
+          },
+          { signal: expect.any(AbortSignal) },
+        ),
       )
       await vi.waitFor(() => expect(container.textContent).toContain(olderMatch.title))
     })
@@ -220,11 +275,14 @@ describe('history page delete action', () => {
     })
     await act(async () => {
       await vi.waitFor(() =>
-        expect(chatApiMock.listConversations).toHaveBeenCalledWith({
-          skip: 0,
-          limit: 100,
-          q: 'missing',
-        })
+        expect(chatApiMock.listConversations).toHaveBeenCalledWith(
+          {
+            skip: 0,
+            limit: 100,
+            q: 'missing',
+          },
+          { signal: expect.any(AbortSignal) },
+        ),
       )
       await vi.waitFor(() => expect(container.textContent).toContain('noMatchedConversation'))
     })
@@ -235,6 +293,7 @@ describe('history page delete action', () => {
   })
 
   it('loads messages directly for a deep-linked conversation outside the first conversation page', async () => {
+    navigationMock.search = 'id=conversation-150'
     chatApiMock.listConversations.mockResolvedValue({
       items: Array.from({ length: 100 }, (_, index) => ({
         id: `conversation-${index + 1}`,
@@ -276,20 +335,17 @@ describe('history page delete action', () => {
 
     act(() => {
       root.render(
-        React.createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          React.createElement(HistoryPageClient, { initialConversationId: 'conversation-150' })
-        )
+        React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(HistoryPageClient)),
       )
     })
 
     await act(async () => {
       await vi.waitFor(() =>
-        expect(chatApiMock.getMessages).toHaveBeenCalledWith('conversation-150', {
-          limit: 80,
-          before: undefined,
-        })
+        expect(chatApiMock.getMessages).toHaveBeenCalledWith(
+          'conversation-150',
+          { limit: 80, before: undefined },
+          { signal: expect.any(AbortSignal) },
+        ),
       )
       await vi.waitFor(() => expect(container.textContent).toContain('legacy answer'))
     })
@@ -299,6 +355,7 @@ describe('history page delete action', () => {
   })
 
   it('does not expose actions for a rejected deep-linked conversation', async () => {
+    navigationMock.search = 'id=missing-conversation'
     chatApiMock.getMessages.mockRejectedValueOnce(new Error('conversation not found'))
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -313,27 +370,22 @@ describe('history page delete action', () => {
 
     act(() => {
       root.render(
-        React.createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          React.createElement(HistoryPageClient, { initialConversationId: 'missing-conversation' })
-        )
+        React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(HistoryPageClient)),
       )
     })
 
     await act(async () => {
-      await vi.waitFor(() =>
-        expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull()
-      )
+      await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull())
     })
 
     expect(container.querySelector('[aria-label="继续当前对话"]')).toBeNull()
+    expect(container.querySelector('[aria-label="更多对话操作"]')).toBeNull()
     expect(container.querySelector('[aria-label="进行对话分析评测"]')).toBeNull()
     expect(container.querySelector('[aria-label="查看数据追踪"]')).toBeNull()
     act(() => root.unmount())
   })
 
-  it('confirms deletion, calls the API, and removes the cached conversation', async () => {
+  it('confirms deletion, refreshes the visible list and invalidates other conversation caches', async () => {
     const queryClient = new QueryClient()
     const conversation = {
       id: 'conversation-1',
@@ -359,30 +411,29 @@ describe('history page delete action', () => {
     document.body.appendChild(container)
     const root = createRoot(container)
 
-    function Harness() {
-      const [confirming, setConfirming] = useState(false)
-      return React.createElement(ConversationItem, {
-        conversation: conversation as never,
-        isSelected: false,
-        onSelect: () => undefined,
-        onDelete: () => setConfirming(true),
-        showDeleteConfirm: confirming,
-        onConfirmDelete: () => {
-          void deleteConversationFromHistory(conversation.id, queryClient)
-        },
-        onCancelDelete: () => setConfirming(false),
-      })
-    }
-
-    act(() => root.render(React.createElement(Harness)))
-    const deleteButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="deleteConversation"]'
+    let deleted = false
+    chatApiMock.listConversations.mockImplementation(async () => ({
+      items: deleted ? [] : [conversation],
+      total: deleted ? 0 : 1,
+      returned: deleted ? 0 : 1,
+      has_more: false,
+      next_skip: null,
+    }))
+    chatApiMock.deleteConversation.mockImplementation(async () => {
+      deleted = true
+    })
+    act(() =>
+      root.render(
+        React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(HistoryPageClient)),
+      ),
     )
+    await act(async () => {
+      await vi.waitFor(() => expect(container.textContent).toContain(conversation.title))
+    })
+    const deleteButton = container.querySelector<HTMLButtonElement>('[aria-label="deleteConversation"]')
     expect(deleteButton).not.toBeNull()
     act(() => deleteButton?.click())
-    const confirmButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="confirmDeleteConversation"]'
-    )
+    const confirmButton = container.querySelector<HTMLButtonElement>('[aria-label="confirmDeleteConversation"]')
     expect(confirmButton).not.toBeNull()
     act(() => confirmButton?.click())
 
@@ -390,12 +441,10 @@ describe('history page delete action', () => {
     await vi.waitFor(() => {
       const cached = queryClient.getQueryData<{ pages: Array<{ items: unknown[] }> }>(cacheKey)
       expect(cached?.pages[0].items).toEqual([])
-      const searched = queryClient.getQueryData<{ pages: Array<{ items: unknown[] }> }>(searchCacheKey)
-      expect(searched?.pages[0].items).toEqual([])
-      expect(queryClient.getQueryState(cacheKey)?.isInvalidated).toBe(true)
       expect(queryClient.getQueryState(searchCacheKey)?.isInvalidated).toBe(true)
       expect(queryClient.getQueryState(commandCacheKey)?.isInvalidated).toBe(true)
     })
+    expect(container.textContent).not.toContain(conversation.title)
     act(() => root.unmount())
   })
 })

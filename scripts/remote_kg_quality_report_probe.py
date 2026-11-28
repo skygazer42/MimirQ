@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Probe the live KG quality report endpoint against a disposable dataset."""
 
-
 import argparse
 import json
 import sys
@@ -36,9 +35,7 @@ def validate_quality_report(report: dict[str, Any]) -> list[str]:
     if int(summary.get("events") or 0) < 1:
         failures.append(f"summary.events expected>=1 actual={int(summary.get('events') or 0)}")
     if int(scope.get("documents_allowed") or 0) < 1:
-        failures.append(
-            f"scope.documents_allowed expected>=1 actual={int(scope.get('documents_allowed') or 0)}"
-        )
+        failures.append(f"scope.documents_allowed expected>=1 actual={int(scope.get('documents_allowed') or 0)}")
     return failures
 
 

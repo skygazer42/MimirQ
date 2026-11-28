@@ -39,7 +39,7 @@ class _Field:
         return ("in", self.name, values)
 
 
-def test_event_processor_template_fallback_and_entity_merge() -> None:
+def test_event_processor_template_fallback_and_entity_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.rag.kg.extraction.processor import EventProcessor
 
     prompts: list[str] = []
@@ -80,9 +80,11 @@ def test_event_processor_template_fallback_and_entity_merge() -> None:
             }
 
     processor = EventProcessor(_LLM(), prompt_template="Use template {missing_key}")
-    processor.parser = SimpleNamespace(
-        normalize_name=lambda value: str(value).strip().lower(),
-        normalize_type=lambda value: str(value).strip().lower(),
+    monkeypatch.setattr(
+        "app.rag.kg.extraction.processor.normalize_entity_name", lambda value: str(value).strip().lower()
+    )
+    monkeypatch.setattr(
+        "app.rag.kg.extraction.processor.normalize_entity_type", lambda value: str(value).strip().lower()
     )
     sections = [
         SimpleNamespace(id=uuid4(), content="Primary chunk", page_number=3),
@@ -116,7 +118,7 @@ def test_event_processor_template_fallback_and_entity_merge() -> None:
                     "name": "Fallback Entity",
                     "normalized_name": "fallback entity",
                     "type": "unknown",
-                    "description": "",
+                    "description": None,
                     "role": None,
                     "weight": None,
                     "evidence_quote": None,
@@ -130,10 +132,12 @@ def test_event_processor_template_fallback_and_entity_merge() -> None:
     ]
 
 
-def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_orders_memory_context(
+@pytest.mark.parametrize("dataset_read_fails", [True, False], ids=["authority-read-failure", "known-empty-defaults"])
+def test_prepare_chat_request_runtime_requires_dataset_defaults_and_orders_memory_context(
     monkeypatch: pytest.MonkeyPatch,
+    dataset_read_fails: bool,
 ) -> None:
-    import app.services.chat_bootstrap_runtime as runtime
+    import app.services.chat.bootstrap as runtime
 
     scope_dataset_id = uuid4()
     history_item = _Message("user", "history message")
@@ -151,9 +155,12 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
         enable_structured_memory=True,
     )
 
-    monkeypatch.setattr(
-        runtime, "load_dataset_metadata", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
-    )
+    def load_dataset_metadata(*_args, **_kwargs):
+        if dataset_read_fails:
+            raise RuntimeError("boom")
+        return {}
+
+    monkeypatch.setattr(runtime, "load_dataset_metadata", load_dataset_metadata)
     monkeypatch.setattr(
         runtime,
         "merge_prompt_defaults_with_dataset",
@@ -169,7 +176,7 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
     monkeypatch.setattr(runtime, "build_structured_memory_context", lambda **_kwargs: "STRUCTURED")
     monkeypatch.setattr(runtime.settings, "STRUCTURED_MEMORY_ENABLED", True, raising=False)
 
-    prepared = runtime.prepare_chat_request_runtime(
+    options = dict(
         db=object(),
         tenant_id=uuid4(),
         account_id="acct",
@@ -180,6 +187,13 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
         long_term_messages=[{"role": "assistant", "content": "memory"}],
         request_id="req-1",
     )
+
+    if dataset_read_fails:
+        with pytest.raises(RuntimeError, match="boom"):
+            runtime.prepare_chat_request_runtime(**options)
+        return
+
+    prepared = runtime.prepare_chat_request_runtime(**options)
 
     assert prepared.dataset_id_used == scope_dataset_id
     assert prepared.dataset_rag_defaults_applied_fields == []
@@ -196,7 +210,7 @@ def test_prepare_chat_request_runtime_preserves_scope_on_dataset_failure_and_ord
 def test_prepare_chat_request_runtime_keeps_template_metadata_when_usage_commit_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_bootstrap_runtime as runtime
+    import app.services.chat.bootstrap as runtime
 
     chosen = SimpleNamespace(
         id=uuid4(),
@@ -285,8 +299,8 @@ def test_prepare_chat_request_runtime_keeps_template_metadata_when_usage_commit_
 
 @pytest.mark.asyncio
 async def test_stream_langchain_chat_session_events_persists_done_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.chat_stream_langchain as stream_module
-    from app.services.chat_runtime import ChatStreamPersistInput
+    import app.services.chat.stream_langchain as stream_module
+    from app.services.chat.stream_persistence import ChatStreamPersistInput
 
     cached_payloads: list[dict[str, object]] = []
     persisted_payloads: list[ChatStreamPersistInput] = []
@@ -378,9 +392,9 @@ async def test_stream_langchain_chat_session_events_persists_done_payload(monkey
     ]
 
     assert len(events) == 3
-    assert '"request_id": "req-stream"' in events[0]
-    assert '"type": "citations"' in events[1]
-    assert f'"assistant_message_id": "{assistant_message_id}"' in events[2]
+    assert events[0]["request_id"] == "req-stream"
+    assert events[1]["type"] == "citations"
+    assert events[2]["data"]["assistant_message_id"] == str(assistant_message_id)
     assert cached_payloads == [
         {
             "cache_eligible": True,
@@ -411,8 +425,8 @@ async def test_stream_langchain_chat_session_events_persists_done_payload(monkey
 async def test_stream_langchain_chat_session_events_skips_finalize_after_disconnect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_stream_langchain as stream_module
-    from app.services.chat_runtime import ChatStreamPersistInput
+    import app.services.chat.stream_langchain as stream_module
+    from app.services.chat.stream_persistence import ChatStreamPersistInput
 
     persisted: list[str] = []
 
@@ -488,7 +502,7 @@ async def test_stream_langchain_chat_session_events_skips_finalize_after_disconn
 
 
 def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.parsing.parsers.pptx_parser as parser_module
+    import app.rag.ingestion.parsing.parsers.pptx_parser as parser_module
 
     class _Cell:
         def __init__(self, text: str) -> None:
@@ -507,13 +521,6 @@ def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyP
             }
             return values[(row, col)]
 
-    class _BrokenShape:
-        has_text_frame = True
-
-        @property
-        def text_frame(self):
-            raise RuntimeError("ignore me")
-
     table_shape = SimpleNamespace(has_table=True, table=_Table())
     text_shape = SimpleNamespace(
         has_table=False,
@@ -525,7 +532,8 @@ def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyP
             ]
         ),
     )
-    presentation = SimpleNamespace(slides=[SimpleNamespace(shapes=[table_shape, text_shape, _BrokenShape()])])
+    nontext_shape = SimpleNamespace(has_table=False, has_text_frame=False)
+    presentation = SimpleNamespace(slides=[SimpleNamespace(shapes=[table_shape, text_shape, nontext_shape])])
     monkeypatch.setattr(parser_module, "Presentation", lambda _path: presentation)
 
     documents = parser_module.PptxParser().parse(Path("slides.pptx"))
@@ -541,7 +549,7 @@ def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyP
 
 
 def test_pptx_parser_returns_empty_document_when_no_slide_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.parsing.parsers.pptx_parser as parser_module
+    import app.rag.ingestion.parsing.parsers.pptx_parser as parser_module
 
     monkeypatch.setattr(
         parser_module,
@@ -561,7 +569,7 @@ def test_pptx_parser_returns_empty_document_when_no_slide_content(monkeypatch: p
 
 
 def test_jsonl_records_chunker_preserves_fallback_and_record_overlap_metadata() -> None:
-    from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker
+    from app.rag.ingestion.chunking.strategies.records.jsonl_records import JsonlRecordsChunker
 
     chunker = JsonlRecordsChunker(chunk_size=17, chunk_overlap=10)
 
@@ -591,17 +599,17 @@ def test_jsonl_records_chunker_preserves_fallback_and_record_overlap_metadata() 
     jsonl_text = '{"a":1}\n{"b":2}\n{"c":3}\n'
     record_chunks = chunker.split_documents([Document(page_content=jsonl_text, metadata={"source": "doc-b"})])
 
-    assert [chunk.metadata["chunk_index"] for chunk in record_chunks] == [0, 1, 2]
+    assert [chunk.metadata["chunk_index"] for chunk in record_chunks] == [0, 1]
     assert record_chunks[0].metadata["jsonl_first_index"] == 0
     assert record_chunks[0].metadata["jsonl_last_index"] == 1
     assert record_chunks[1].metadata["jsonl_first_index"] == 1
     assert record_chunks[1].metadata["jsonl_last_index"] == 2
-    assert record_chunks[2].metadata["jsonl_first_index"] == 2
-    assert record_chunks[2].metadata["jsonl_record_count"] == 1
+    assert record_chunks[1].metadata["jsonl_record_count"] == 2
+    assert record_chunks[1].metadata["end_char"] == len(jsonl_text)
 
 
 def test_verify_claim_keeps_default_overlap_mode_supportive_but_blocks_strict_contradictions() -> None:
-    from app.rag.core.claim_verifier import verify_claim
+    from app.rag.safety.claim_verification import verify_claim
 
     default_mode = verify_claim("Revenue was 10 in 2024", "Revenue was 11 in 2024")
     strict_mode = verify_claim("Revenue was 10 in 2024", "Revenue was 11 in 2024", mode="strict")
@@ -613,13 +621,16 @@ def test_verify_claim_keeps_default_overlap_mode_supportive_but_blocks_strict_co
     assert strict_mode.diagnostics["numeric_mismatch"] is True
 
 
-def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.core.database as database_module
-    import app.models.document as document_module
-    from app.rag.core.temporal import fetch_document_updated_ts
+def test_fetch_document_updated_ts_skips_invalid_ids_and_rejects_invalid_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.infrastructure.database.connection as database_module
+    import app.models.documents.records as document_module
+    from app.services.documents.freshness import fetch_document_updated_ts
 
     valid_id = uuid4()
     other_id = uuid4()
+    dataset_id = uuid4()
+    opened = []
+    conditions = []
     rows = [
         (valid_id, None, datetime(2024, 1, 2, tzinfo=timezone.utc)),
         (other_id, datetime(2024, 1, 3, tzinfo=timezone.utc), None),
@@ -630,6 +641,7 @@ def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monke
             self.allowed_ids: set[object] | None = None
 
         def filter(self, condition):
+            conditions.append(condition)
             if isinstance(condition, tuple) and condition[:2] == ("in", "id"):
                 self.allowed_ids = set(condition[2])
             return self
@@ -656,17 +668,27 @@ def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monke
         tenant_id = _Field("tenant_id")
         dataset_id = _Field("dataset_id")
 
-    monkeypatch.setattr(database_module, "SessionLocal", lambda: _DB())
+    def _open_session():
+        db = _DB()
+        opened.append(db)
+        return db
+
+    monkeypatch.setattr(database_module, "SessionLocal", _open_session)
     monkeypatch.setattr(document_module, "Document", _DocumentModel)
 
+    with pytest.raises(ValueError, match="UUID"):
+        fetch_document_updated_ts([str(valid_id)], tenant_id=uuid4(), dataset_id="bad-dataset-id")
+    assert opened == []
+
     result = fetch_document_updated_ts(
-        [str(valid_id), "not-a-uuid", str(valid_id), str(other_id)],
+        ["not-a-uuid", str(valid_id), str(valid_id), str(other_id)],
         tenant_id=uuid4(),
-        dataset_id="bad-dataset-id",
+        dataset_id=dataset_id,
         max_docs=1,
     )
 
     assert result == {str(valid_id): datetime(2024, 1, 2, tzinfo=timezone.utc).timestamp()}
+    assert ("eq", "dataset_id", dataset_id) in conditions
 
 
 def test_embedding_adapter_embed_documents_mixes_hits_corrupt_entries_and_misses(
@@ -685,6 +707,12 @@ def test_embedding_adapter_embed_documents_mixes_hits_corrupt_entries_and_misses
     class _Pipe:
         def __init__(self) -> None:
             self.calls: list[tuple[str, bytes, int | None]] = []
+
+        def __enter__(self) -> "_Pipe":
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
 
         def set(self, key: str, payload: bytes, ex: int | None = None) -> None:
             self.calls.append((key, payload, ex))
@@ -791,7 +819,8 @@ def test_compute_dimensions_prefers_explicit_fusion_evals_and_tracks_abstain_tra
 
 
 def test_query_variant_stage_applies_latency_budget_to_slow_variants(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.retrieval.orchestration import query_variants
+    from app.rag.retrieval.planning import variants as query_variants
+    from app.rag.retrieval.planning.contracts import QueryExpansionBudget
 
     monkeypatch.setattr(query_variants, "num_tokens_from_string", lambda text: len(text.split()))
 
@@ -809,10 +838,7 @@ def test_query_variant_stage_applies_latency_budget_to_slow_variants(monkeypatch
             sub_questions=["sub question"],
             hyde_used=True,
             hyde_text="hyde content",
-            query_expansion_max_queries_raw=None,
-            query_expansion_max_candidates_raw=None,
-            query_expansion_token_budget_raw=100,
-            query_expansion_latency_budget_ms_raw=10,
+            budget=QueryExpansionBudget(0, 0, 100, 10.0),
             query_expansion_elapsed_ms=25,
         )
     )

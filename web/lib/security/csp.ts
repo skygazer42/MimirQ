@@ -27,17 +27,8 @@ export function buildCspHeaderValue({
     ]
       .filter(Boolean)
       .join(' '),
-    [
-      "style-src 'self'",
-      // NOTE:
-      // - Inline `style=""` attributes cannot carry a nonce, so including a nonce here
-      //   would cause browsers to ignore `'unsafe-inline'` and block those attributes.
-      // - The app still relies on React inline styles in virtualized views and a few
-      //   dynamic UI controls; keep `'unsafe-inline'` enabled until that is retired.
-      "'unsafe-inline'",
-    ]
-      .filter(Boolean)
-      .join(' '),
+    // Virtualized views use inline style attributes, which cannot carry a nonce.
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: http: https:",
     "font-src 'self' data:",
     "connect-src 'self' http: https: ws: wss:",

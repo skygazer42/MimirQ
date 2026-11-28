@@ -1,13 +1,32 @@
 import { listFrontendSourceFiles, parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
 
-const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter(
-  (rel) => rel === 'web/lib/api-client.ts' || rel.startsWith('web/lib/api/')
-)
+const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter((rel) => rel.startsWith('web/lib/api/'))
 
-// Service-to-service callbacks are intentionally not callable by the browser API layer.
-const SERVICE_ONLY_BACKEND_ROUTES = new Set([
+// Service callbacks, offline workflows, and retired endpoints have no browser entrypoint.
+const NON_BROWSER_BACKEND_ROUTES = new Set([
   'POST /auth/saml/bridge/consume',
   'POST /integrations/dify/conversation-turns',
+  'POST /rag/image-index',
+  'POST /rag/image-search-preview',
+  // The precheck workspace opens files by finding instead of directory prefix.
+  'GET /datasets/{}/precheck/scan-runs/{}/files',
+  // The table workspace uses the query endpoint. The remote table probe uses preview.
+  'GET /datasets/{}/tables/{}/preview',
+  // The browser reads enriched feedback. Tooling reads raw feedback and exports training data.
+  'GET /feedback/messages',
+  'POST /feedback/loop/hard-negatives/export',
+  // Deployment access reviews use the audit CLI.
+  'GET /audit/access-graph/export',
+  'GET /audit/access-graph/summary',
+  // Published ontology business queries are programmatic integration entrypoints.
+  // The authoring workbench uses its fixed-version question/document/action APIs.
+  'POST /kg/ontologies/{}/versions/{}/metrics/{}',
+  'POST /kg/ontologies/{}/versions/{}/objects/{}/lookup',
+  'POST /kg/ontologies/{}/versions/{}/relations/{}/from/{}',
+  'POST /kg/ontologies/{}/versions/{}/rules/{}',
+  'POST /kg/ontologies/{}/versions/{}/functions/{}',
+  'POST /kg/ontologies/datasets/{}/ask',
+  'POST /kg/ontologies/ask',
 ])
 
 function main() {
@@ -18,7 +37,7 @@ function main() {
 
   const missing = []
   for (const [key, src] of backend.entries()) {
-    if (SERVICE_ONLY_BACKEND_ROUTES.has(key)) continue
+    if (NON_BROWSER_BACKEND_ROUTES.has(key)) continue
     if (!frontendKeys.has(key)) {
       missing.push({ key, src })
     }

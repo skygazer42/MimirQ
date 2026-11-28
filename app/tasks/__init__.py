@@ -14,4 +14,3 @@ __all__ = [
     "init_queue",
     "close_queue",
 ]
-

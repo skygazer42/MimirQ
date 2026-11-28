@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from app.services.chat_response_cache import build_chat_cache_key
+from app.services.chat.response_cache import build_chat_cache_key
 
 
 def _supports_dataset_id_param() -> bool:
@@ -23,7 +23,7 @@ def test_chat_cache_key_differs_across_dataset_scopes(monkeypatch) -> None:
 
     # Keep pipeline stable for this test; scope changes should still affect key.
     monkeypatch.setattr(
-        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
+        "app.services.chat.response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
     )
 
     base = {
@@ -61,12 +61,12 @@ def test_chat_cache_key_differs_across_embedding_space(monkeypatch) -> None:
     }
 
     monkeypatch.setattr(
-        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
+        "app.services.chat.response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
     )
     key_a = build_chat_cache_key(**base)
 
     monkeypatch.setattr(
-        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-b", raising=False
+        "app.services.chat.response_cache.current_embedding_space_hash", lambda: "embspace-b", raising=False
     )
     key_b = build_chat_cache_key(**base)
 
@@ -78,7 +78,7 @@ def test_chat_cache_key_differs_across_corpus_cache_token(monkeypatch) -> None:
         pytest.skip("build_chat_cache_key missing dataset_id parameter")
 
     monkeypatch.setattr(
-        "app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
+        "app.services.chat.response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False
     )
 
     base = {
@@ -102,7 +102,7 @@ def test_chat_cache_key_differs_across_corpus_cache_token(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_rejected_singleflight_without_followers_consumes_exception() -> None:
-    import app.services.chat_response_cache as cache_mod
+    import app.services.chat.response_cache as cache_mod
 
     loop = asyncio.get_running_loop()
     previous_handler = loop.get_exception_handler()

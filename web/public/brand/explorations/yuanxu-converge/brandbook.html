@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#F6F7F8">
+  <meta name="description" content="原序 YUANXU 品牌资产：标志、字标、应用图标、功能图标与使用规范。">
+  <title>原序 · 归点</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <style>
+    @font-face{font-family:YuanxuGuide;src:url('fonts/noto-sans-sc-brand.woff2') format('woff2');font-weight:100 900;font-display:swap}
+    :root{--fog:#f6f7f8;--ink:#20262e;--rust:#b84a2a;--line:#dde1e4;--muted:#606a75;--selected:#f9ece6;scroll-behavior:smooth;scroll-padding-top:24px}
+    *{box-sizing:border-box}body{margin:0;background:var(--fog);color:var(--ink);font-family:YuanxuGuide,"Noto Sans SC","Microsoft YaHei",sans-serif;font-size:16px;line-height:1.7;text-autospace:normal}
+    a{color:inherit;text-underline-offset:4px}a:hover{color:var(--rust)}a:focus-visible{outline:3px solid var(--rust);outline-offset:5px;border-radius:3px}a:active{opacity:.75}
+    img{display:block;max-width:100%;height:auto}svg{display:block}h1,h2,h3,p,figure,dl,dd{margin:0}h2{font-size:28px;line-height:1.4;font-weight:550;letter-spacing:-.5px}h3{font-size:16px;line-height:1.6;font-weight:550}
+    .shell{width:min(1280px,calc(100% - 80px));margin-inline:auto}header{display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:104px;border-bottom:1px solid var(--line)}
+    .brand-home{display:flex;gap:14px;align-items:center;text-decoration:none;font-weight:550;font-size:16px;white-space:nowrap}.brand-home img{width:32px;height:32px}.header-actions{display:flex;align-items:center;gap:26px;font-size:14px}
+    .button{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:46px;padding:9px 20px;border:1px solid var(--ink);border-radius:6px;background:var(--ink);color:white;text-decoration:none;font-size:14px;font-weight:550;white-space:nowrap;transition:background .15s,transform .15s}
+    .button:hover{color:white;background:var(--rust);border-color:var(--rust)}.button:active{transform:translateY(1px)}.button.secondary{background:transparent;color:var(--ink);border-color:var(--line)}.button.secondary:hover{border-color:var(--rust);color:var(--rust)}
+    .hero{display:grid;grid-template-columns:1.45fr 1fr;min-height:540px;align-items:center;gap:80px;padding-block:64px}.hero-logo{width:368px;height:144px;max-width:100%}.hero h1{font-size:36px;font-weight:500;line-height:1.55;margin-top:36px;letter-spacing:-.6px}.hero p{margin-top:20px;color:var(--muted);max-width:28em;font-size:16px}.keep-phrase{white-space:nowrap}
+    .symbol-stage{aspect-ratio:1;background:var(--ink);display:grid;place-items:center;border-radius:0;max-width:400px;width:100%;justify-self:end}.symbol-stage img{width:72%;height:auto}
+    .section{border-top:1px solid var(--line);padding-block:56px}.section-heading{display:flex;align-items:baseline;justify-content:space-between;gap:28px;margin-bottom:28px}.section-heading p{font-size:14px;color:var(--muted);max-width:36em}.section-heading a{font-size:14px}
+    .asset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px}.asset-visual{height:240px;display:flex;align-items:center;justify-content:center;background:white;text-decoration:none;overflow:hidden}.asset-visual img{width:276px;max-width:70%;max-height:75%;object-fit:contain}.asset-visual.dark{background:var(--ink)}.asset-visual.soft{background:var(--selected)}.asset-visual .standalone{width:112px;height:112px}.asset-caption{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-top:14px;font-size:14px}.asset-caption a{color:var(--muted)}
+    .palette{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.swatch{height:120px;border:1px solid var(--line)}.swatch.fog{background:var(--fog)}.swatch.ink{background:var(--ink);border-color:var(--ink)}.swatch.rust{background:var(--rust);border-color:var(--rust)}.palette dl{display:flex;justify-content:space-between;gap:12px;padding-top:12px;font-size:14px}.palette dd{font-family:ui-monospace,monospace;color:var(--muted)}.palette-note{margin-top:20px;color:var(--muted);font-size:14px}.palette-note code{white-space:nowrap}
+    .application-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px}.app-stage{background:white;min-height:240px;display:flex;justify-content:center;align-items:center;gap:32px;padding:32px}.app-stage img{width:112px;height:112px;border-radius:24px}.app-stage .light-app{outline:1px solid var(--line)}.size-stage{display:flex;gap:36px;align-items:center;justify-content:center;background:white;min-height:240px;padding:32px}.size-item{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:20px;min-height:100px;font-size:13px;color:var(--muted)}
+    .icons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}.icon-item{display:flex;flex-direction:column;align-items:center;gap:18px;padding:30px 12px;background:white;text-decoration:none;font-size:14px}.icon-item svg{width:36px;height:36px;color:var(--ink)}.icon-item:hover svg{color:var(--rust)}
+    .guidelines{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px}.guidelines p{font-size:14px;line-height:1.85;color:var(--muted);margin-top:12px}.guidelines strong{font-weight:550;color:var(--ink)}
+    .download-list{display:grid;grid-template-columns:1fr 1fr;column-gap:48px}.download-row{display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line);padding:18px 0;text-decoration:none;font-size:14px}.download-row span:last-child{font-family:ui-monospace,monospace;color:var(--muted)}
+    .overview{margin-top:32px}.overview img{width:100%;height:auto}.overview figcaption{margin-top:12px;color:var(--muted);font-size:14px}.footer{display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);padding-block:32px 44px;color:var(--muted);font-size:14px}
+    @media(max-width:900px){.shell{width:calc(100% - 48px)}.hero{gap:36px;min-height:480px}.hero h1{font-size:30px}.hero-logo{width:300px;height:auto}.section-heading{align-items:flex-start;flex-direction:column;gap:10px}.guidelines{grid-template-columns:1fr;gap:24px}.icons{grid-template-columns:repeat(3,minmax(0,1fr))}.application-grid{grid-template-columns:1fr}.asset-visual{height:220px}}
+    @media(max-width:560px){.shell{width:calc(100% - 40px)}header{min-height:88px;gap:12px}.brand-home{gap:8px;font-size:14px}.brand-home img{width:26px;height:26px}.header-actions{gap:0}.header-actions>a:first-child{display:none}.button{padding-inline:12px;font-size:13px;min-height:44px}.hero{grid-template-columns:1fr;padding-block:40px;gap:32px}.hero-logo{width:276px;height:108px}.hero h1{font-size:30px;line-height:1.5;margin-top:24px}.hero p{font-size:14px;margin-top:14px}.symbol-stage{max-width:none;aspect-ratio:1.7}.symbol-stage img{width:44%}.section{padding-block:36px}h2{font-size:24px}.asset-grid{grid-template-columns:1fr;gap:24px}.asset-visual{height:200px}.palette{gap:12px}.swatch{height:88px}.palette dl{flex-direction:column;gap:2px}.palette dd{font-size:13px}.app-stage,.size-stage{padding:24px 16px;min-height:200px;gap:28px}.app-stage img{width:96px;height:96px;border-radius:21px}.icons{gap:10px}.icon-item{gap:16px;padding:24px 8px;font-size:13px}.icon-item svg{width:32px;height:32px}.download-list{grid-template-columns:1fr}.footer{flex-direction:column;gap:6px}.overview{margin-top:24px}}
+    @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}.button{transition:none}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <a class="brand-home" href="#top"><img src="mark.svg" alt="" width="32" height="32"><span>原序 · 归点</span></a>
+      <nav class="header-actions" aria-label="资产导航"><a href="#guidelines">使用规范</a><a class="button" href="yuanxu-brand-kit.zip" download>下载品牌包 <span aria-hidden="true">↓</span></a></nav>
+    </header>
+    <main id="top">
+      <section class="hero" aria-labelledby="brand-promise">
+        <div><img class="hero-logo" src="logo.svg" alt="原序 YUANXU" width="368" height="144"><h1 id="brand-promise">从原始资料，<br>到可信答案。</h1><p>把来源、知识与答案连接起来，<span class="keep-phrase">让每一步清晰可查。</span></p></div>
+        <div class="symbol-stage"><img src="mark-inverse.svg" alt="三道曲面向浅赭橙圆点汇聚的归点图形" width="288" height="288"></div>
+      </section>
+      <section class="section" aria-labelledby="comparison-title">
+        <div class="section-heading"><h2 id="comparison-title">三路汇聚，一个焦点</h2><p>资料从不同路径而来，答案有一个清楚的落点。</p></div>
+        <img src="symbol-comparison.png" alt="原版方折符号与归点图形按同样大小并排比较，包含 24、32、48 像素效果" width="1400" height="620">
+      </section>
+      <section class="section" aria-labelledby="logo-title">
+        <div class="section-heading"><h2 id="logo-title">标志与字标</h2><p>图形独立识别，字标清楚读出名字。</p></div>
+        <div class="asset-grid">
+          <article><a class="asset-visual" href="logo.svg" aria-label="查看原序主标志 SVG"><img src="logo.svg" alt="原序主标志" width="276" height="108"></a><div class="asset-caption"><h3>主标志</h3><a href="logo.svg" download>下载 SVG</a></div></article>
+          <article><a class="asset-visual dark" href="logo-inverse.svg" aria-label="查看原序深底标志 SVG"><img src="logo-inverse.svg" alt="原序深底标志" width="276" height="108"></a><div class="asset-caption"><h3>深底版本</h3><a href="logo-inverse.svg" download>下载 SVG</a></div></article>
+          <article><a class="asset-visual soft" href="logo-en.svg" aria-label="查看原序英文组合标志 SVG"><img src="logo-en.svg" alt="YUANXU 英文组合标志" width="272" height="72"></a><div class="asset-caption"><h3>英文组合</h3><a href="logo-en.svg" download>下载 SVG</a></div></article>
+          <article><a class="asset-visual" href="mark-ink.svg" aria-label="查看原序单色标志 SVG"><img class="standalone" src="mark-ink.svg" alt="原序单色独立标志" width="112" height="112"></a><div class="asset-caption"><h3>单色标志</h3><a href="mark-ink.svg" download>下载 SVG</a></div></article>
+        </div>
+      </section>
+      <section class="section" aria-labelledby="color-title">
+        <div class="section-heading"><h2 id="color-title">雾白、深墨、赭橙</h2><p>中性色承载内容，赭橙用于品牌识别与重点定位。</p></div>
+        <div class="palette"><div><div class="swatch fog"></div><dl><dt>雾白</dt><dd>#F6F7F8</dd></dl></div><div><div class="swatch ink"></div><dl><dt>深墨</dt><dd>#20262E</dd></dl></div><div><div class="swatch rust"></div><dl><dt>赭橙</dt><dd>#B84A2A</dd></dl></div></div>
+        <p class="palette-note">浅底使用赭橙 <code>#B84A2A</code>；深墨背景的标志与应用图标使用浅赭橙 <code>#F09A77</code>。</p>
+      </section>
+      <section class="section" aria-labelledby="application-title">
+        <div class="section-heading"><h2 id="application-title">应用图标与 favicon</h2><p>平台图标保留方形底稿；标签页图标另做像素对齐。</p></div>
+        <div class="application-grid">
+          <article><div class="app-stage"><img src="icon-512.png" alt="原序深底应用图标" width="112" height="112"><img class="light-app" src="app-icon-light-1024.png" alt="原序浅底应用图标" width="112" height="112"></div><div class="asset-caption"><h3>应用图标</h3><a href="app-icon-1024.png" download>下载 PNG</a></div></article>
+          <article><div class="size-stage"><div class="size-item"><img src="favicon-16.png" alt="16 像素标签页图标" width="16" height="16"><span>16px</span></div><div class="size-item"><img src="favicon-32.png" alt="32 像素标签页图标" width="32" height="32"><span>32px</span></div><div class="size-item"><img src="favicon-48.png" alt="48 像素标签页图标" width="48" height="48"><span>48px</span></div></div><div class="asset-caption"><h3>标签页图标</h3><a href="favicon.ico" download>下载 ICO</a></div></article>
+        </div>
+      </section>
+      <section class="section" aria-labelledby="icons-title">
+        <div class="section-heading"><h2 id="icons-title">功能图标</h2><p>24px 网格、1.75px 描边、直角端点。</p></div>
+        <div class="icons">
+          <a class="icon-item" href="icons/knowledge.svg" download aria-label="下载知识库图标"><svg aria-hidden="true"><use href="icons/sprite.svg#yuanxu-knowledge"></use></svg><span>知识库</span></a>
+          <a class="icon-item" href="icons/governance.svg" download aria-label="下载数据治理图标"><svg aria-hidden="true"><use href="icons/sprite.svg#yuanxu-governance"></use></svg><span>数据治理</span></a>
+          <a class="icon-item" href="icons/retrieval.svg" download aria-label="下载检索图标"><svg aria-hidden="true"><use href="icons/sprite.svg#yuanxu-retrieval"></use></svg><span>检索</span></a>
+          <a class="icon-item" href="icons/citation.svg" download aria-label="下载引用图标"><svg aria-hidden="true"><use href="icons/sprite.svg#yuanxu-citation"></use></svg><span>引用</span></a>
+          <a class="icon-item" href="icons/evaluation.svg" download aria-label="下载回归评测图标"><svg aria-hidden="true"><use href="icons/sprite.svg#yuanxu-evaluation"></use></svg><span>回归评测</span></a>
+          <a class="icon-item" href="icons/trace.svg" download aria-label="下载链路追踪图标"><svg aria-hidden="true"><use href="icons/sprite.svg#yuanxu-trace"></use></svg><span>链路追踪</span></a>
+        </div>
+      </section>
+      <section id="guidelines" class="section" aria-labelledby="guidelines-title">
+        <div class="section-heading"><h2 id="guidelines-title">使用规范</h2></div>
+        <div class="guidelines"><div><h3>保留曲线和间隙</h3><p>64 单位画布上，着色边缘向外至少留 12 单位。保留三道曲面的弧度、间隙与圆点比例，使用原始方向。</p></div><div><h3>按尺寸选版本</h3><p>中英组合建议宽度 ≥184px；紧凑组合 ≥112px。更窄的位置使用独立图形；16px 标签页使用经过像素调整的版本。</p></div><div><h3>品牌色与状态分开</h3><p>赭橙用于汇聚的圆点；失败、警告、成功使用各自的状态文字和图标。深底采用反白与浅赭橙版本。</p></div></div>
+      </section>
+      <section class="section" aria-labelledby="download-title">
+        <div class="section-heading"><h2 id="download-title">资产目录</h2><a href="yuanxu-brand-kit.zip" download>下载完整品牌包 ↓</a></div>
+        <div class="download-list">
+          <a class="download-row" href="logo-compact.svg" download><span>紧凑组合标志</span><span>SVG ↓</span></a>
+          <a class="download-row" href="logo-stacked.svg" download><span>纵向组合标志</span><span>SVG ↓</span></a>
+          <a class="download-row" href="wordmark-zh.svg" download><span>中文字标</span><span>SVG ↓</span></a>
+          <a class="download-row" href="wordmark-en.svg" download><span>英文字标</span><span>SVG ↓</span></a>
+          <a class="download-row" href="logo@2x.png" download><span>主标志 · 透明背景</span><span>PNG ↓</span></a>
+          <a class="download-row" href="logo-white@2x.png" download><span>纯白标志 · 透明背景</span><span>PNG ↓</span></a>
+          <a class="download-row" href="apple-touch-icon.png" download><span>Apple 应用图标</span><span>PNG ↓</span></a>
+          <a class="download-row" href="icon-maskable-512.png" download><span>可遮罩应用图标</span><span>PNG ↓</span></a>
+          <a class="download-row" href="favicon.svg" download><span>深浅色自适应 favicon</span><span>SVG ↓</span></a>
+          <a class="download-row" href="social-card.png" download><span>分享封面</span><span>PNG ↓</span></a>
+          <a class="download-row" href="tokens.css" download><span>品牌颜色变量</span><span>CSS ↓</span></a>
+          <a class="download-row" href="icons/sprite.svg" download><span>功能图标集合</span><span>SVG ↓</span></a>
+        </div>
+        <figure class="overview"><a href="brand-overview.png"><img src="brand-overview.png" alt="原序品牌总览，包含主标志、反白版本、构图网格、功能图标和配色" width="1600" height="1060"></a><figcaption><a href="brand-overview.svg" download>下载矢量总览</a> · <a href="brand-overview.png" download>下载 PNG 总览</a></figcaption></figure>
+      </section>
+    </main>
+    <footer class="footer"><span>原序 YUANXU · 品牌识别系统</span><span>2026.10 · <a href="fonts/OFL.txt">字体许可</a></span></footer>
+  </div>
+</body>
+</html>

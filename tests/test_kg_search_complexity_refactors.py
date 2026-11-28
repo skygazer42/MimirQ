@@ -1,4 +1,3 @@
-
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -70,7 +69,6 @@ async def test_entity_verifier_sanitizes_limits_normalizes_types_and_trims_promp
                     "type": "PERSON",
                     "description": "d" * 450,
                     "evidence_quote": "q" * 320,
-                    "confidence": "nan",
                 },
                 {
                     "id": _VERIFY_KEEP_ID,
@@ -150,18 +148,19 @@ async def test_entity_verifier_sanitizes_limits_normalizes_types_and_trims_promp
 
 
 @pytest.mark.asyncio
-async def test_entity_verifier_returns_noop_on_llm_errors() -> None:
+async def test_entity_verifier_propagates_llm_errors() -> None:
     from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 
-    verifier = EntityVerifier(_FakeLLM(exc=RuntimeError("boom")))
-    result = await verifier.verify(
-        text="Entity text",
-        candidates=[EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep")],
-        max_keep=2,
-        max_alias_edges=1,
-    )
-
-    assert result == {"kept": [], "aliases": []}
+    failure = RuntimeError("boom")
+    verifier = EntityVerifier(_FakeLLM(exc=failure))
+    with pytest.raises(RuntimeError, match="boom") as raised:
+        await verifier.verify(
+            text="Entity text",
+            candidates=[EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep")],
+            max_keep=2,
+            max_alias_edges=1,
+        )
+    assert raised.value is failure
 
 
 @pytest.mark.asyncio
@@ -192,30 +191,28 @@ async def test_entity_verifier_empty_inputs_return_stable_schema_without_llm_cal
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "payload",
+    ("payload", "error", "message"),
     [
-        None,
-        [],
-        {"kept": {}, "aliases": "invalid"},
-        {
-            "kept": [None, "invalid", {}, {"id": "missing"}],
-            "aliases": [None, "invalid", {}, {"alias_id": _VERIFY_ALIAS_ID}],
-        },
+        (None, AttributeError, "has no attribute 'get'"),
+        ([], AttributeError, "has no attribute 'get'"),
+        ({"kept": {}, "aliases": "invalid"}, ValueError, "requires a kept array"),
+        ({"kept": [None]}, ValueError, "kept items must be objects"),
     ],
 )
-async def test_entity_verifier_malformed_payloads_return_stable_schema(payload: object) -> None:
+async def test_entity_verifier_rejects_malformed_payloads(
+    payload: object, error: type[Exception], message: str
+) -> None:
     from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 
     llm = _FakeLLM(result=payload)
-    result = await EntityVerifier(llm).verify(
-        text="Entity text",
-        candidates=[
-            EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep"),
-            EntityCandidate(cid=_VERIFY_ALIAS_ID, name="Alias"),
-        ],
-    )
-
-    assert result == {"kept": [], "aliases": []}
+    with pytest.raises(error, match=message):
+        await EntityVerifier(llm).verify(
+            text="Entity text",
+            candidates=[
+                EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep"),
+                EntityCandidate(cid=_VERIFY_ALIAS_ID, name="Alias"),
+            ],
+        )
     assert len(llm.calls) == 1
 
 
@@ -325,7 +322,7 @@ async def test_expand_search_preserves_traversal_dedup_scoring_provenance_and_ca
 ) -> None:
     import app.rag.kg.search.expand as expand_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.expand import ExpandSearcher
+    from app.rag.kg.search.expand import expand
     from app.rag.kg.search.recall import RecallResult
 
     calls: list[tuple[str, object]] = []
@@ -366,7 +363,7 @@ async def test_expand_search_preserves_traversal_dedup_scoring_provenance_and_ca
     config.expand.min_events_per_hop = 1
     config.expand.max_events_per_hop = 4
 
-    result = await ExpandSearcher().expand(config, recall_result)
+    result = await expand(config, recall_result)
 
     assert calls == [
         ("relation.list", [str(_EXPAND_SEED_ID)]),
@@ -404,7 +401,7 @@ async def test_expand_search_returns_empty_for_explicit_empty_document_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.expand import ExpandSearcher
+    from app.rag.kg.search.expand import expand
     from app.rag.kg.search.recall import RecallResult
 
     monkeypatch.setattr(
@@ -422,7 +419,7 @@ async def test_expand_search_returns_empty_for_explicit_empty_document_scope(
     )
     config = SearchConfig(query="expand", tenant_id=_TENANT_ID, document_ids=[])
 
-    result = await ExpandSearcher().expand(config, recall_result)
+    result = await expand(config, recall_result)
 
     assert result.key_final == []
     assert result.event_ids == []
@@ -701,7 +698,7 @@ async def test_recall_search_uses_lexical_first_branch_and_preserves_exact_schem
 ) -> None:
     import app.rag.kg.search.recall as recall_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.recall import RecallSearcher
+    from app.rag.kg.search.recall import recall
 
     calls: list[tuple[str, object]] = []
     alias_hits = [
@@ -721,12 +718,12 @@ async def test_recall_search_uses_lexical_first_branch_and_preserves_exact_schem
         }
     ]
 
-    async def _unexpected_embedding(_self: object, _query: str) -> list[float]:
+    async def _unexpected_embedding(_query: str) -> list[float]:
         raise AssertionError("embedding should be skipped when lexical-first results exist")
 
     monkeypatch.setattr(recall_mod, "get_session", lambda: _Session(), raising=True)
     monkeypatch.setattr(
-        recall_mod.DocumentProcessor,
+        recall_mod,
         "generate_embedding",
         _unexpected_embedding,
         raising=True,
@@ -766,7 +763,7 @@ async def test_recall_search_uses_lexical_first_branch_and_preserves_exact_schem
         query_mode="local",
         query_mode_reason_codes=["dataset_factoid_scope", "quoted_term"],
     )
-    result = await RecallSearcher().search(config)
+    result = await recall(config)
 
     assert calls == [
         ("alias.match", "quoted term"),
@@ -816,7 +813,7 @@ async def test_recall_search_expands_alias_query_and_falls_back_to_lexical_conte
 ) -> None:
     import app.rag.kg.search.recall as recall_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.recall import RecallSearcher
+    from app.rag.kg.search.recall import recall
 
     calls: list[tuple[str, object]] = []
     alias_hits = [
@@ -835,13 +832,13 @@ async def test_recall_search_expands_alias_query_and_falls_back_to_lexical_conte
     ]
     captured_queries: list[str] = []
 
-    async def _failing_embedding(_self: object, query: str) -> list[float]:
+    async def _failing_embedding(query: str) -> list[float]:
         captured_queries.append(query)
         raise RuntimeError("embedding offline")
 
     monkeypatch.setattr(recall_mod, "get_session", lambda: _Session(), raising=True)
     monkeypatch.setattr(
-        recall_mod.DocumentProcessor,
+        recall_mod,
         "generate_embedding",
         _failing_embedding,
         raising=True,
@@ -881,7 +878,7 @@ async def test_recall_search_expands_alias_query_and_falls_back_to_lexical_conte
     monkeypatch.setattr(recall_mod.settings, "KG_RELATION_ENABLED", False, raising=False)
 
     config = SearchConfig(query="alpha", tenant_id=_TENANT_ID)
-    result = await RecallSearcher().search(config)
+    result = await recall(config)
 
     assert captured_queries == ["alpha 中文"]
     assert ("event.similar", None) not in calls
@@ -908,7 +905,7 @@ async def test_recall_search_caps_deduplicates_and_serves_candidates_with_exact_
 ) -> None:
     import app.rag.kg.search.recall as recall_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.recall import RecallSearcher
+    from app.rag.kg.search.recall import recall
 
     calls: list[tuple[str, object]] = []
     alias_hits = [
@@ -957,7 +954,7 @@ async def test_recall_search_caps_deduplicates_and_serves_candidates_with_exact_
     )
     config.recall.max_events = 3
 
-    result = await RecallSearcher().search(config)
+    result = await recall(config)
 
     assert calls == [
         ("alias.match", "alpha"),
@@ -1014,18 +1011,18 @@ async def test_recall_search_requires_account_id_for_dataset_scoped_filtering(
 ) -> None:
     import app.rag.kg.search.recall as recall_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.recall import RecallSearcher
+    from app.rag.kg.search.recall import recall
 
     calls: list[tuple[str, object]] = []
     embedding_queries: list[str] = []
 
-    async def _embedding(_self: object, query: str) -> list[float]:
+    async def _embedding(query: str) -> list[float]:
         embedding_queries.append(query)
         return [0.1]
 
     monkeypatch.setattr(recall_mod, "get_session", lambda: _Session(), raising=True)
     monkeypatch.setattr(
-        recall_mod.DocumentProcessor,
+        recall_mod,
         "generate_embedding",
         _embedding,
         raising=True,
@@ -1072,7 +1069,7 @@ async def test_recall_search_requires_account_id_for_dataset_scoped_filtering(
     )
 
     with pytest.raises(ValueError, match="account_id is required for dataset-scoped KG search"):
-        await RecallSearcher().search(config)
+        await recall(config)
 
     assert embedding_queries == ["alpha"]
     assert calls == [

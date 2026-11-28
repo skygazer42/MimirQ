@@ -3,26 +3,37 @@
  */
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { FileText, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react'
+import { FileText, Loader2, AlertCircle } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { getChunkRole } from '@/components/chunk-preview/utils/metadata'
+import { getChunkParentRange } from '@/components/chunk-preview/utils/metadata'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
-import { extractMarkdownHeadings } from '@/lib/markdown'
+import { extractMarkdownHeadings, type MarkdownHeading } from '@/lib/markdown'
 import { createPositionTagIndexMapper, findPositionTagRanges, stripPositionTags } from '@/lib/parsing-positions'
+import { createCodePointToUtf16Converter, expandTextRangeToCharacters } from '@/lib/text-offsets'
+import { projectChunkTextPositions } from '@/lib/chunk-text-positions'
 import { cn } from '@/lib/utils'
-import type { ChunkPreviewItem } from '@/types'
+import { writeClientStorage } from '@/lib/client-storage'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
 import { PdfPreview } from './pdf-preview'
-import { CoverageHeatmapMini } from './coverage-heatmap-mini'
-import { getInitialOriginalPreviewMode, ORIGINAL_PREVIEW_MODE_STORAGE_KEY } from './pdf-dock'
+import { CoverageStats } from './coverage-stats'
+import styles from '../compare.module.css'
+import {
+  getStoredOriginalPreviewMode,
+  isPdfOriginalFile,
+  ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
+  type OriginalPreviewMode,
+} from './pdf-dock'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
-type PreviewMode = 'raw' | 'rendered' | 'editor' | 'pdf'
+const EXCERPT_THRESHOLD = 20_000
+
+type LocalOriginalRead = {
+  file: File
+} & ({ status: 'loading' } | { status: 'ready'; text: string } | { status: 'failed'; message: string })
 
 type IdleGlobal = typeof globalThis & {
   requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
@@ -35,10 +46,10 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 function canReadFileAsText(file: File | null) {
   if (!file) return false
-  const type = (file.type || '').toLowerCase()
+  const type = file.type.toLowerCase()
   if (type.startsWith('text/')) return true
   if (type === 'application/json') return true
-  const name = (file.name || '').toLowerCase()
+  const name = file.name.toLowerCase()
   return (
     name.endsWith('.md') ||
     name.endsWith('.txt') ||
@@ -51,7 +62,7 @@ function canReadFileAsText(file: File | null) {
   )
 }
 
-function DeferredMarkdownToc({ markdown }: Readonly<{ markdown: string }>) {
+function DeferredMarkdownToc({ headings }: Readonly<{ headings: readonly MarkdownHeading[] }>) {
   const t = useTranslations('ChunkPreview')
   const [ready, setReady] = useState(false)
 
@@ -64,31 +75,30 @@ function DeferredMarkdownToc({ markdown }: Readonly<{ markdown: string }>) {
       setReady(true)
     }
 
-    // Rendering + heading extraction for large markdown docs can block the main thread.
-    // Defer the (non-critical) ToC until the browser is idle so the main preview shows ASAP.
+    // Defer the directory and its observer until the browser is idle.
     const idleGlobal: IdleGlobal = globalThis
-    const ric = idleGlobal.requestIdleCallback
-    const cic = idleGlobal.cancelIdleCallback
-    if (typeof ric === 'function') {
-      const id = ric(enable, { timeout: 800 })
+    const requestIdleCallback = idleGlobal.requestIdleCallback
+    const cancelIdleCallback = idleGlobal.cancelIdleCallback
+    if (typeof requestIdleCallback === 'function') {
+      const id = requestIdleCallback(enable, { timeout: 800 })
       return () => {
         cancelled = true
-        cic?.(id)
+        cancelIdleCallback?.(id)
       }
     }
 
-    const t = setTimeout(enable, 0)
+    const timerId = setTimeout(enable, 0)
     return () => {
       cancelled = true
-      clearTimeout(t)
+      clearTimeout(timerId)
     }
-  }, [markdown])
+  }, [headings])
 
   if (!ready) {
     return <div className="text-[11px] text-muted-foreground">{t('originalPreview.tocLoading')}</div>
   }
 
-  return <MarkdownToc markdown={markdown} />
+  return <MarkdownToc headings={headings} />
 }
 
 export function OriginalPreview() {
@@ -100,184 +110,156 @@ export function OriginalPreview() {
     selectedChunkIndex,
     setSelectedChunkIndex,
     currentFile,
+    previewSourceFile,
     isLoading,
     error,
   } = useChunkPreview()
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('raw')
+  const sourceFile = previewSourceFile === null ? currentFile : previewSourceFile
+  const [preferredMode, setPreferredMode] = useState<OriginalPreviewMode>('raw')
   const [forceFullHighlight, setForceFullHighlight] = useState(false)
-  const [localOriginalText, setLocalOriginalText] = useState<string | null>(null)
-  const [localLoading, setLocalLoading] = useState(false)
-  const [localError, setLocalError] = useState<string | null>(null)
+  const [localRead, setLocalRead] = useState<LocalOriginalRead | null>(null)
+  const currentRead = localRead?.file === sourceFile ? localRead : null
+  const localOriginalText = currentRead?.status === 'ready' ? currentRead.text : null
+  const localReadRequestRef = useRef<{ file: File } | null>(null)
   const highlightRef = useRef<HTMLElement | null>(null)
+  const sourceBodyRef = useRef<HTMLDivElement | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
-    if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, previewMode)
-  }, [previewMode])
-
-  const activeChunkIndex = hoveredChunkIndex ?? selectedChunkIndex
+  const activeChunkIndex = selectedChunkIndex ?? hoveredChunkIndex
   const activeChunkMeta = useMemo(() => {
     if (activeChunkIndex == null) return null
-    const chunk = previewData?.chunks?.[activeChunkIndex]
-    if (!chunk) return null
+    const chunk = previewData?.chunks[activeChunkIndex]
+    if (chunk === undefined) return null
     return {
       label: `#${activeChunkIndex + 1}`,
       range: `${chunk.start_index}-${chunk.end_index}`,
       page: chunk.page_number,
-      role: getChunkRole(chunk),
     }
   }, [activeChunkIndex, previewData?.chunks])
 
-  const isPdf = useMemo(() => {
-    const ft = String(previewData?.file_type || '').toLowerCase()
-    if (ft === 'pdf') return true
-    const name = String(currentFile?.name || '').toLowerCase()
-    return name.endsWith('.pdf')
-  }, [currentFile?.name, previewData?.file_type])
+  const isPdf = isPdfOriginalFile(previewData, sourceFile)
+  const previewMode = preferredMode === 'pdf' && !isPdf ? 'raw' : preferredMode
 
-  // Keep the preferred preview mode sticky across chunk inspections (especially useful for PDF docking).
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    setPreviewMode(getInitialOriginalPreviewMode(isPdf))
+    const storedMode = getStoredOriginalPreviewMode()
+    const nextMode = storedMode ?? (isPdf ? 'pdf' : 'raw')
+    setPreferredMode(nextMode)
+    if (storedMode === null) writeClientStorage(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, nextMode)
   }, [isPdf])
 
-  useEffect(() => {
-    if (previewMode === 'pdf' && !isPdf) setPreviewMode('raw')
-  }, [isPdf, previewMode])
+  function selectPreviewMode(mode: OriginalPreviewMode) {
+    setPreferredMode(mode)
+    writeClientStorage(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, mode)
+  }
 
   const serverTextInfo = useMemo(() => {
     const raw = previewData?.original_text
     const cleanedFromApi = previewData?.original_text_cleaned
 
-    const identity = (n: number) => Math.max(0, Math.trunc(Number(n) || 0))
-
-    if (!raw) {
+    if (typeof raw !== 'string') {
       return {
-        displayText: null as string | null,
-        indexMapper: identity,
-        hasPositionTags: false,
+        displayText: typeof cleanedFromApi === 'string' ? cleanedFromApi : null,
+        indexMapper: null,
       }
     }
-
-    if (typeof cleanedFromApi === 'string' && cleanedFromApi.length > 0) {
-      return {
-        displayText: cleanedFromApi,
-        indexMapper: createPositionTagIndexMapper(raw),
-        hasPositionTags: true,
-      }
-    }
+    const cleanedText = stripPositionTags(raw)
+    const displayText = typeof cleanedFromApi === 'string' ? cleanedFromApi : cleanedText
+    if (displayText !== cleanedText) return { displayText, indexMapper: null }
 
     const ranges = findPositionTagRanges(raw)
-    if (ranges.length > 0) {
-      return {
-        displayText: stripPositionTags(raw),
-        indexMapper: createPositionTagIndexMapper(raw, ranges),
-        hasPositionTags: true,
-      }
-    }
-
+    const converter = createCodePointToUtf16Converter(raw)
+    const removeTags = createPositionTagIndexMapper(raw, ranges)
     return {
-      displayText: raw,
-      indexMapper: identity,
-      hasPositionTags: false,
+      displayText,
+      indexMapper: (offset: number) => {
+        const utf16 = converter.toUtf16(offset)
+        return utf16 === undefined ? undefined : removeTags(utf16)
+      },
     }
   }, [previewData?.original_text, previewData?.original_text_cleaned])
 
-  const canLoadFromFile = useMemo(() => canReadFileAsText(currentFile), [currentFile])
-  const effectiveOriginalText = serverTextInfo.displayText ?? localOriginalText ?? null
-  const backendTotalCharacters = useMemo(() => {
-    const total = Number(previewData?.total_characters)
-    return Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0
-  }, [previewData?.total_characters])
+  const canLoadFromFile = useMemo(() => canReadFileAsText(sourceFile), [sourceFile])
+  const effectiveOriginalText = serverTextInfo.displayText ?? localOriginalText
   const originalTextSource = (() => {
-    if (previewData?.original_text_included || previewData?.original_text || previewData?.original_text_cleaned) {
-        return 'server';
-    }
-    else if (localOriginalText) {
-            return 'local';
-        }
-        else {
-            return null;
-        }
-})()
+    if (serverTextInfo.displayText !== null) return 'server'
+    return localOriginalText === null ? null : 'local'
+  })()
 
-  useEffect(() => {
-    setLocalOriginalText(null)
-    setLocalError(null)
-    setLocalLoading(false)
+  useLayoutEffect(() => {
+    setLocalRead(null)
     setForceFullHighlight(false)
-  }, [currentFile, previewData?.filename])
+    return () => {
+      localReadRequestRef.current = null
+    }
+  }, [sourceFile])
+
+  const readLocalOriginal = useCallback(async () => {
+    if (sourceFile === null || localReadRequestRef.current !== null) return
+    const request = { file: sourceFile }
+    localReadRequestRef.current = request
+    setLocalRead({ file: sourceFile, status: 'loading' })
+
+    try {
+      const text = await request.file.text()
+      if (localReadRequestRef.current !== request) return
+      setLocalRead({ file: request.file, status: 'ready', text })
+    } catch (error: unknown) {
+      if (localReadRequestRef.current !== request) return
+      setLocalRead({
+        file: request.file,
+        status: 'failed',
+        message: getErrorMessage(error, t('originalPreview.errors.readLocalFailed')),
+      })
+    } finally {
+      if (localReadRequestRef.current === request) localReadRequestRef.current = null
+    }
+  }, [sourceFile, t])
 
   useEffect(() => {
-    if (!previewData) return
-    if (previewData.original_text) return
-    if (!canLoadFromFile) return
-    if (!currentFile) return
-    if (currentFile.size > AUTO_LOAD_TEXT_MAX_BYTES) return
-    if (localOriginalText) return
-    if (localLoading) return
-
-    let alive = true
-    setLocalLoading(true)
-    setLocalError(null)
-    currentFile
-      .text()
-      .then((text) => {
-        if (!alive) return
-        setLocalOriginalText(text)
-      })
-      .catch((error: unknown) => {
-        if (!alive) return
-        setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')))
-      })
-      .finally(() => {
-        if (!alive) return
-        setLocalLoading(false)
-      })
-
-    return () => {
-      alive = false
+    if (previewData === null || serverTextInfo.displayText !== null || currentRead !== null) return
+    if (canLoadFromFile && sourceFile !== null && sourceFile.size <= AUTO_LOAD_TEXT_MAX_BYTES) {
+      void readLocalOriginal()
     }
-  }, [canLoadFromFile, currentFile, localLoading, localOriginalText, previewData, t])
+  }, [canLoadFromFile, currentRead, sourceFile, previewData, readLocalOriginal, serverTextInfo.displayText])
+
+  const displayChunks = useMemo(() => {
+    if (previewData === null || serverTextInfo.indexMapper === null) return []
+    return projectChunkTextPositions(previewData.chunks, serverTextInfo.indexMapper)
+  }, [previewData, serverTextInfo.indexMapper])
+
+  const displayActiveChunkIndex = useMemo(() => {
+    if (activeChunkIndex === null) return null
+    const source = previewData?.chunks[activeChunkIndex]
+    if (source === undefined) return null
+    const index = displayChunks.findIndex((chunk) => chunk.index === source.index)
+    return index < 0 ? null : index
+  }, [activeChunkIndex, displayChunks, previewData])
+
+  const selectDisplayChunk = useCallback(
+    (chunkIndex: number) => {
+      if (previewData === null) return
+      const index = previewData.chunks.findIndex((chunk) => chunk.index === chunkIndex)
+      if (index >= 0) setSelectedChunkIndex(index)
+    },
+    [previewData, setSelectedChunkIndex],
+  )
 
   const highlightModel = useMemo(() => {
-    if (!effectiveOriginalText || activeChunkIndex === null) return null
-
-    const chunk = previewData?.chunks?.[activeChunkIndex]
-    if (!chunk) return null
+    if (effectiveOriginalText === null || displayActiveChunkIndex === null) return null
+    const chunk = displayChunks[displayActiveChunkIndex]
 
     const text = effectiveOriginalText
-    const mapIndex = serverTextInfo.indexMapper
-    const activeStartRaw = Math.max(0, Number(chunk.start_index) || 0)
-    const activeEndRaw = Math.max(activeStartRaw, Number(chunk.end_index) || activeStartRaw)
-    const activeStart = Math.max(0, mapIndex(activeStartRaw))
-    const activeEnd = Math.max(activeStart, mapIndex(activeEndRaw))
+    const activeStart = chunk.start_index
+    const activeEnd = chunk.end_index
     if (activeStart >= text.length) return null
     const safeActiveEnd = Math.min(activeEnd, text.length)
     if (safeActiveEnd <= activeStart) return null
 
-    // Parent-child: when selecting a child, also highlight its parent range (if provided).
-    const meta = (chunk.metadata || {})
-    const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : ''
-    const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
-    const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
-    const parentStart = role === 'child' && parentStartRaw != null ? Number(parentStartRaw) : Number.NaN
-    const parentEnd = role === 'child' && parentEndRaw != null ? Number(parentEndRaw) : Number.NaN
-    const parentStartMapped = Number.isFinite(parentStart) ? mapIndex(parentStart) : Number.NaN
-    const parentEndMapped = Number.isFinite(parentEnd) ? mapIndex(parentEnd) : Number.NaN
-    const hasParent =
-      role === 'child' &&
-      Number.isFinite(parentStartMapped) &&
-      Number.isFinite(parentEndMapped) &&
-      parentEndMapped > parentStartMapped &&
-      parentStartMapped <= activeStart &&
-      parentEndMapped >= safeActiveEnd
-
-    const baseStart = hasParent ? Math.min(activeStart, parentStartMapped) : activeStart
-    const baseEnd = hasParent ? Math.max(safeActiveEnd, parentEndMapped) : safeActiveEnd
+    const parentRange = getChunkParentRange(chunk, displayChunks)
+    const baseStart = parentRange === null ? activeStart : parentRange.start
+    const baseEnd = parentRange === null ? safeActiveEnd : parentRange.end
 
     // Avoid rendering giant before/after strings for large texts: default to a windowed excerpt.
-    const EXCERPT_THRESHOLD = 20_000
     const CONTEXT_CHARS = 2000
     const useExcerpt = !forceFullHighlight && text.length > EXCERPT_THRESHOLD
     if (!useExcerpt) {
@@ -289,13 +271,15 @@ export function OriginalPreview() {
         suffixOmitted: false,
         activeStart,
         activeEnd: safeActiveEnd,
-        parentStart: hasParent ? parentStartMapped : null,
-        parentEnd: hasParent ? parentEndMapped : null,
+        parentRange,
       }
     }
 
-    const excerptStart = Math.max(0, baseStart - CONTEXT_CHARS)
-    const excerptEnd = Math.min(text.length, baseEnd + CONTEXT_CHARS)
+    const { start: excerptStart, end: excerptEnd } = expandTextRangeToCharacters(
+      text,
+      Math.max(0, baseStart - CONTEXT_CHARS),
+      Math.min(text.length, baseEnd + CONTEXT_CHARS),
+    )
     return {
       text,
       excerptStart,
@@ -304,383 +288,318 @@ export function OriginalPreview() {
       suffixOmitted: excerptEnd < text.length,
       activeStart,
       activeEnd: safeActiveEnd,
-      parentStart: hasParent ? parentStartMapped : null,
-      parentEnd: hasParent ? parentEndMapped : null,
+      parentRange,
     }
-  }, [activeChunkIndex, effectiveOriginalText, forceFullHighlight, previewData?.chunks, serverTextInfo.indexMapper])
+  }, [displayActiveChunkIndex, displayChunks, effectiveOriginalText, forceFullHighlight])
 
-  const displayChunks = useMemo<ChunkPreviewItem[]>(() => {
-    const chunks = previewData?.chunks || []
-    if (!chunks.length) return chunks
-    if (!serverTextInfo.hasPositionTags) return chunks
-
-    const mapIndex = serverTextInfo.indexMapper
-    return chunks.map((c) => {
-      const startRaw = Number(c.start_index) || 0
-      const endRaw = Math.max(startRaw, Number(c.end_index) || startRaw)
-      const start = Math.max(0, mapIndex(startRaw))
-      const end = Math.max(start, mapIndex(endRaw))
-
-      const metadata = c.metadata ? { ...c.metadata } : undefined
-      if (metadata) {
-        const psRaw = metadata.parent_start_char ?? metadata.parent_start_index ?? metadata.parent_start
-        const peRaw = metadata.parent_end_char ?? metadata.parent_end_index ?? metadata.parent_end
-        const ps = psRaw == null ? null : mapIndex(Number(psRaw) || 0)
-        const pe = peRaw == null ? null : mapIndex(Number(peRaw) || 0)
-        if (ps != null) {
-          metadata.parent_start_char = ps
-          metadata.parent_start_index = ps
-          metadata.parent_start = ps
-        }
-        if (pe != null) {
-          metadata.parent_end_char = pe
-          metadata.parent_end_index = pe
-          metadata.parent_end = pe
-        }
-      }
-
-      return {
-        ...c,
-        start_index: start,
-        end_index: end,
-        metadata,
-      }
-    })
-  }, [previewData?.chunks, serverTextInfo.hasPositionTags, serverTextInfo.indexMapper])
-
-  const tocEnabled = useMemo(
-    () => extractMarkdownHeadings(effectiveOriginalText || '', { maxDepth: 4 }).length > 0,
-    [effectiveOriginalText]
+  const tocHeadings = useMemo(() => {
+    if (previewMode !== 'rendered' || effectiveOriginalText === null) return []
+    // Assign every anchor before filtering so repeated headings match the rendered source.
+    return extractMarkdownHeadings(effectiveOriginalText).filter((heading) => heading.level <= 4)
+  }, [effectiveOriginalText, previewMode])
+  const readingRange = useMemo(
+    () => (highlightModel ? { start: highlightModel.activeStart, end: highlightModel.activeEnd } : null),
+    [highlightModel],
   )
 
   useEffect(() => {
     if (activeChunkIndex === null) return
-    if (previewMode !== 'raw') return
-    const el = highlightRef.current
-    if (!el) return
+    if (previewMode !== 'raw' && previewMode !== 'rendered') return
+    const container = scrollRef.current
+    if (!container) return
     const prefersReducedMotion = globalThis.window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
-    el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' })
-  }, [activeChunkIndex, previewMode])
-
-  const originalHeaderMetaChipClass =
-    'inline-flex h-5 min-w-0 items-center gap-1 rounded-full border border-border/45 bg-background/68 px-1.5 text-[10px] font-medium leading-none text-muted-foreground/80'
-  const originalHeaderModeButtonClass =
-    'h-6 rounded-full px-2 text-[10.5px] font-medium shadow-none hover:bg-primary/8 hover:text-foreground/85'
+    const locate = () => {
+      const target =
+        previewMode === 'raw'
+          ? highlightRef.current
+          : sourceBodyRef.current?.querySelector<HTMLElement>('[data-source-selection-start]')
+      if (!target || !container.clientHeight) return
+      const top = container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 18
+      container.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotion ? 'auto' : 'smooth' })
+    }
+    locate()
+    // The mobile source pane stays mounted while hidden. Locate again when it becomes visible.
+    const observer = new ResizeObserver(locate)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [activeChunkIndex, previewMode, readingRange])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border/60 bg-card">
-      <div className="min-h-10 shrink-0 border-b border-border/55 bg-card px-3 py-2">
-        <div
-          data-original-preview-header
-          className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between"
+    <div className={styles.pane}>
+      <div data-original-preview-header data-original-preview-health-strip className={styles.paneHead}>
+        <FileText />
+        <span
+          title={
+            activeChunkMeta
+              ? `${activeChunkMeta.label} · 位置 ${activeChunkMeta.range}${activeChunkMeta.page == null ? '' : ` · 第 ${activeChunkMeta.page} 页`}`
+              : originalTextSource === 'local'
+                ? '本地文档原文'
+                : '解析原文'
+          }
         >
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-foreground">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">
-                  {previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}
-                </span>
-              </span>
-              {previewData ? (
-                <span className={cn(originalHeaderMetaChipClass, 'tabular-nums')}>
-                  {t('originalPreview.charCount', {
-                    count: backendTotalCharacters.toLocaleString(),
-                  })}
-                </span>
-              ) : null}
-              {originalTextSource ? (
-                <span className={originalHeaderMetaChipClass}>
-                  {originalTextSource === 'server'
-                    ? t('originalPreview.source.server')
-                    : t('originalPreview.source.local')}
-                </span>
-              ) : null}
-              {previewData?.original_text ? null : previewData ? (() => {
-                const limit = previewData.original_text_max_chars ?? 100000
-                const truncated = Boolean(previewData.original_text_truncated)
-                const badgeTitle = truncated
-                  ? t('originalPreview.badges.originalTooLargeTitle', {
-                      limit: limit.toLocaleString(),
-                    })
-                  : t('originalPreview.badges.originalMissingTitle')
-                const badgeLabel = truncated
-                  ? t('originalPreview.badges.originalTooLarge')
-                  : t('originalPreview.badges.originalMissing')
-                const badgeDescription = badgeTitle === badgeLabel ? null : badgeTitle
-                return (
-                  <TooltipProvider delayDuration={120}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-warning/25 bg-warning/10 text-warning"
-                          aria-label={badgeLabel}
-                        >
-                          <AlertCircle className="h-3 w-3" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-[240px] text-[11px] leading-relaxed">
-                        <div className="font-medium">{badgeLabel}</div>
-                        {badgeDescription ? (
-                          <div className="mt-0.5 text-muted-foreground">{badgeDescription}</div>
-                        ) : null}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )
-              })() : null}
-              {previewMode === 'pdf' ? (
-                <span className="hidden text-[10.5px] font-normal text-muted-foreground/70 xl:inline">
-                  {t('originalPreview.hints.pdfMode')}
-                </span>
-              ) : null}
-            </div>
-
-            {previewData ? (
-              <div
-                data-original-preview-health-strip
-                className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10px] font-mono text-muted-foreground"
-              >
-              {activeChunkMeta ? (
-                <span className="inline-flex h-5 max-w-full items-center rounded-full border border-primary/20 bg-primary/10 px-1.5 text-primary">
-                  {activeChunkMeta.label}
-                  {activeChunkMeta.page == null ? '' : ` P.${activeChunkMeta.page}`}
-                  {' '}
-                  <span className="truncate text-muted-foreground">{activeChunkMeta.range}</span>
-                  {activeChunkMeta.role ? (
-                    <span className="ml-1 shrink-0 text-[9px] uppercase  text-muted-foreground">
-                      {activeChunkMeta.role}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-              <CoverageHeatmapMini
-                stats={previewData.stats}
-                className="hidden min-w-0 max-w-full border-border/45 bg-muted/16 px-1.5 py-0.5 shadow-none lg:flex"
-              />
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5 self-start xl:self-center">
-            {previewMode === 'raw' && effectiveOriginalText && activeChunkIndex !== null && effectiveOriginalText.length > 20000 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className={originalHeaderModeButtonClass}
-                onClick={() => setForceFullHighlight((v) => !v)}
-                title={
-                  forceFullHighlight
-                    ? t('originalPreview.toggle.windowedTitle')
-                    : t('originalPreview.toggle.fullTitle')
-                }
-              >
-                {forceFullHighlight
-                  ? t('originalPreview.toggle.windowed')
-                  : t('originalPreview.toggle.full')}
-              </Button>
-            ) : null}
-            <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-muted/18 p-0.5">
-              <Button
-                variant={previewMode === 'raw' ? 'secondary' : 'ghost'}
-                size="sm"
-                className={originalHeaderModeButtonClass}
-                onClick={() => setPreviewMode('raw')}
-                disabled={!effectiveOriginalText}
-              >
-                {t('originalPreview.tabs.raw')}
-              </Button>
-              <Button
-                variant={previewMode === 'rendered' ? 'secondary' : 'ghost'}
-                size="sm"
-                className={originalHeaderModeButtonClass}
-                onClick={() => setPreviewMode('rendered')}
-                disabled={!effectiveOriginalText}
-              >
-                {t('originalPreview.tabs.rendered')}
-              </Button>
-              <Button
-                variant={previewMode === 'editor' ? 'secondary' : 'ghost'}
-                size="sm"
-                className={originalHeaderModeButtonClass}
-                onClick={() => setPreviewMode('editor')}
-                disabled={!effectiveOriginalText}
-                title={t('originalPreview.tabs.editorTitle')}
-              >
-                {t('originalPreview.tabs.editor')}
-              </Button>
-              {isPdf ? (
-                <Button
-                  variant={previewMode === 'pdf' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className={originalHeaderModeButtonClass}
-                  onClick={() => setPreviewMode('pdf')}
-                  disabled={!previewData || !currentFile}
-                  title={
-                    serverTextInfo.hasPositionTags
-                      ? t('originalPreview.tabs.pdfAvailableTitle')
-                      : t('originalPreview.tabs.pdfUnavailableTitle')
-                  }
-                >
-                  {t('originalPreview.tabs.pdf')}
-                </Button>
-              ) : null}
-            </div>
-          </div>
+          {previewMode === 'pdf' ? t('originalPreview.titlePdf') : '文档原文'}
+        </span>
+        {previewData && <span className={styles.metadata}>{previewData.total_characters.toLocaleString()} 字符</span>}
+        {activeChunkMeta && <span className={styles.metadata}>位置 {activeChunkMeta.range}</span>}
+        {previewData && <CoverageStats stats={previewData.stats} />}
+        <div className={styles.sourceModes} role="group" aria-label="原文显示方式">
+          <Button
+            variant="ghost"
+            aria-pressed={previewMode === 'raw'}
+            onClick={() => selectPreviewMode('raw')}
+            disabled={effectiveOriginalText === null}
+          >
+            源码
+          </Button>
+          <Button
+            variant="ghost"
+            aria-pressed={previewMode === 'rendered'}
+            onClick={() => selectPreviewMode('rendered')}
+            disabled={effectiveOriginalText === null}
+          >
+            阅读
+          </Button>
+          <Button
+            variant="ghost"
+            aria-pressed={previewMode === 'editor'}
+            onClick={() => selectPreviewMode('editor')}
+            disabled={effectiveOriginalText === null}
+            title={t('originalPreview.tabs.editorTitle')}
+          >
+            编辑器
+          </Button>
+          {isPdf && (
+            <Button
+              variant="ghost"
+              aria-pressed={previewMode === 'pdf'}
+              onClick={() => selectPreviewMode('pdf')}
+              disabled={!previewData || !sourceFile}
+            >
+              PDF
+            </Button>
+          )}
         </div>
       </div>
-
+      {previewData && (
+        <div className={styles.locationMeta}>
+          {previewData.original_text_truncated && (
+            <span
+              className="text-warning"
+              title={t('originalPreview.badges.originalTooLargeTitle', {
+                limit: (previewData.original_text_max_chars ?? 100000).toLocaleString(),
+              })}
+            >
+              <AlertCircle className="mr-1 inline size-3.5" />
+              原文已截断
+            </span>
+          )}
+          {effectiveOriginalText === null && <span className="text-warning">当前预览未返回原文</span>}
+          {effectiveOriginalText !== null && serverTextInfo.indexMapper === null && previewData.chunks.length > 0 ? (
+            <span className="text-warning">当前原文缺少可核对的解析位置</span>
+          ) : null}
+          {tocHeadings.length > 0 && (
+            <details>
+              <summary className="cursor-pointer">章节目录</summary>
+              <DeferredMarkdownToc headings={tocHeadings} />
+            </details>
+          )}
+          {previewMode === 'raw' && highlightModel !== null && highlightModel.text.length > EXCERPT_THRESHOLD && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[13px]"
+              onClick={() => setForceFullHighlight((value) => !value)}
+            >
+              {forceFullHighlight ? t('originalPreview.toggle.windowed') : t('originalPreview.toggle.full')}
+            </Button>
+          )}
+        </div>
+      )}
       <div
+        ref={scrollRef}
         data-page-scroll-container="true"
-        className={cn(
-          'flex-1 overscroll-contain no-scrollbar p-4 scroll-smooth',
-          previewMode === 'editor' || previewMode === 'pdf' ? 'overflow-hidden' : 'overflow-y-auto'
-        )}
+        className={cn(styles.originalScroll, (previewMode === 'editor' || previewMode === 'pdf') && 'overflow-hidden')}
       >
         <div
-          className={cn(
-            'min-h-full rounded-2xl border border-border/60 bg-card p-6 shadow-sm ring-1 ring-border/40',
-            previewMode === 'editor' || previewMode === 'pdf' ? 'h-full' : null
-          )}
+          ref={sourceBodyRef}
+          className={cn(styles.originalBody, previewMode === 'editor' || previewMode === 'pdf' ? 'h-full' : null)}
         >
           {(() => {
-    if (previewData) {
-        return (effectiveOriginalText ? ((() => {
-            if (previewMode === 'pdf') {
-                return (<div className="mx-auto w-full max-w-6xl h-full">
-                  <PdfPreview />
-                </div>);
-            }
-            else if (previewMode === 'rendered') {
-                    return (<div className="mx-auto w-full max-w-6xl flex gap-8">
-                  <div className="min-w-0 flex-1">
-                    <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-primary prose-code:text-primary prose-code:bg-primary/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted">
-                      <MarkdownRenderer markdown={effectiveOriginalText} autoScrollToHash/>
-                    </div>
-                    <p className="mt-4 text-[11px] text-muted-foreground">
-                      {t('originalPreview.hints.renderedMode')}
-                    </p>
+            if (previewData) {
+              if (previewMode === 'pdf') {
+                return (
+                  <div className="mx-auto h-full w-full max-w-6xl">
+                    <PdfPreview file={sourceFile} preview={previewData} />
                   </div>
-	                  {tocEnabled && (<aside className="hidden xl:block w-64 shrink-0">
-	                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/60 bg-card p-3">
-	                        <DeferredMarkdownToc markdown={effectiveOriginalText}/>
-	                      </div>
-	                    </aside>)}
-	                </div>);
-                }
-                else if (previewMode === 'editor') {
-                        return (<div className="mx-auto w-full max-w-6xl h-full">
-                  <OriginalPreviewMonaco text={effectiveOriginalText} chunks={displayChunks} activeChunkIndex={activeChunkIndex} chunkOverrides={chunkOverrides} onSelectChunkIndex={setSelectedChunkIndex}/>
-                  <p className="mt-3 text-[11px] text-muted-foreground">
-                    {t('originalPreview.hints.editorMode')}
+                )
+              }
+              return effectiveOriginalText !== null ? (
+                (() => {
+                  if (effectiveOriginalText.length === 0) return <p role="status">原文为空</p>
+                  if (previewMode === 'rendered') {
+                    return (
+                      <div className="w-full">
+                        <div className="min-w-0 flex-1">
+                          <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-primary prose-code:text-primary prose-code:bg-primary/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted">
+                            <MarkdownRenderer markdown={effectiveOriginalText} sourceRange={readingRange} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  } else if (previewMode === 'editor') {
+                    return (
+                      <div className="mx-auto w-full max-w-6xl h-full">
+                        <OriginalPreviewMonaco
+                          text={effectiveOriginalText}
+                          chunks={displayChunks}
+                          activeChunkIndex={displayActiveChunkIndex}
+                          chunkOverrides={chunkOverrides}
+                          onSelectChunkIndex={selectDisplayChunk}
+                        />
+                        <p className="mt-3 text-[11px] text-muted-foreground">
+                          {t('originalPreview.hints.editorMode')}
+                        </p>
+                      </div>
+                    )
+                  } else {
+                    return (
+                      <div className={styles.rawDocument}>
+                        {activeChunkIndex !== null && highlightModel
+                          ? (() => {
+                              const excerpt = highlightModel.text.slice(
+                                highlightModel.excerptStart,
+                                highlightModel.excerptEnd,
+                              )
+                              const toExcerptOffset = (offset: number) => offset - highlightModel.excerptStart
+                              const sliceExcerpt = (from: number, to: number) =>
+                                excerpt.slice(Math.max(0, toExcerptOffset(from)), Math.max(0, toExcerptOffset(to)))
+                              const { parentRange } = highlightModel
+                              if (parentRange === null) {
+                                return (
+                                  <>
+                                    {highlightModel.prefixOmitted ? (
+                                      <span className="text-muted-foreground">…</span>
+                                    ) : null}
+                                    <span className="text-muted-foreground">
+                                      {sliceExcerpt(highlightModel.excerptStart, highlightModel.activeStart)}
+                                    </span>
+                                    <mark ref={highlightRef} className={styles.sourceSelection}>
+                                      {sliceExcerpt(highlightModel.activeStart, highlightModel.activeEnd)}
+                                    </mark>
+                                    <span className="text-muted-foreground">
+                                      {sliceExcerpt(highlightModel.activeEnd, highlightModel.excerptEnd)}
+                                    </span>
+                                    {highlightModel.suffixOmitted ? (
+                                      <span className="text-muted-foreground">…</span>
+                                    ) : null}
+                                  </>
+                                )
+                              }
+                              return (
+                                <>
+                                  {highlightModel.prefixOmitted ? (
+                                    <span className="text-muted-foreground">…</span>
+                                  ) : null}
+                                  <span className="text-muted-foreground">
+                                    {sliceExcerpt(highlightModel.excerptStart, parentRange.start)}
+                                  </span>
+
+                                  <mark className={styles.sourceSelection}>
+                                    {sliceExcerpt(parentRange.start, highlightModel.activeStart)}
+                                    <mark ref={highlightRef} className={styles.sourceSelection}>
+                                      {sliceExcerpt(highlightModel.activeStart, highlightModel.activeEnd)}
+                                    </mark>
+                                    {sliceExcerpt(highlightModel.activeEnd, parentRange.end)}
+                                  </mark>
+
+                                  <span className="text-muted-foreground">
+                                    {sliceExcerpt(parentRange.end, highlightModel.excerptEnd)}
+                                  </span>
+                                  {highlightModel.suffixOmitted ? (
+                                    <span className="text-muted-foreground">…</span>
+                                  ) : null}
+                                </>
+                              )
+                            })()
+                          : effectiveOriginalText}
+                      </div>
+                    )
+                  }
+                })()
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <FileText appearance="color" className="size-12" />
+                  <p className="text-xs">
+                    {previewData.original_text_truncated
+                      ? t('originalPreview.empty.truncated')
+                      : t('originalPreview.empty.missing')}
                   </p>
-                </div>);
-                    }
-                    else {
-                        return (<div className="font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap max-w-3xl mx-auto">
-                  {activeChunkIndex !== null && highlightModel ? ((() => {
-                                const excerpt = highlightModel.text.slice(highlightModel.excerptStart, highlightModel.excerptEnd);
-                                const rel = (abs: number) => abs - highlightModel.excerptStart;
-                                const safeSlice = (fromAbs: number, toAbs: number) => excerpt.slice(Math.max(0, rel(fromAbs)), Math.max(0, rel(toAbs)));
-                                const hasParent = highlightModel.parentStart != null && highlightModel.parentEnd != null;
-                                const parentStart = hasParent ? Number(highlightModel.parentStart) : null;
-                                const parentEnd = hasParent ? Number(highlightModel.parentEnd) : null;
-                                if (!hasParent || parentStart == null || parentEnd == null) {
-                                    return (<>
-                            {highlightModel.prefixOmitted ? <span className="opacity-40">…</span> : null}
-                            <span className="opacity-40">{safeSlice(highlightModel.excerptStart, highlightModel.activeStart)}</span>
-                            <mark ref={highlightRef} className="bg-primary/15 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
-                              {safeSlice(highlightModel.activeStart, highlightModel.activeEnd)}
-                            </mark>
-                            <span className="opacity-40">{safeSlice(highlightModel.activeEnd, highlightModel.excerptEnd)}</span>
-                            {highlightModel.suffixOmitted ? <span className="opacity-40">…</span> : null}
-                          </>);
-                                }
-                                return (<>
-                          {highlightModel.prefixOmitted ? <span className="opacity-40">…</span> : null}
-                          <span className="opacity-40">{safeSlice(highlightModel.excerptStart, parentStart)}</span>
+                  <p className="text-xs text-muted-foreground max-w-[480px] text-center leading-relaxed">
+                    {(() => {
+                      const limit = previewData.original_text_max_chars ?? 100000
+                      if (previewData.original_text_truncated) {
+                        return t('originalPreview.empty.truncatedDetail', {
+                          limit: limit.toLocaleString(),
+                          total: previewData.total_characters.toLocaleString(),
+                        })
+                      }
+                      return t('originalPreview.empty.missingDetail', {
+                        total: previewData.total_characters.toLocaleString(),
+                      })
+                    })()}
+                    {t('originalPreview.empty.fallbackHint')}
+                  </p>
 
-                          <mark className="bg-primary/10 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm">
-                            {safeSlice(parentStart, highlightModel.activeStart)}
-                            <mark ref={highlightRef} className="bg-primary/20 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
-                              {safeSlice(highlightModel.activeStart, highlightModel.activeEnd)}
-                            </mark>
-                            {safeSlice(highlightModel.activeEnd, parentEnd)}
-                          </mark>
+                  {currentRead?.status === 'failed' ? (
+                    <p className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
+                      {currentRead.message}
+                    </p>
+                  ) : null}
 
-                          <span className="opacity-40">{safeSlice(parentEnd, highlightModel.excerptEnd)}</span>
-                          {highlightModel.suffixOmitted ? <span className="opacity-40">…</span> : null}
-                        </>);
-                            })()) : (effectiveOriginalText)}
-                </div>);
-                    }
-        })()) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <FileText className="w-12 h-12 opacity-10"/>
-                <p className="text-xs">
-                  {previewData.original_text_truncated
-                    ? t('originalPreview.empty.truncated')
-                    : t('originalPreview.empty.missing')}
-                </p>
-                <p className="text-xs text-muted-foreground max-w-[480px] text-center leading-relaxed">
-                  {(() => {
-                const limit = previewData.original_text_max_chars ?? 100000;
-                if (previewData.original_text_truncated) {
-                    return t('originalPreview.empty.truncatedDetail', {
-                      limit: limit.toLocaleString(),
-                      total: previewData.total_characters.toLocaleString(),
-                    });
-                }
-                return t('originalPreview.empty.missingDetail', {
-                  total: previewData.total_characters.toLocaleString(),
-                });
-            })()}
-                  {t('originalPreview.empty.fallbackHint')}
-                </p>
-
-                {localError ? (<p className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
-                    {localError}
-                  </p>) : null}
-
-                {canLoadFromFile && currentFile ? (<Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px] mt-2" disabled={localLoading} onClick={async () => {
-                    try {
-                        setLocalLoading(true);
-                        setLocalError(null);
-                        const text = await currentFile.text();
-                        setLocalOriginalText(text);
-                    }
-                    catch (error: unknown) {
-                        setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')));
-                    }
-                    finally {
-                        setLocalLoading(false);
-                    }
-                }}>
-                    {localLoading
-                      ? t('originalPreview.empty.readLocalLoading')
-                      : t('originalPreview.empty.readLocal')}
-                  </Button>) : (<p className="text-[11px] text-muted-foreground">{t('originalPreview.empty.unsupportedFile')}</p>)}
-              </div>));
-    }
-    else if (isLoading) {
-            return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
-              <p className="text-xs">{t('originalPreview.states.loading')}</p>
-            </div>);
-        }
-        else if (error) {
-                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <AlertCircle className="w-10 h-10 opacity-20"/>
-              <p className="text-xs text-muted-foreground">{t('originalPreview.states.loadFailed')}</p>
-              <p className="text-xs text-muted-foreground max-w-[360px] text-center break-words line-clamp-3">{error}</p>
-            </div>);
+                  {canLoadFromFile && sourceFile ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-[11px] mt-2"
+                      disabled={currentRead?.status === 'loading'}
+                      onClick={readLocalOriginal}
+                    >
+                      {currentRead?.status === 'loading'
+                        ? t('originalPreview.empty.readLocalLoading')
+                        : t('originalPreview.empty.readLocal')}
+                    </Button>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">{t('originalPreview.empty.unsupportedFile')}</p>
+                  )}
+                </div>
+              )
+            } else if (isLoading) {
+              return (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20" />
+                  <p className="text-xs">{t('originalPreview.states.loading')}</p>
+                </div>
+              )
+            } else if (error) {
+              return (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <AlertCircle className="w-10 h-10 opacity-20" />
+                  <p className="text-xs text-muted-foreground">{t('originalPreview.states.loadFailed')}</p>
+                  <p className="text-xs text-muted-foreground max-w-[360px] text-center break-words line-clamp-3">
+                    {error}
+                  </p>
+                </div>
+              )
+            } else {
+              return (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <FileText appearance="color" className="size-12" />
+                  <p className="text-xs">{t('originalPreview.states.waiting')}</p>
+                </div>
+              )
             }
-            else {
-                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <FileText className="w-12 h-12 opacity-10"/>
-              <p className="text-xs">{t('originalPreview.states.waiting')}</p>
-            </div>);
-            }
-})()}
+          })()}
         </div>
       </div>
     </div>

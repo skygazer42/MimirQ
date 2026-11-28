@@ -1,16 +1,45 @@
+import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from math import isfinite
 from typing import Any
 
-from app.rag.core.code_fence import extract_first_code_fence
-from app.rag.core.logging import get_logger
+from app.infrastructure.runtime.async_bridge import _wait_for_worker_after_cancellation
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
+from app.rag.llm.response_parsing import extract_first_code_fence
 
-logger = get_logger("rag.llm.base")
+_ASYNC_CLEANUP_TIMEOUT_SEC = 5.0
+
+
+async def _await_llm_close(task: asyncio.Task[None]) -> None:
+    """Finish owned cleanup on its loop before propagating caller cancellation."""
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError as cancelled:
+        error = await _wait_for_worker_after_cancellation(task)
+        if error is not None:
+            raise error from cancelled
+        raise
+
+
+def _reject_nonfinite_json(value: str) -> None:
+    raise ValueError(f"LLM JSON response contains a non-finite number: {value}")
+
+
+def _parse_finite_json_float(value: str) -> float:
+    number = float(value)
+    if not isfinite(number):
+        raise ValueError("LLM JSON response number exceeds the finite float range")
+    return number
 
 
 class BaseLLMClient(ABC):
     """Abstract LLM client used by RAG/KG algorithms."""
+
+    @abstractmethod
+    async def aclose(self) -> None:
+        """Close resources owned by this client; borrowed transports remain open."""
+        ...
 
     @abstractmethod
     async def chat(
@@ -19,8 +48,7 @@ class BaseLLMClient(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> LLMResponse:
-        ...
+    ) -> LLMResponse: ...
 
     @abstractmethod
     def chat_stream(
@@ -30,8 +58,7 @@ class BaseLLMClient(ABC):
         max_tokens: int | None = None,
         include_reasoning: bool = False,
         **kwargs: Any,
-    ) -> AsyncIterator[tuple[str, str | None]]:
-        ...
+    ) -> AsyncIterator[tuple[str, str | None]]: ...
 
     async def chat_with_schema(
         self,
@@ -42,34 +69,32 @@ class BaseLLMClient(ABC):
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
-        Ask the LLM to return JSON and parse it. If schema is provided,
-        it is appended as a system message hint (no strict validation).
+        Parse a JSON object. A supplied schema is a prompt hint; domain fields
+        remain the caller's validation responsibility. Malformed output raises.
         """
         import json
 
         enhanced_messages: list[LLMMessage] = []
         if response_schema:
             schema_prompt = (
-                "Return JSON that follows the schema. If a field is missing, use null.\n"
-                f"{json.dumps(response_schema, ensure_ascii=False)}"
+                "Return JSON that follows the schema. Omit optional fields you cannot fill. "
+                "Null is valid only when the field schema permits it.\n"
+                f"{json.dumps(response_schema, ensure_ascii=False, separators=(',', ':'))}"
             )
             enhanced_messages.append(LLMMessage(role=LLMRole.SYSTEM, content=schema_prompt))
         enhanced_messages.extend(messages)
 
-        response = await self.chat(
-            enhanced_messages, temperature=temperature, max_tokens=max_tokens, **kwargs
-        )
+        response = await self.chat(enhanced_messages, temperature=temperature, max_tokens=max_tokens, **kwargs)
 
         content = response.content.strip()
         fenced = extract_first_code_fence(content, allowed_info_strings={"", "json"})
         if fenced is not None:
             content = fenced
 
-        try:
-            return json.loads(content)
-        except Exception as exc:
-            logger.warning("Failed to parse JSON from LLM, returning raw text: %s", exc)
-            return {"raw": content}
+        parsed = json.loads(content, parse_constant=_reject_nonfinite_json, parse_float=_parse_finite_json_float)
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM JSON response must be an object")
+        return parsed
 
 
 __all__ = ["BaseLLMClient"]

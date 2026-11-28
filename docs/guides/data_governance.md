@@ -1,6 +1,6 @@
 # Data Governance (数据治理/清洗)
 
-MimirQ provides an optional governance stage between parsing and chunking:
+Ragvia provides an optional governance stage between parsing and chunking:
 
 `Parse → Governance → Chunk → Index`
 

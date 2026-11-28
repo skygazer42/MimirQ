@@ -33,22 +33,6 @@ deterministic parsing-impact signals (summary + diff) alongside retrieval/querys
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
-## LTR 自动学习闭环联动（Nightly/Canary/Rollback）
-
-当你启用 LTR 的自动化训练闭环时，release gate 建议一并消费以下工件，确保“上线模型有据可查”：
-
-- `artifacts/hard_negatives.nightly.manifest.json`
-- `artifacts/ltr_nightly_cycle.manifest.json`
-- `artifacts/ltr_online_rollback.report.json`
-
-推荐发布前检查：
-
-1. cycle manifest 中 candidate 训练 lineage 完整（cases/traces/hard-negatives 都有 hash）。
-2. canary 激活策略满足 registry 边界（`apply_canary_activation` 的 ratio 校验通过）。
-3. rollback daemon 最近窗口没有触发，或触发后已完成回滚并落盘报告。
-
-这部分不是替代 regression/SLO/cost gate，而是补齐 LTR 的“训练-激活-回滚”可审计闭环。
-
 ## CI Integration
 
 The GitHub Actions workflow runs:
@@ -56,7 +40,6 @@ The GitHub Actions workflow runs:
 - `retrieval-only-bounded-gate` job to publish deterministic artifacts:
   - `artifacts/sample_retrieval_bench.json`
 - `artifacts/sample_retrieval_bench.hybrid.json`
-- `artifacts/sample_retrieval_bench.colbert.json`
 - `artifacts/retrieval_profile.grounded_strict.contract.json`
 - `artifacts/claim_verifier.contract.json`
 - `artifacts/queryset_health.snapshot*.json`
@@ -195,7 +178,7 @@ The JSON/Markdown reports include:
 
 - run id / dataset id / matched case count
 - top-level summary metrics
-- per-channel citation attribution where available (`vector` / `bm25` / `lexical` / `sparse`)
+- per-channel citation attribution where available (`vector` / `bm25` / `lexical`; legacy traces may contain `sparse`)
 - threshold failures when the gate does not pass
 
 ### 2) Run Release Gate (SLO + Cost)
@@ -284,4 +267,3 @@ python scripts/release_gate.py \
   - `retrieval_profile.grounded_strict.contract.json` proves the strict retrieval profile still enforces evidence-only semantics.
   - `claim_verifier.contract.json` proves claim-verifier diagnostics still emit stable `reason_code` and `contradiction_type` values.
   - `sample_retrieval_bench.hybrid.json` is the hybrid bounded quality baseline.
-  - `sample_retrieval_bench.colbert.json` is a bounded regression signal for the ColBERT fallback path, not a replacement for end-to-end leaderboard evaluation.

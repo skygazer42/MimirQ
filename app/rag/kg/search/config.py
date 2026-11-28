@@ -1,9 +1,7 @@
 from enum import Enum
 from uuid import UUID
 
-from pydantic import Field
-
-from app.rag.kg.schemas import KGBaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RerankStrategy(str, Enum):
@@ -21,7 +19,9 @@ class ReturnType(str, Enum):
         return self.value
 
 
-class RecallConfig(KGBaseModel):
+class RecallConfig(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     vector_top_k: int = Field(default=15, ge=1, le=200)
     vector_candidates: int = Field(default=30, ge=1, le=500)
     entity_similarity_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
@@ -32,7 +32,9 @@ class RecallConfig(KGBaseModel):
     final_entity_count: int = Field(default=20, ge=1, le=200)
 
 
-class ExpandConfig(KGBaseModel):
+class ExpandConfig(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     enabled: bool = True
     max_hops: int = Field(default=2, ge=1, le=5)
     entities_per_hop: int = Field(default=10, ge=1, le=50)
@@ -42,7 +44,9 @@ class ExpandConfig(KGBaseModel):
     max_events_per_hop: int = Field(default=60, ge=1, le=200)
 
 
-class RerankConfig(KGBaseModel):
+class RerankConfig(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     strategy: RerankStrategy = RerankStrategy.PAGERANK
     score_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
     max_results: int = Field(default=10, ge=1, le=100)
@@ -53,7 +57,9 @@ class RerankConfig(KGBaseModel):
     rrf_k: int = Field(default=60, ge=1, le=500)
 
 
-class SearchConfig(KGBaseModel):
+class SearchConfig(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     query: str
     tenant_id: UUID | None = None
     dataset_id: UUID | None = None
@@ -71,18 +77,11 @@ class SearchConfig(KGBaseModel):
     graph_embeddings_enabled: bool | None = None
     # Query-mode routing: auto | local | global | drift.
     query_mode: str = "auto"
-    query_mode_reason_codes: list[str] = []
+    query_mode_reason_codes: list[str] = Field(default_factory=list)
     query_mode_confidence: str | None = None
     # When false, filter Skill-like entities from recall/expand (useful for ablations).
     include_skill_entities: bool = True
-    recall: RecallConfig = RecallConfig()
-    expand: ExpandConfig = ExpandConfig()
-    rerank: RerankConfig = RerankConfig()
+    recall: RecallConfig = Field(default_factory=RecallConfig)
+    expand: ExpandConfig = Field(default_factory=ExpandConfig)
+    rerank: RerankConfig = Field(default_factory=RerankConfig)
     original_query: str | None = None
-
-    def get_source_config_ids(self) -> list[str]:
-        return []
-
-
-# Legacy compatibility alias
-SearchBaseConfig = SearchConfig

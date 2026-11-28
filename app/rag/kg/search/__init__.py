@@ -1,6 +1,5 @@
 """KG search module."""
 
-
 from typing import Any
 
 __all__ = [
@@ -10,11 +9,10 @@ __all__ = [
     "ExpandConfig",
     "RerankConfig",
     "SearchConfig",
-    "SearchBaseConfig",
-    "KGSearcher",
-    "RecallSearcher",
+    "search_kg",
+    "recall_kg",
     "RecallResult",
-    "ExpandSearcher",
+    "expand_kg",
     "ExpandResult",
     "Tracker",
     "build_subqrag_plan",
@@ -33,7 +31,6 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         "ExpandConfig",
         "RerankConfig",
         "SearchConfig",
-        "SearchBaseConfig",
     }:
         from app.rag.kg.search.config import (
             ExpandConfig,
@@ -41,7 +38,6 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             RerankConfig,
             RerankStrategy,
             ReturnType,
-            SearchBaseConfig,
             SearchConfig,
         )
 
@@ -52,21 +48,20 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             "ExpandConfig": ExpandConfig,
             "RerankConfig": RerankConfig,
             "SearchConfig": SearchConfig,
-            "SearchBaseConfig": SearchBaseConfig,
         }[name]
 
-    if name == "KGSearcher":
-        from app.rag.kg.search.searcher import KGSearcher
+    if name == "search_kg":
+        from app.rag.kg.search.searcher import search
 
-        return KGSearcher
-    if name in {"RecallSearcher", "RecallResult"}:
-        from app.rag.kg.search.recall import RecallResult, RecallSearcher
+        return search
+    if name in {"recall_kg", "RecallResult"}:
+        from app.rag.kg.search.recall import RecallResult, recall
 
-        return {"RecallSearcher": RecallSearcher, "RecallResult": RecallResult}[name]
-    if name in {"ExpandSearcher", "ExpandResult"}:
-        from app.rag.kg.search.expand import ExpandResult, ExpandSearcher
+        return {"recall_kg": recall, "RecallResult": RecallResult}[name]
+    if name in {"expand_kg", "ExpandResult"}:
+        from app.rag.kg.search.expand import ExpandResult, expand
 
-        return {"ExpandSearcher": ExpandSearcher, "ExpandResult": ExpandResult}[name]
+        return {"expand_kg": expand, "ExpandResult": ExpandResult}[name]
     if name == "Tracker":
         from app.rag.kg.search.tracker import Tracker
 
@@ -88,4 +83,4 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             "build_mode_aware_recall_overrides": build_mode_aware_recall_overrides,
         }[name]
 
-    raise AttributeError(f"module 'app.kg.search' has no attribute {name!r}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

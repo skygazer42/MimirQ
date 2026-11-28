@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "原序 · 海蓝与春日",
+  "brief": "三种动物标志，同一登录任务。比较海蓝配色与不同的品牌气质。",
+  "round": "海蓝 01",
+  "nativeViewport": "1280x900",
+  "candidates": [
+    {
+      "id": "a-swallow",
+      "name": "A · 掠海燕",
+      "concept": "燕子掠过开阔的海面。轻盈、有春意，保持知识工具的清晰。",
+      "typography": "Noto Sans SC：品牌陈述 48px / 500，表单标题 32px / 550；拉丁字标用 Segoe UI。",
+      "palette": [
+        "#147DCC",
+        "#143C59",
+        "#EEF8FE",
+        "#A3D3EF"
+      ],
+      "traits": [
+        "展翼与叉尾剪影",
+        "海天横向分层",
+        "品牌左、表单右"
+      ],
+      "source": "swallow.html"
+    },
+    {
+      "id": "b-otter",
+      "name": "B · 蓝湾海獭",
+      "concept": "晴朗海湾中的亲近感。让每天使用的知识工具多一点温和的性格。",
+      "typography": "Noto Sans SC：字标 31px / 650，表单标题 27px / 550；拉丁字标用 Segoe UI。",
+      "palette": [
+        "#2865AD",
+        "#183E65",
+        "#F5FAFD",
+        "#BFDCCF"
+      ],
+      "traits": [
+        "海獭面部与胡须",
+        "居中单列表单",
+        "蓝色横向页脚"
+      ],
+      "source": "otter.html"
+    },
+    {
+      "id": "c-kingfisher",
+      "name": "C · 晴水翠鸟",
+      "concept": "春日水岸的清透与专注。长喙与翼部负形形成简洁识别。",
+      "typography": "Noto Sans SC：品牌陈述 36px / 400，表单标题 34px / 400；拉丁字标用 Georgia。",
+      "palette": [
+        "#087AAB",
+        "#123D57",
+        "#FFFFFF",
+        "#BDDFAE"
+      ],
+      "traits": [
+        "长喙与翼部负形",
+        "水蓝配春绿",
+        "表单左、品牌右"
+      ],
+      "source": "kingfisher.html"
+    }
+  ]
+}

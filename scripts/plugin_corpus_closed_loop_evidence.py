@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -66,15 +67,23 @@ def _list_value(value: Any) -> list[Any]:
 def _int_value(value: Any) -> int:
     try:
         return int(value or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
-def _float_value(value: Any) -> float:
+def _float_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _below_minimum(metrics: dict[str, Any], key: str, minimum: float) -> bool:
+    value = _float_value(metrics.get(key, 0.0))
+    return value is None or value < float(minimum)
 
 
 def _status_counts(documents: list[Any]) -> dict[str, int]:
@@ -111,11 +120,14 @@ def _summary(report: dict[str, Any]) -> dict[str, int]:
 
 def _plugin_source(golden: dict[str, Any]) -> dict[str, Any]:
     source = _dict_value(golden.get("plugin_source"))
-    return {
+    result = {
         key: source[key]
-        for key in ("plugin_id", "plugin_version", "plugin_ref", "plugin_package_hash", "draft_items_total")
-        if _text(source.get(key))
+        for key in ("plugin_id", "plugin_version", "plugin_ref", "plugin_package_hash")
+        if isinstance(source.get(key), str) and source[key].strip()
     }
+    if _float_value(source.get("draft_items_total")) is not None:
+        result["draft_items_total"] = source["draft_items_total"]
+    return result
 
 
 def _import_counts(golden: dict[str, Any]) -> dict[str, int]:
@@ -130,7 +142,11 @@ def _import_counts(golden: dict[str, Any]) -> dict[str, int]:
 
 def _golden_summary(golden: dict[str, Any]) -> dict[str, Any]:
     summary = _dict_value(golden.get("summary"))
-    return {key: summary.get(key) for key in SUMMARY_METRIC_KEYS if key in summary}
+    return {
+        key: summary[key] if _float_value(summary[key]) is not None else None
+        for key in SUMMARY_METRIC_KEYS
+        if key in summary
+    }
 
 
 def _case_count(golden: dict[str, Any]) -> int:
@@ -138,7 +154,7 @@ def _case_count(golden: dict[str, Any]) -> int:
     if case_ids:
         return len(case_ids)
     counts = _import_counts(golden)
-    return int(counts["created"] + counts["updated"] + counts["skipped"])
+    return counts["created"] + counts["updated"] + counts["skipped"]
 
 
 def _corpus_failed_checks(summary: dict[str, int], documents: list[Any]) -> list[str]:
@@ -170,9 +186,9 @@ def _retrieval_failed_checks(
     min_retrieval_hit_at_3: float,
 ) -> list[str]:
     failed: list[str] = []
-    if _float_value(metrics.get("retrieval_recall")) < float(min_retrieval_recall):
+    if _below_minimum(metrics, "retrieval_recall", min_retrieval_recall):
         failed.append("retrieval_recall")
-    if _float_value(metrics.get("retrieval_hit_at_3")) < float(min_retrieval_hit_at_3):
+    if _below_minimum(metrics, "retrieval_hit_at_3", min_retrieval_hit_at_3):
         failed.append("retrieval_hit_at_3")
     return failed
 
@@ -184,13 +200,13 @@ def _metadata_failed_checks(
     min_expected_metadata_recall: float,
 ) -> list[str]:
     failed: list[str] = []
-    if _float_value(metrics.get("expected_metadata_cases_total")) <= 0:
+    if (_float_value(metrics.get("expected_metadata_cases_total")) or 0.0) <= 0:
         failed.append("expected_metadata_cases_total")
-    if _float_value(metrics.get("expected_metadata_fields_total")) <= 0:
+    if (_float_value(metrics.get("expected_metadata_fields_total")) or 0.0) <= 0:
         failed.append("expected_metadata_fields_total")
-    if _float_value(metrics.get("expected_metadata_hit_rate")) < float(min_expected_metadata_hit_rate):
+    if _below_minimum(metrics, "expected_metadata_hit_rate", min_expected_metadata_hit_rate):
         failed.append("expected_metadata_hit_rate")
-    if _float_value(metrics.get("expected_metadata_recall")) < float(min_expected_metadata_recall):
+    if _below_minimum(metrics, "expected_metadata_recall", min_expected_metadata_recall):
         failed.append("expected_metadata_recall")
     return failed
 
@@ -203,11 +219,13 @@ def _citation_failed_checks(
 ) -> list[str]:
     failed: list[str] = []
     citation_gate_enabled = float(min_citation_accuracy) > 0.0 or float(min_citation_coverage) > 0.0
-    if citation_gate_enabled and any(_float_value(metrics.get(key)) <= 0.0 for key in CITATION_EVAL_WINDOW_KEYS):
+    if citation_gate_enabled and any(
+        (_float_value(metrics.get(key)) or 0.0) <= 0.0 for key in CITATION_EVAL_WINDOW_KEYS
+    ):
         failed.append("citation_eval_window")
-    if _float_value(metrics.get("citation_accuracy")) < float(min_citation_accuracy):
+    if _below_minimum(metrics, "citation_accuracy", min_citation_accuracy):
         failed.append("citation_accuracy")
-    if _float_value(metrics.get("citation_coverage")) < float(min_citation_coverage):
+    if _below_minimum(metrics, "citation_coverage", min_citation_coverage):
         failed.append("citation_coverage")
     return failed
 
@@ -224,6 +242,17 @@ def _failed_checks(
     min_citation_accuracy: float,
     min_citation_coverage: float,
 ) -> list[str]:
+    minima = (
+        min_expected_metadata_hit_rate,
+        min_expected_metadata_recall,
+        min_retrieval_recall,
+        min_retrieval_hit_at_3,
+        min_citation_accuracy,
+        min_citation_coverage,
+    )
+    if not all(math.isfinite(float(value)) for value in minima):
+        raise ValueError("evidence thresholds must be finite")
+
     metrics = _golden_summary(golden)
     return [
         *_corpus_failed_checks(summary, documents),
@@ -433,12 +462,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         evidence = build_evidence(
             args.input,
-            min_expected_metadata_hit_rate=float(args.min_expected_metadata_hit_rate),
-            min_expected_metadata_recall=float(args.min_expected_metadata_recall),
-            min_retrieval_recall=float(args.min_retrieval_recall),
-            min_retrieval_hit_at_3=float(args.min_retrieval_hit_at_3),
-            min_citation_accuracy=float(args.min_citation_accuracy),
-            min_citation_coverage=float(args.min_citation_coverage),
+            min_expected_metadata_hit_rate=args.min_expected_metadata_hit_rate,
+            min_expected_metadata_recall=args.min_expected_metadata_recall,
+            min_retrieval_recall=args.min_retrieval_recall,
+            min_retrieval_hit_at_3=args.min_retrieval_hit_at_3,
+            min_citation_accuracy=args.min_citation_accuracy,
+            min_citation_coverage=args.min_citation_coverage,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-corpus-closed-loop-evidence] ERROR: {exc}", file=sys.stderr)

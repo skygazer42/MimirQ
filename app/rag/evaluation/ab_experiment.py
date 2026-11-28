@@ -1,8 +1,8 @@
-
+import math
 from collections import defaultdict
 from typing import Any
 
-from app.rag.core.hashing import stable_hash
+from app.infrastructure.hashing import stable_hash
 
 
 def _to_float(value: Any) -> float | None:
@@ -10,10 +10,10 @@ def _to_float(value: Any) -> float | None:
         if value is None or isinstance(value, bool):
             return None
         num = float(value)
-        if num != num:
+        if not math.isfinite(num):
             return None
         return num
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -30,7 +30,7 @@ def assign_ab_variant(
     user_id: str,
     variants: list[str],
 ) -> dict[str, Any]:
-    normalized_variants = [str(item).strip() for item in variants or [] if str(item).strip()]
+    normalized_variants = [normalized for item in variants if (normalized := item.strip())]
     if not normalized_variants:
         raise ValueError("variants_empty")
 
@@ -39,11 +39,11 @@ def assign_ab_variant(
     bucket = int(digest, 16) % len(normalized_variants)
     return {
         "schema": "mimirq.ab_assignment.v1",
-        "experiment_key": str(experiment_key or "").strip(),
-        "tenant_id": str(tenant_id or "").strip(),
-        "user_id": str(user_id or "").strip(),
+        "experiment_key": experiment_key.strip(),
+        "tenant_id": tenant_id.strip(),
+        "user_id": user_id.strip(),
         "variant": normalized_variants[bucket],
-        "bucket": int(bucket),
+        "bucket": bucket,
     }
 
 
@@ -51,13 +51,16 @@ def summarize_ab_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"faithfulness": [], "latency_ms": []})
     counts: dict[str, int] = defaultdict(int)
 
-    for row in rows or []:
-        variant = str((row or {}).get("variant") or "").strip()
+    for row in rows:
+        raw_variant = row.get("variant")
+        if raw_variant is None:
+            continue
+        variant = str(raw_variant).strip()
         if not variant:
             continue
         counts[variant] += 1
-        faithfulness = _to_float((row or {}).get("faithfulness"))
-        latency_ms = _to_float((row or {}).get("latency_ms"))
+        faithfulness = _to_float(row.get("faithfulness"))
+        latency_ms = _to_float(row.get("latency_ms"))
         if faithfulness is not None:
             grouped[variant]["faithfulness"].append(faithfulness)
         if latency_ms is not None:
@@ -66,7 +69,7 @@ def summarize_ab_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     variants_out: dict[str, dict[str, Any]] = {}
     for variant in sorted(counts.keys()):
         variants_out[variant] = {
-            "samples": int(counts[variant]),
+            "samples": counts[variant],
             "faithfulness_avg": _average(grouped[variant]["faithfulness"]),
             "latency_ms_avg": _average(grouped[variant]["latency_ms"]),
         }

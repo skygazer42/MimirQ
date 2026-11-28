@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.rag.safety.output_guard import OutputGuard
 from app.rag.safety.regex_safety_guard import RegexSafetyGuard
 

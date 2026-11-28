@@ -1,64 +1,45 @@
 """
-LangSmith Studio integration for observability and tracing.
-
-Provides comprehensive tracing capabilities for RAG workflows:
-- Automatic trace collection
-- Custom span annotations
-- Metadata tagging
-- Evaluation integration
+LangSmith tracing for active RAG workflows.
 
 Usage:
-    from app.rag.tracing.langsmith import setup_tracing, trace_rag_query
+    from app.rag.tracing.langsmith import get_tracing_client, setup_tracing
 
-    # Setup tracing at application startup
     setup_tracing()
-
-    # Use decorator for tracing
-    @trace_rag_query
-    async def answer_question(query: str) -> str:
-        ...
+    with get_tracing_client().trace(name="rag_query") as span:
+        span.outputs = {"answer": "Example answer"}
 """
 
-
-import functools
+import logging
 import os
+import threading
 import time
-from collections.abc import Callable
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from app.core.config import settings
-from app.core.optional_deps import require_dependency
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.runtime.dependencies import require_dependency
 
-logger = get_logger("rag.tracing.langsmith")
+if TYPE_CHECKING:
+    from langsmith import Client
+
+logger = logging.getLogger("rag.tracing.langsmith")
 
 
 # Configuration
-LANGSMITH_API_KEY = getattr(settings, "LANGSMITH_API_KEY", "")
-LANGSMITH_PROJECT = getattr(settings, "LANGSMITH_PROJECT", "mimirq")
-LANGSMITH_ENDPOINT = getattr(settings, "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-LANGSMITH_TRACING_ENABLED = getattr(settings, "LANGSMITH_TRACING_ENABLED", False)
-
-# Import langsmith if tracing is enabled
-LangSmithClient = None  # type: ignore
-if LANGSMITH_TRACING_ENABLED:
-    langsmith_module = require_dependency("langsmith", feature="langsmith_tracing", pip_name="langsmith")
-    LangSmithClient = getattr(langsmith_module, "Client", None)  # type: ignore[assignment]
-    if LangSmithClient is None:
-        raise RuntimeError("langsmith.Client missing (unsupported langsmith version)")
-
-
-# Type variable for decorators
-F = TypeVar("F", bound=Callable)
+LANGSMITH_API_KEY = settings.LANGSMITH_API_KEY
+LANGSMITH_PROJECT = settings.LANGSMITH_PROJECT
+LANGSMITH_ENDPOINT = settings.LANGSMITH_ENDPOINT
+LANGSMITH_TRACING_ENABLED = settings.LANGSMITH_TRACING_ENABLED
 
 
 @dataclass
 class SpanContext:
     """Context for a trace span."""
+
     run_id: str = field(default_factory=lambda: str(uuid4()))
     parent_id: str | None = None
     name: str = ""
@@ -91,7 +72,7 @@ class TracingClient:
         api_key: str | None = None,
         project: str | None = None,
         endpoint: str | None = None,
-    ):
+    ) -> None:
         """
         Initialize the tracing client.
 
@@ -100,11 +81,12 @@ class TracingClient:
             project: Project name
             endpoint: API endpoint
         """
-        self.api_key = api_key or LANGSMITH_API_KEY
-        self.project = project or LANGSMITH_PROJECT
-        self.endpoint = endpoint or LANGSMITH_ENDPOINT
-        self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED and LangSmithClient is not None
-        self._client = None
+        self.api_key = LANGSMITH_API_KEY if api_key is None else api_key
+        self.project = LANGSMITH_PROJECT if project is None else project
+        self.endpoint = LANGSMITH_ENDPOINT if endpoint is None else endpoint
+        self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED
+        self._client: Client | None = None
+        self._client_lock = threading.Lock()
         self._current_spans: dict[str, SpanContext] = {}
 
     @property
@@ -112,23 +94,29 @@ class TracingClient:
         """Check if tracing is enabled."""
         return self._enabled
 
-    def _get_client(self) -> Any:
+    def _get_client(self) -> "Client":
         """Get or create LangSmith client."""
-        if self._client is not None:
+        with self._client_lock:
+            if not self._enabled:
+                raise RuntimeError("LangSmith tracing is disabled or closed")
+            if self._client is None:
+                langsmith = require_dependency("langsmith", feature="langsmith_tracing", pip_name="langsmith")
+                self._client = langsmith.Client(api_key=self.api_key, api_url=self.endpoint)
+                logger.info("LangSmith client initialized")
             return self._client
 
-        if not self._enabled:
-            return None
-
-        if LangSmithClient is None:
-            return None
-
-        self._client = LangSmithClient(
-            api_key=self.api_key,
-            api_url=self.endpoint,
-        )
-        logger.info("LangSmith client initialized")
-        return self._client
+    def close(self) -> None:
+        """Drain the owned SDK queue with a finite budget and release its session."""
+        with self._client_lock:
+            client = self._client
+            self._client = None
+            self._enabled = False
+            self._current_spans.clear()
+        if client is not None:
+            try:
+                client.close(timeout=5.0)
+            except Exception:  # Tracing is optional; shutdown must still release other application resources.
+                logger.warning("Failed to close LangSmith client", exc_info=True)
 
     def start_span(
         self,
@@ -156,16 +144,20 @@ class TracingClient:
         span = SpanContext(
             name=name,
             run_type=run_type,
-            inputs=inputs or {},
+            inputs={} if inputs is None else dict(inputs),
             parent_id=parent_id,
-            metadata=metadata or {},
-            tags=tags or [],
+            metadata={} if metadata is None else dict(metadata),
+            tags=[] if tags is None else list(tags),
         )
 
         self._current_spans[span.run_id] = span
 
         if self._enabled:
-            self._submit_start(span)
+            try:
+                self._submit_start(span)
+            except BaseException:
+                self._current_spans.pop(span.run_id, None)
+                raise
 
         return span
 
@@ -184,21 +176,20 @@ class TracingClient:
             error: Error message if failed
         """
         span.end_time = time.time()
-        span.outputs = outputs or {}
+        if outputs is not None:
+            span.outputs = dict(outputs)
         span.error = error
 
-        if self._enabled:
-            self._submit_end(span)
-
-        self._current_spans.pop(span.run_id, None)
+        try:
+            if self._enabled:
+                self._submit_end(span)
+        finally:
+            self._current_spans.pop(span.run_id, None)
 
     def _submit_start(self, span: SpanContext) -> None:
         """Submit span start to LangSmith."""
-        client = self._get_client()
-        if client is None:
-            return
-
         try:
+            client = self._get_client()
             client.create_run(
                 name=span.name,
                 run_type=span.run_type,
@@ -209,24 +200,21 @@ class TracingClient:
                 tags=span.tags,
                 extra={"metadata": span.metadata},
             )
-        except Exception as e:
-            logger.debug("Failed to submit span start: %s", e)
+        except Exception:
+            logger.warning("Failed to submit LangSmith span start", exc_info=True)
 
     def _submit_end(self, span: SpanContext) -> None:
         """Submit span end to LangSmith."""
-        client = self._get_client()
-        if client is None:
-            return
-
         try:
+            client = self._get_client()
             client.update_run(
                 run_id=span.run_id,
                 outputs=span.outputs,
                 error=span.error,
-                end_time=datetime.now(UTC).replace(tzinfo=None),
+                end_time=datetime.fromtimestamp(span.end_time, UTC),
             )
-        except Exception as e:
-            logger.debug("Failed to submit span end: %s", e)
+        except Exception:
+            logger.warning("Failed to submit LangSmith span end", exc_info=True)
 
     @contextmanager
     def trace(
@@ -236,7 +224,7 @@ class TracingClient:
         inputs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         tags: list[str] | None = None,
-    ):
+    ) -> Iterator[SpanContext]:
         """
         Context manager for tracing.
 
@@ -260,47 +248,15 @@ class TracingClient:
 
         try:
             yield span
-            self.end_span(span, outputs=span.outputs)
         except Exception as e:
             self.end_span(span, error=str(e))
             raise
-
-    @asynccontextmanager
-    async def atrace(
-        self,
-        name: str,
-        run_type: str = "chain",
-        inputs: dict[str, Any] | None = None,
-        metadata: dict[str, Any] | None = None,
-        tags: list[str] | None = None,
-    ):
-        """
-        Async context manager for tracing.
-
-        Args:
-            name: Span name
-            run_type: Type of run
-            inputs: Input data
-            metadata: Additional metadata
-            tags: Tags for filtering
-
-        Yields:
-            Span context
-        """
-        span = self.start_span(
-            name=name,
-            run_type=run_type,
-            inputs=inputs,
-            metadata=metadata,
-            tags=tags,
-        )
-
-        try:
-            yield span
-            self.end_span(span, outputs=span.outputs)
-        except Exception as e:
-            self.end_span(span, error=str(e))
+        except BaseException:
+            # Interruptions release local state without adding telemetry I/O.
+            self._current_spans.pop(span.run_id, None)
             raise
+        else:
+            self.end_span(span, outputs=span.outputs)
 
 
 # ============================================================================
@@ -319,6 +275,15 @@ def get_tracing_client() -> TracingClient:
     return _tracing_client
 
 
+def close_tracing() -> None:
+    """Release the process-owned tracing client without creating one during shutdown."""
+    global _tracing_client
+    client = _tracing_client
+    _tracing_client = None
+    if client is not None:
+        client.close()
+
+
 def setup_tracing(
     api_key: str | None = None,
     project: str | None = None,
@@ -334,293 +299,16 @@ def setup_tracing(
     """
     global _tracing_client
 
+    close_tracing()
+    _tracing_client = TracingClient(api_key=api_key, project=project)
+
     # Set environment variables for LangChain auto-tracing
-    if api_key:
-        os.environ["LANGCHAIN_API_KEY"] = api_key
-    elif LANGSMITH_API_KEY:
-        os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY
-
-    if project:
-        os.environ["LANGCHAIN_PROJECT"] = project
-    elif LANGSMITH_PROJECT:
-        os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
-
-    if LANGSMITH_TRACING_ENABLED:
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGCHAIN_ENDPOINT"] = LANGSMITH_ENDPOINT
-
-    _tracing_client = TracingClient(
-        api_key=api_key,
-        project=project,
-    )
+    os.environ["LANGCHAIN_API_KEY"] = _tracing_client.api_key
+    os.environ["LANGCHAIN_PROJECT"] = _tracing_client.project
+    os.environ["LANGCHAIN_TRACING_V2"] = str(_tracing_client.enabled).lower()
+    os.environ["LANGCHAIN_ENDPOINT"] = _tracing_client.endpoint
 
     if _tracing_client.enabled:
         logger.info("LangSmith tracing enabled for project: %s", _tracing_client.project)
     else:
         logger.debug("LangSmith tracing not enabled")
-
-
-# ============================================================================
-# Decorators
-# ============================================================================
-
-
-def trace_function(
-    name: str | None = None,
-    run_type: str = "chain",
-    tags: list[str] | None = None,
-) -> Callable[[F], F]:
-    """
-    Decorator for tracing synchronous functions.
-
-    Args:
-        name: Span name (defaults to function name)
-        run_type: Type of run
-        tags: Tags for filtering
-
-    Returns:
-        Decorated function
-    """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            client = get_tracing_client()
-            span_name = name or func.__name__
-
-            with client.trace(
-                name=span_name,
-                run_type=run_type,
-                inputs={"args": str(args)[:500], "kwargs": str(kwargs)[:500]},
-                tags=tags,
-            ) as span:
-                result = func(*args, **kwargs)
-                span.outputs = {"result": str(result)[:1000]}
-                return result
-
-        return wrapper  # type: ignore
-
-    return decorator
-
-
-def trace_async_function(
-    name: str | None = None,
-    run_type: str = "chain",
-    tags: list[str] | None = None,
-) -> Callable[[F], F]:
-    """
-    Decorator for tracing async functions.
-
-    Args:
-        name: Span name (defaults to function name)
-        run_type: Type of run
-        tags: Tags for filtering
-
-    Returns:
-        Decorated function
-    """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            client = get_tracing_client()
-            span_name = name or func.__name__
-
-            async with client.atrace(
-                name=span_name,
-                run_type=run_type,
-                inputs={"args": str(args)[:500], "kwargs": str(kwargs)[:500]},
-                tags=tags,
-            ) as span:
-                result = await func(*args, **kwargs)
-                span.outputs = {"result": str(result)[:1000]}
-                return result
-
-        return wrapper  # type: ignore
-
-    return decorator
-
-
-def trace_rag_query(func: F) -> F:
-    """
-    Decorator for tracing RAG query functions.
-
-    Automatically captures query, context, and answer.
-
-    Args:
-        func: Function to trace
-
-    Returns:
-        Decorated function
-    """
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        client = get_tracing_client()
-
-        # Extract query from args/kwargs
-        query = kwargs.get("query") or kwargs.get("question")
-        if not query and args:
-            query = args[0] if isinstance(args[0], str) else None
-
-        async with client.atrace(
-            name="rag_query",
-            run_type="chain",
-            inputs={"query": query or "unknown"},
-            tags=["rag", "query"],
-            metadata={"function": func.__name__},
-        ) as span:
-            result = await func(*args, **kwargs)
-
-            # Extract answer from result
-            answer = None
-            if isinstance(result, str):
-                answer = result
-            elif isinstance(result, dict):
-                answer = result.get("answer") or result.get("response")
-
-            span.outputs = {
-                "answer": answer[:1000] if answer else None,
-                "result_type": type(result).__name__,
-            }
-
-            return result
-
-    return wrapper  # type: ignore
-
-
-def trace_retrieval(func: F) -> F:
-    """
-    Decorator for tracing retrieval functions.
-
-    Args:
-        func: Function to trace
-
-    Returns:
-        Decorated function
-    """
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        client = get_tracing_client()
-
-        query = kwargs.get("query")
-        if not query and args:
-            query = args[0] if isinstance(args[0], str) else None
-
-        async with client.atrace(
-            name="retrieval",
-            run_type="retriever",
-            inputs={"query": query or "unknown"},
-            tags=["retrieval"],
-        ) as span:
-            result = await func(*args, **kwargs)
-
-            # Count documents
-            doc_count = len(result) if isinstance(result, list) else 0
-
-            span.outputs = {
-                "document_count": doc_count,
-            }
-
-            return result
-
-    return wrapper  # type: ignore
-
-
-def trace_llm_call(func: F) -> F:
-    """
-    Decorator for tracing LLM calls.
-
-    Args:
-        func: Function to trace
-
-    Returns:
-        Decorated function
-    """
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        client = get_tracing_client()
-
-        async with client.atrace(
-            name="llm_call",
-            run_type="llm",
-            inputs={
-                "model": kwargs.get("model", "unknown"),
-                "prompt_length": len(str(kwargs.get("prompt", "")))
-            },
-            tags=["llm"],
-        ) as span:
-            result = await func(*args, **kwargs)
-
-            # Extract response
-            response = None
-            if hasattr(result, "content"):
-                response = result.content
-            elif isinstance(result, str):
-                response = result
-
-            span.outputs = {
-                "response_length": len(response) if response else 0,
-            }
-
-            return result
-
-    return wrapper  # type: ignore
-
-
-# ============================================================================
-# Utility Functions
-# ============================================================================
-
-
-def add_feedback(
-    run_id: str,
-    score: float,
-    key: str = "user_feedback",
-    comment: str | None = None,
-) -> bool:
-    """
-    Add feedback to a trace run.
-
-    Args:
-        run_id: Run ID to add feedback to
-        score: Feedback score (0.0 to 1.0)
-        key: Feedback key
-        comment: Optional comment
-
-    Returns:
-        True if successful
-    """
-    client = get_tracing_client()
-    if not client.enabled:
-        return False
-
-    try:
-        ls_client = client._get_client()
-        if ls_client is None:
-            return False
-
-        ls_client.create_feedback(
-            run_id=run_id,
-            key=key,
-            score=score,
-            comment=comment,
-        )
-        return True
-    except Exception as e:
-        logger.exception("Failed to add feedback: %s", e)
-        return False
-
-
-def get_run_url(run_id: str) -> str | None:
-    """
-    Get the LangSmith URL for a run.
-
-    Args:
-        run_id: Run ID
-
-    Returns:
-        URL string or None
-    """
-    client = get_tracing_client()
-    if not client.enabled:
-        return None
-
-    return f"{LANGSMITH_ENDPOINT}/o/default/projects/p/{LANGSMITH_PROJECT}/r/{run_id}"

@@ -60,7 +60,6 @@
 
 .hero h1 span {
   display: block;
-  white-space: nowrap;
 }
 
 .heroCopy > p {
@@ -90,7 +89,11 @@
   font-size: 0.91rem;
   font-weight: 650;
   text-decoration: none;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .primaryAction {
@@ -100,7 +103,7 @@
 
 .primaryAction:hover {
   background: var(--mimirq-accent-strong);
-  color: #fff;
+  color: var(--mimirq-paper);
   transform: translateY(-1px);
 }
 
@@ -119,7 +122,6 @@
 .startPanel {
   position: relative;
   width: 100%;
-  min-width: 0;
   padding: 1.25rem;
   border: 1px solid var(--mimirq-line);
   border-radius: 1rem;
@@ -160,7 +162,6 @@
 
 .startPanel ol {
   display: grid;
-  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -233,7 +234,8 @@
   font-weight: 600;
 }
 
-.pipeline i {
+.pipeline > div > span:not(:last-child)::after {
+  content: '';
   display: block;
   width: 1.1rem;
   height: 1px;
@@ -309,12 +311,8 @@
 
 .cardMeta {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-bottom: 4.5rem;
-  color: var(--mimirq-faint);
-  font-family: var(--ifm-font-family-monospace);
-  font-size: 0.74rem;
 }
 
 .cardMeta svg {
@@ -396,7 +394,9 @@
 .areaList > a > svg:last-child {
   margin-top: 0.2rem;
   color: var(--mimirq-faint);
-  transition: transform 160ms ease, color 160ms ease;
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
 }
 
 .areaList > a:hover > svg:last-child {
@@ -429,7 +429,7 @@
   padding-top: 3.5rem;
   padding-bottom: 3.5rem;
   border-radius: 1.1rem;
-  background: var(--mimirq-ink);
+  background: #17211c;
 }
 
 .closing > div:first-child {
@@ -506,10 +506,8 @@
     grid-template-columns: 1fr;
   }
 
-  .pathCard,
-  .pathCard:first-child {
+  .pathCard {
     min-height: auto;
-    border-right: 1px solid var(--mimirq-line);
     border-bottom: 1px solid var(--mimirq-line);
     border-left: 1px solid var(--mimirq-line);
   }
@@ -560,7 +558,7 @@
     margin-top: 3.5rem;
   }
 
-  .pipeline i {
+  .pipeline span:not(:last-child)::after {
     width: 0.65rem;
   }
 

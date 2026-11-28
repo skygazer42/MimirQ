@@ -1,62 +1,45 @@
-"""
-API v1 routes.
-"""
+"""Build API v1 routes when the application registers them."""
 
-
-from importlib import import_module
+from functools import cache
 
 from fastapi import APIRouter
 
-_ROUTER: APIRouter | None = None
 _DATASETS_PREFIX = "/datasets"
 _RETRIEVAL_PREFIX = "/retrieval"
 
 
-def _build_router() -> APIRouter:
-    audit = import_module("app.api.v1.audit")
-    auth = import_module("app.api.v1.auth")
-    chat = import_module("app.api.v1.chat")
-    chunk_presets = import_module("app.api.v1.chunk_presets")
-    connectors = import_module("app.api.v1.connectors")
-    dataset_categories = import_module("app.api.v1.dataset_categories")
-    dataset_analysis = import_module("app.api.v1.dataset_analysis")
-    dataset_precheck = import_module("app.api.v1.dataset_precheck")
-    dataset_tables = import_module("app.api.v1.dataset_tables")
-    datasets = import_module("app.api.v1.datasets")
-    db_catalog = import_module("app.api.v1.db_catalog")
-    documents = import_module("app.api.v1.documents")
-    evaluations = import_module("app.api.v1.evaluations")
-    evidence = import_module("app.api.v1.evidence")
-    evidence_capsules = import_module("app.api.v1.evidence_capsules")
-    feedback = import_module("app.api.v1.feedback")
-    governance = import_module("app.api.v1.governance")
-    groups = import_module("app.api.v1.groups")
-    health = import_module("app.api.v1.health")
-    ingestion_runs = import_module("app.api.v1.ingestion_runs")
-    integrations_conversations = import_module("app.api.v1.integrations_conversations")
-    integrations_dify = import_module("app.api.v1.integrations_dify")
-    industry_rules = import_module("app.api.v1.industry_rules")
-    lineage = import_module("app.api.v1.lineage")
-    ltr = import_module("app.api.v1.ltr")
-    meta = import_module("app.api.v1.meta")
-    network_analysis = import_module("app.api.v1.network_analysis")
-    observability = import_module("app.api.v1.observability")
-    parsing = import_module("app.api.v1.parsing")
-    pipeline = import_module("app.api.v1.pipeline")
-    prompt_templates = import_module("app.api.v1.prompt_templates")
-    rag = import_module("app.api.v1.rag")
-    rag_config_templates = import_module("app.api.v1.rag_config_templates")
-    ragviz = import_module("app.api.v1.ragviz")
-    rbac = import_module("app.api.v1.rbac")
-    reports = import_module("app.api.v1.reports")
-    retrieval_config_hash = import_module("app.api.v1.retrieval_config_hash")
-    retrieval_explain = import_module("app.api.v1.retrieval_explain")
-    retrieval_profiles = import_module("app.api.v1.retrieval_profiles")
-    scim = import_module("app.api.v1.scim")
-    settings = import_module("app.api.v1.settings")
-    rtbf = import_module("app.api.v1.rtbf")
-    usage = import_module("app.api.v1.usage")
-    kg = import_module("app.rag.kg.api.routes")
+@cache
+def get_router() -> APIRouter:
+    """Return the shared router, importing route modules only when requested."""
+    import app.api.v1.knowledge_graph.routes as kg
+    from app.api.v1.connectors import routes as connectors
+    from app.api.v1.conversations import feedback
+    from app.api.v1.conversations import prompts as prompt_templates
+    from app.api.v1.conversations import routes as chat
+    from app.api.v1.datasets import analysis as dataset_analysis
+    from app.api.v1.datasets import categories as dataset_categories
+    from app.api.v1.datasets import db_catalog, reports
+    from app.api.v1.datasets import precheck as dataset_precheck
+    from app.api.v1.datasets import routes as datasets
+    from app.api.v1.datasets import tables as dataset_tables
+    from app.api.v1.documents import ingestion_runs, lineage
+    from app.api.v1.documents import routes as documents
+    from app.api.v1.evaluation import evidence, evidence_capsules
+    from app.api.v1.evaluation import routes as evaluations
+    from app.api.v1.identity import auth, groups, rbac, scim
+    from app.api.v1.integrations import conversations as integrations_conversations
+    from app.api.v1.integrations import dify as integrations_dify
+    from app.api.v1.knowledge_graph import enterprise_ontology
+    from app.api.v1.knowledge_graph import network as network_analysis
+    from app.api.v1.pipelines import chunk_presets, governance, industry_rules, parsing
+    from app.api.v1.pipelines import routes as pipeline
+    from app.api.v1.retrieval import config_hash as retrieval_config_hash
+    from app.api.v1.retrieval import config_templates as rag_config_templates
+    from app.api.v1.retrieval import explain as retrieval_explain
+    from app.api.v1.retrieval import profiles as retrieval_profiles
+    from app.api.v1.retrieval import routes as rag
+    from app.api.v1.retrieval import visualization as ragviz
+    from app.api.v1.system import audit, health, meta, observability, rtbf, settings, usage
 
     router = APIRouter()
     router.include_router(health.router, tags=["Health"])
@@ -73,10 +56,10 @@ def _build_router() -> APIRouter:
     router.include_router(db_catalog.router, prefix=_DATASETS_PREFIX, tags=["DB Catalog"])
     router.include_router(dataset_categories.router, prefix="/dataset-categories", tags=["Dataset Categories"])
     router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
+    router.include_router(enterprise_ontology.router, prefix="/kg/ontologies", tags=["Enterprise Ontology"])
     router.include_router(network_analysis.router, prefix="/kg/network", tags=["Knowledge Graph (KG)"])
     router.include_router(evidence.router, prefix="/evidence", tags=["Evidence Workbench"])
     router.include_router(evidence_capsules.router, prefix="/evidence", tags=["Evidence Capsules"])
-    router.include_router(ltr.router, prefix="/ltr", tags=["LTR"])
     router.include_router(settings.router, prefix="/settings", tags=["Settings"])
     router.include_router(governance.router, prefix="/governance", tags=["Governance"])
     router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluations"])
@@ -110,32 +93,4 @@ def _build_router() -> APIRouter:
     return router
 
 
-def get_router() -> APIRouter:
-    global _ROUTER
-    if _ROUTER is None:
-        _ROUTER = _build_router()
-    return _ROUTER
-
-
-def __getattr__(name: str):
-    if name == "router":
-        router = get_router()
-        globals()["router"] = router
-        return router
-
-    # Convenience: allow `app.api.v1.<submodule>` attribute access so callers and
-    # tests can use dotted paths like `app.api.v1.dataset_precheck.*` without
-    # importing the submodule eagerly.
-    try:
-        mod = import_module(f"{__name__}.{name}")
-    except ModuleNotFoundError as exc:
-        # Only translate to AttributeError when the *submodule itself* is missing.
-        if str(getattr(exc, "name", "") or "") in {f"{__name__}.{name}", name}:
-            raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
-        raise
-
-    globals()[name] = mod
-    return mod
-
-
-__all__ = ["get_router", "router"]
+__all__ = ["get_router"]

@@ -1,4 +1,3 @@
-
 import datetime as dt
 import io
 import zipfile
@@ -13,7 +12,7 @@ def _ensure_datetime_utc(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_read_jsonl_tail_drops_partial_first_line_and_skips_bad_rows(tmp_path: Path) -> None:
-    from app.services.hardcase_discovery_service import read_jsonl_tail
+    from app.services.evaluation.hardcase_discovery import read_jsonl_tail
 
     long_prefix = '{"id":0,"pad":"' + ("x" * 240) + '"}\n'
     payload = long_prefix + '{"id":1}\n' + "not-json\n" + '["ignored"]\n' + '{"id":2}\n'
@@ -27,7 +26,7 @@ def test_read_jsonl_tail_drops_partial_first_line_and_skips_bad_rows(tmp_path: P
 
 
 def test_plan_feedback_hardcase_candidates_dedupes_request_error_counts_and_prefers_latest_trace() -> None:
-    from app.services.hardcase_discovery_service import plan_feedback_hardcase_candidates
+    from app.services.evaluation.hardcase_discovery import plan_feedback_hardcase_candidates
 
     candidates = plan_feedback_hardcase_candidates(
         feedback_rows=[
@@ -86,7 +85,7 @@ def test_plan_feedback_hardcase_candidates_dedupes_request_error_counts_and_pref
 
 def test_normalize_reference_sources_dedupes_and_coerces_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services.ltr_rollout_workflow import normalize_reference_sources
+    from app.services.evaluation.feedback_cases import normalize_reference_sources
 
     document_id = "00000000-0000-0000-0000-000000000001"
     chunk_id = "00000000-0000-0000-0000-000000000002"
@@ -133,26 +132,8 @@ def test_normalize_reference_sources_dedupes_and_coerces_fields(monkeypatch: pyt
     ]
 
 
-def test_comparison_metric_value_uses_named_sections_and_nested_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    _ensure_datetime_utc(monkeypatch)
-    from app.services.ltr_rollout_workflow import _comparison_metric_value
-
-    comparison = {
-        "deltas": {"retrieval_mrr": 0.125},
-        "candidate_metrics": {"hit": 0.8},
-        "baseline_eval_summary": {"cases_total": 12},
-        "nested": {"path": {"value": "1.5"}},
-    }
-
-    assert _comparison_metric_value(comparison=comparison, metric_key="delta.retrieval_mrr") == 0.125
-    assert _comparison_metric_value(comparison=comparison, metric_key="candidate.hit") == 0.8
-    assert _comparison_metric_value(comparison=comparison, metric_key="baseline.cases_total") == 12.0
-    assert _comparison_metric_value(comparison=comparison, metric_key="nested.path.value") == 1.5
-    assert _comparison_metric_value(comparison=comparison, metric_key="candidate.unknown") is None
-
-
 def test_render_regression_run_diff_html_redacts_ids_and_renders_sections() -> None:
-    from app.services.regression_run_diff_html import render_regression_run_diff_html
+    from app.services.evaluation.run_diff_html import render_regression_run_diff_html
 
     html = render_regression_run_diff_html(
         title="Regression Diff",
@@ -195,8 +176,8 @@ def test_strip_text_fields_for_metrics_hashes_text_and_sanitizes_kg_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.core.config import settings
-    from app.services.metrics_logger import _strip_text_fields_for_metrics
+    from app.infrastructure.config import settings
+    from app.services.observability.metrics_log import _strip_text_fields_for_metrics
 
     monkeypatch.setattr(settings, "METRICS_LOG_INCLUDE_TEXT", False, raising=False)
 
@@ -267,7 +248,7 @@ def test_mineru_pick_extract_item_prefers_data_id_then_filename_then_singleton(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services.mineru_service import MinerUService
+    from app.services.parsing.mineru import MinerUService
 
     extract_result = [
         {"data_id": "data-1", "file_name": "a.pdf", "state": "running"},
@@ -281,7 +262,7 @@ def test_mineru_pick_extract_item_prefers_data_id_then_filename_then_singleton(
 
 def test_mineru_extract_markdown_from_zip_bytes_prefers_full_md(monkeypatch: pytest.MonkeyPatch) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services.mineru_service import MinerUService
+    from app.services.parsing.mineru import MinerUService
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -289,12 +270,3 @@ def test_mineru_extract_markdown_from_zip_bytes_prefers_full_md(monkeypatch: pyt
         zf.writestr("full.md", "preferred")
 
     assert MinerUService._extract_markdown_from_zip_bytes(buf.getvalue()) == "preferred"
-
-
-def test_indexer_row_named_value_preserves_missing_key_semantics_for_tuple_metadata() -> None:
-    from app.services.indexer import _row_named_value
-
-    row = ({"embedding_space_hash": "space-a"},)
-
-    assert _row_named_value(row, "embedding_space_hash") == "space-a"
-    assert _row_named_value(row, "vector_collection_name") is None

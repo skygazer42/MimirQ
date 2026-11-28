@@ -1,51 +1,36 @@
+import { z } from 'zod'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from './auth-storage'
+import { generateRequestId } from './request-id'
 
-export type DocContentCacheRecord = {
-  id: string
-  markdownContent: string
-  originalMarkdownContent?: string
-  updatedAt: number
-}
+const docContentCacheSchema = z.object({
+  id: z.string(),
+  markdownContent: z.string(),
+  originalMarkdownContent: z.string().optional(),
+  updatedAt: z.number(),
+})
 
-export type DocSourceCacheRecord = {
-  id: string
-  filename: string
-  mimeType: string
-  size: number
-  lastModified: number
-  blob: Blob
-  updatedAt: number
-}
+export type DocContentCacheRecord = z.infer<typeof docContentCacheSchema>
 
-export type DocContentCacheStats = {
-  entries: number
-  totalBytes: number
-  lastUpdatedAt: number | null
-}
+export type DocContentCacheUpdate = Pick<DocContentCacheRecord, 'id'> &
+  Partial<Pick<DocContentCacheRecord, 'markdownContent' | 'originalMarkdownContent'>>
 
-export type DocSourceCacheStats = {
-  entries: number
-  totalBytes: number
-  lastUpdatedAt: number | null
-}
+const docSourceCacheSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  mimeType: z.string(),
+  size: z.number().int().nonnegative(),
+  lastModified: z.number(),
+  blob: z.instanceof(Blob),
+  updatedAt: z.number(),
+})
 
-export type CachePressureLevel = 'low' | 'moderate' | 'high'
-
-export type CachePressureClassification = {
-  level: CachePressureLevel
-  storageUsageRatio: number | null
-  cacheShareOfUsage: number | null
-  totalCacheBytes: number
-  reasons: string[]
-  hasStorageEstimate: boolean
-}
+export type DocSourceCacheRecord = z.infer<typeof docSourceCacheSchema>
 
 const DB_NAME = 'mimirq'
 const DB_VERSION = 2
 const CONTENT_STORE = 'doc_contents'
 const SOURCE_STORE = 'doc_sources'
-const MB = 1024 * 1024
-const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const pendingSourceWrites = new Map<string, AbortController>()
 
 type DocCacheScopeGuard = {
   scope: string
@@ -66,15 +51,17 @@ function getDocCacheWriteState(): DocCacheWriteState {
   const globalScope = globalThis as typeof globalThis & {
     [DOC_CACHE_WRITE_STATE_KEY]?: DocCacheWriteState
   }
-  if (!globalScope[DOC_CACHE_WRITE_STATE_KEY]) {
-    globalScope[DOC_CACHE_WRITE_STATE_KEY] = {
+  let writeState = globalScope[DOC_CACHE_WRITE_STATE_KEY]
+  if (writeState === undefined) {
+    writeState = {
       authScopeGeneration: 0,
       authScopeListenerInstalled: false,
       invalidationListeners: new Set<() => void>(),
       scopeWriteGenerations: new Map<string, number>(),
     }
+    globalScope[DOC_CACHE_WRITE_STATE_KEY] = writeState
   }
-  return globalScope[DOC_CACHE_WRITE_STATE_KEY] as DocCacheWriteState
+  return writeState
 }
 
 function getAuthScopeGeneration(): number {
@@ -82,7 +69,7 @@ function getAuthScopeGeneration(): number {
 }
 
 function getDocCacheScopeWriteGeneration(scope: string): number {
-  return getDocCacheWriteState().scopeWriteGenerations.get(scope) || 0
+  return getDocCacheWriteState().scopeWriteGenerations.get(scope) ?? 0
 }
 
 function notifyDocCacheInvalidationListeners() {
@@ -101,7 +88,15 @@ function subscribeToDocCacheInvalidation(listener: () => void): () => void {
 }
 
 function scopedRecordId(id: string, scope: string = getAuthCacheScope()): string {
+  if (id.length === 0) throw new Error('缓存文档 ID 不能为空')
+  if (scope.length === 0) throw new Error('缓存作用域不能为空')
   return `${scope}:${id}`
+}
+
+function parseDocContentCacheRecord(value: unknown): DocContentCacheRecord {
+  const result = docContentCacheSchema.safeParse(value)
+  if (!result.success) throw new Error('本地正文缓存格式不正确，原记录已保留')
+  return result.data
 }
 
 function toError(reason: unknown, fallbackMessage: string): Error {
@@ -130,31 +125,37 @@ function openDb(): Promise<IDBDatabase> {
 function withStore<T>(
   storeName: string,
   mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest<T>,
+  runRequest: (store: IDBObjectStore, checkCommit: () => boolean, onError: (error: unknown) => void) => IDBRequest<T>,
   shouldStart?: () => boolean,
-  shouldCommit?: () => boolean
-): Promise<T> {
+  shouldCommit?: () => boolean,
+  signal?: AbortSignal,
+): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
     void openDb()
       .then((db) => {
-        if (shouldStart && !shouldStart()) {
+        if (signal?.aborted || (shouldStart && !shouldStart())) {
           db.close()
-          resolve(undefined as T)
+          resolve(undefined)
           return
         }
-        const tx = db.transaction(storeName, mode)
+        let tx: IDBTransaction
+        try {
+          tx = db.transaction(storeName, mode)
+        } catch (error) {
+          db.close()
+          reject(toError(error, `Failed to start IndexedDB transaction for "${storeName}"`))
+          return
+        }
         const store = tx.objectStore(storeName)
         let settled = false
-        let requestCompleted = false
-        let requestResult: T
         let abortedForGuard = false
-        const closeDb = () => db.close()
         let unsubscribeInvalidationListener: () => void = () => {}
         const cleanup = () => {
           unsubscribeInvalidationListener()
-          closeDb()
+          signal?.removeEventListener('abort', abortForGuard)
+          db.close()
         }
-        const resolveOnce = (value: T) => {
+        const resolveOnce = (value: T | undefined) => {
           if (settled) return
           settled = true
           cleanup()
@@ -166,71 +167,63 @@ function withStore<T>(
           cleanup()
           reject(toError(reason, fallbackMessage))
         }
-        if (mode === 'readwrite' && shouldCommit) {
-          unsubscribeInvalidationListener = subscribeToDocCacheInvalidation(() => {
-            if (settled || abortedForGuard || shouldCommit()) return
-            abortedForGuard = true
-            try {
-              tx.abort()
-            } catch {
-              abortedForGuard = false
-            }
-          })
-        }
-        const req = fn(store)
-
-        req.onsuccess = () => {
-          if (mode === 'readwrite' && shouldCommit && !shouldCommit()) {
-            abortedForGuard = true
+        const abortForGuard = () => {
+          if (settled || abortedForGuard) return
+          abortedForGuard = true
+          try {
             tx.abort()
-            return
-          }
-          requestCompleted = true
-          requestResult = req.result
-          if (mode !== 'readwrite') {
-            resolveOnce(requestResult)
+          } catch {
+            abortedForGuard = false
           }
         }
-        req.onerror = () => rejectOnce(req.error, `IndexedDB request failed for "${storeName}"`)
+        const checkCommit = () => {
+          if (settled) return false
+          if (mode === 'readwrite' && (signal?.aborted || (shouldCommit && !shouldCommit()))) {
+            abortForGuard()
+            return false
+          }
+          return true
+        }
+        const failRequest = (error: unknown) => {
+          try {
+            tx.abort()
+          } catch {
+            // The initiating error is still reported if the transaction already ended.
+          } finally {
+            rejectOnce(error, `IndexedDB request failed for "${storeName}"`)
+          }
+        }
+        if (mode === 'readwrite' && shouldCommit) {
+          unsubscribeInvalidationListener = subscribeToDocCacheInvalidation(checkCommit)
+        }
+        signal?.addEventListener('abort', abortForGuard)
         tx.onabort = () => {
           if (abortedForGuard) {
-            resolveOnce(undefined as T)
+            resolveOnce(undefined)
             return
           }
           rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
         }
         tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
-        tx.oncomplete = () => {
-          if (mode === 'readwrite') {
-            resolveOnce(requestCompleted ? requestResult : (undefined as T))
-            return
-          }
-          cleanup()
+        if (mode === 'readwrite') tx.oncomplete = () => resolveOnce(undefined)
+
+        let req: IDBRequest<T>
+        try {
+          req = runRequest(store, checkCommit, failRequest)
+        } catch (error) {
+          failRequest(error)
+          return
         }
+        req.onsuccess = () => {
+          if (!checkCommit()) return
+          if (mode !== 'readwrite') resolveOnce(req.result)
+        }
+        req.onerror = () => rejectOnce(req.error, `IndexedDB request failed for "${storeName}"`)
       })
       .catch((error) => {
         reject(toError(error, `Failed to access IndexedDB store "${storeName}"`))
       })
   })
-}
-
-const textEncoder =
-  typeof TextEncoder === 'undefined' ? null : new TextEncoder()
-
-function measureStringBytes(value: string | undefined | null): number {
-  if (!value) return 0
-  if (textEncoder) return textEncoder.encode(value).length
-  return value.length * 2
-}
-
-function normalizeFiniteNumber(input: unknown): number | null {
-  const value = Number(input)
-  if (!Number.isFinite(value) || value < 0) return null
-  return value
-}
-
-export function isRecordStaleByUpdatedAt(updatedAt: number | null | undefined, staleBefore: number): boolean {
-  return Number.isFinite(updatedAt) && Number(updatedAt) < staleBefore
 }
 
 export function invalidateDocCacheScopeWrites(scope: string = getAuthCacheScope()): number {
@@ -256,287 +249,215 @@ export function isDocCacheScopeGuardCurrent(scopeGuard: DocCacheScopeGuard): boo
   )
 }
 
-export function classifyStoragePressure(input: {
-  storageEstimate: Pick<StorageEstimate, 'usage' | 'quota'> | null | undefined
-  cacheStats:
-    | {
-        content?: Pick<DocContentCacheStats, 'totalBytes'>
-        source?: Pick<DocSourceCacheStats, 'totalBytes'>
-      }
-    | null
-    | undefined
-}): CachePressureClassification {
-  const usage = normalizeFiniteNumber(input.storageEstimate?.usage)
-  const quota = normalizeFiniteNumber(input.storageEstimate?.quota)
-  const contentBytes = normalizeFiniteNumber(input.cacheStats?.content?.totalBytes) ?? 0
-  const sourceBytes = normalizeFiniteNumber(input.cacheStats?.source?.totalBytes) ?? 0
-  const totalCacheBytes = contentBytes + sourceBytes
-  const storageUsageRatio = usage != null && quota && quota > 0 ? usage / quota : null
-  const cacheShareOfUsage = usage != null && usage > 0 ? totalCacheBytes / usage : null
-  const reasons: string[] = []
-
-  if (storageUsageRatio != null && storageUsageRatio >= 0.85) {
-    reasons.push('storage usage is near quota')
-  }
-  if (cacheShareOfUsage != null && cacheShareOfUsage >= 0.7 && totalCacheBytes >= 20 * MB) {
-    reasons.push('cache footprint dominates storage usage')
-  }
-  if (storageUsageRatio != null && storageUsageRatio >= 0.7) {
-    reasons.push('storage usage is elevated')
-  }
-  if (cacheShareOfUsage != null && cacheShareOfUsage >= 0.45 && totalCacheBytes >= 10 * MB) {
-    reasons.push('cache footprint is a large share of storage usage')
-  }
-  if (storageUsageRatio == null && totalCacheBytes >= 250 * MB) {
-    reasons.push('cache footprint is large and storage estimate is unavailable')
-  } else if (storageUsageRatio == null && totalCacheBytes >= 100 * MB) {
-    reasons.push('cache footprint is moderate and storage estimate is unavailable')
-  }
-
-  let level: CachePressureLevel = 'low'
-  if (reasons.some((reason) => reason.includes('near quota') || reason.includes('dominates') || reason.includes('large'))) {
-    level = 'high'
-  } else if (reasons.length > 0) {
-    level = 'moderate'
-  }
-
-  return {
-    level,
-    storageUsageRatio,
-    cacheShareOfUsage,
-    totalCacheBytes,
-    reasons,
-    hasStorageEstimate: usage != null && quota != null,
-  }
-}
-
-async function collectStoreRecords<T>(
-  storeName: string,
-  handler: (entry: T) => void
-): Promise<void> {
-  if (globalThis.window === undefined) return
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly')
-    const store = tx.objectStore(storeName)
-    const request = store.openCursor()
-    let settled = false
-
-    const close = () => {
-      db.close()
-    }
-
-    const resolveOnce = () => {
-      if (settled) return
-      settled = true
-      close()
-      resolve()
-    }
-
-    const rejectOnce = (reason: unknown, message: string) => {
-      if (!settled) {
-        settled = true
-        close()
-        reject(toError(reason, message))
-      }
-    }
-
-    request.onsuccess = (event) => {
-      const cursor = (event.target as IDBRequest).result
-      if (!cursor) return
-      handler(cursor.value as T)
-      cursor.continue()
-    }
-    request.onerror = () => rejectOnce(request.error, `IndexedDB cursor failed for "${storeName}"`)
-    tx.oncomplete = resolveOnce
-    tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
-    tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
-  })
-}
-
-export async function saveDocContentToCache(
+export async function cacheDocContentIfMissing(
   record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number },
-  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope()
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope(),
 ) {
   if (globalThis.window === undefined) return
-  if (!record?.id) return
   const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
   const scopedId = scopedRecordId(record.id, scopeGuard.scope)
-  await withStore(CONTENT_STORE, 'readwrite', (store) =>
-    store.put({
-      id: scopedId,
-      markdownContent: record.markdownContent || '',
-      originalMarkdownContent: record.originalMarkdownContent || '',
-      updatedAt: record.updatedAt ?? Date.now(),
-    }),
+  await withStore(
+    CONTENT_STORE,
+    'readwrite',
+    (store, checkCommit, onError) => {
+      const request: IDBRequest<unknown> = store.get(scopedId)
+      request.addEventListener('success', () => {
+        if (!checkCommit() || request.result !== undefined) return
+        try {
+          const write = store.put({
+            id: scopedId,
+            markdownContent: record.markdownContent,
+            originalMarkdownContent: record.originalMarkdownContent ?? '',
+            updatedAt: record.updatedAt ?? Date.now(),
+          })
+          write.addEventListener('success', checkCommit)
+        } catch (error) {
+          onError(error)
+        }
+      })
+      return request
+    },
     () => isDocCacheScopeGuardCurrent(scopeGuard),
-    () => isDocCacheScopeGuardCurrent(scopeGuard)
+    () => isDocCacheScopeGuardCurrent(scopeGuard),
   )
+}
+
+export async function updateDocContentInCache(
+  update: DocContentCacheUpdate,
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope(),
+  signal?: AbortSignal,
+): Promise<void | (() => Promise<unknown>)> {
+  if (globalThis.window === undefined || signal?.aborted) return
+  const { markdownContent, originalMarkdownContent } = update
+  if (markdownContent === undefined && originalMarkdownContent === undefined) return
+  const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
+  const scopedId = scopedRecordId(update.id, scopeGuard.scope)
+  const writeId = generateRequestId()
+  const isCurrentScope = () => isDocCacheScopeGuardCurrent(scopeGuard)
+  let previousRecord: unknown
+  await withStore(
+    CONTENT_STORE,
+    'readwrite',
+    (store, checkCommit, onError) => {
+      const request: IDBRequest<unknown> = store.get(scopedId)
+      request.addEventListener('success', () => {
+        if (!checkCommit()) return
+        try {
+          previousRecord = request.result
+          let current: DocContentCacheRecord | undefined
+          const needsSavedContent = markdownContent === undefined || originalMarkdownContent === undefined
+          if (needsSavedContent && previousRecord !== undefined) current = parseDocContentCacheRecord(previousRecord)
+          const write = store.put({
+            id: scopedId,
+            writeId,
+            markdownContent: markdownContent ?? current?.markdownContent ?? '',
+            originalMarkdownContent: originalMarkdownContent ?? current?.originalMarkdownContent ?? '',
+            updatedAt: Date.now(),
+          })
+          write.addEventListener('success', checkCommit)
+        } catch (error) {
+          onError(error)
+        }
+      })
+      return request
+    },
+    isCurrentScope,
+    isCurrentScope,
+    signal,
+  )
+  if (signal?.aborted || !isCurrentScope()) return
+
+  return () =>
+    withStore(
+      CONTENT_STORE,
+      'readwrite',
+      (store, checkCommit, onError) => {
+        const request: IDBRequest<unknown> = store.get(scopedId)
+        request.addEventListener('success', () => {
+          if (!checkCommit()) return
+          const current = request.result
+          if (typeof current !== 'object' || current === null || !('writeId' in current) || current.writeId !== writeId)
+            return
+          try {
+            const restore = previousRecord === undefined ? store.delete(scopedId) : store.put(previousRecord)
+            restore.addEventListener('success', checkCommit)
+          } catch (error) {
+            onError(error)
+          }
+        })
+        return request
+      },
+      isCurrentScope,
+      isCurrentScope,
+    )
 }
 
 export async function getDocContentFromCache(
   id: string,
-  scope: string = getAuthCacheScope()
+  scope: string = getAuthCacheScope(),
 ): Promise<DocContentCacheRecord | null> {
   if (globalThis.window === undefined) return null
-  if (!id) return null
   const scopedId = scopedRecordId(id, scope)
-  const res = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(scopedId))
-  return res ? { ...(res as DocContentCacheRecord), id } : null
+  const res: unknown = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(scopedId))
+  return res === undefined ? null : { ...parseDocContentCacheRecord(res), id }
 }
 
 export async function deleteDocContentFromCache(id: string, scope: string = getAuthCacheScope()) {
   if (globalThis.window === undefined) return
-  if (!id) return
   const scopedId = scopedRecordId(id, scope)
   await withStore(CONTENT_STORE, 'readwrite', (store) => store.delete(scopedId))
 }
 
 export async function saveDocSourceToCache(
   record: { id: string; file: File; updatedAt?: number },
-  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope()
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope(),
+  signal?: AbortSignal,
 ) {
   if (globalThis.window === undefined) return
-  if (!record?.id) return
-  if (!record.file) return
 
   const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
   const scopedId = scopedRecordId(record.id, scopeGuard.scope)
-  await withStore(SOURCE_STORE, 'readwrite', (store) =>
-    store.put({
-      id: scopedId,
-      filename: record.file.name || 'document',
-      mimeType: record.file.type || 'application/octet-stream',
-      size: record.file.size || 0,
-      lastModified: record.file.lastModified || Date.now(),
-      blob: record.file,
-      updatedAt: record.updatedAt ?? Date.now(),
-    } satisfies DocSourceCacheRecord),
-    () => isDocCacheScopeGuardCurrent(scopeGuard),
-    () => isDocCacheScopeGuardCurrent(scopeGuard)
-  )
+  pendingSourceWrites.get(scopedId)?.abort()
+  const controller = new AbortController()
+  pendingSourceWrites.set(scopedId, controller)
+  const cancelWrite = () => controller.abort()
+  signal?.addEventListener('abort', cancelWrite, { once: true })
+  if (signal?.aborted) controller.abort()
+  try {
+    await withStore(
+      SOURCE_STORE,
+      'readwrite',
+      (store) =>
+        store.put({
+          id: scopedId,
+          filename: record.file.name,
+          mimeType: record.file.type,
+          size: record.file.size,
+          lastModified: record.file.lastModified,
+          blob: record.file,
+          updatedAt: record.updatedAt ?? Date.now(),
+        } satisfies DocSourceCacheRecord),
+      () => isDocCacheScopeGuardCurrent(scopeGuard),
+      () => isDocCacheScopeGuardCurrent(scopeGuard),
+      controller.signal,
+    )
+  } finally {
+    signal?.removeEventListener('abort', cancelWrite)
+    if (pendingSourceWrites.get(scopedId) === controller) pendingSourceWrites.delete(scopedId)
+  }
 }
 
 export async function getDocSourceFromCache(
   id: string,
-  scope: string = getAuthCacheScope()
+  scope: string = getAuthCacheScope(),
 ): Promise<DocSourceCacheRecord | null> {
   if (globalThis.window === undefined) return null
-  if (!id) return null
   const scopedId = scopedRecordId(id, scope)
-  const res = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(scopedId))
-  return res ? { ...(res as DocSourceCacheRecord), id } : null
+  const res: unknown = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(scopedId))
+  if (res === undefined) return null
+  const record = docSourceCacheSchema.safeParse(res)
+  if (!record.success) throw new Error('本地原文件缓存格式不正确，请重新关联该文档')
+  return { ...record.data, id }
 }
 
 export async function deleteDocSourceFromCache(id: string, scope: string = getAuthCacheScope()) {
   if (globalThis.window === undefined) return
-  if (!id) return
   const scopedId = scopedRecordId(id, scope)
+  pendingSourceWrites.get(scopedId)?.abort()
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(scopedId))
-}
-
-export async function getDocContentCacheStats(): Promise<DocContentCacheStats> {
-  if (globalThis.window === undefined) {
-    return { entries: 0, totalBytes: 0, lastUpdatedAt: null }
-  }
-  const stats: DocContentCacheStats = { entries: 0, totalBytes: 0, lastUpdatedAt: null }
-  await collectStoreRecords<DocContentCacheRecord>(CONTENT_STORE, (entry) => {
-    stats.entries += 1
-    stats.totalBytes += measureStringBytes(entry.markdownContent)
-    if (entry.originalMarkdownContent) {
-      stats.totalBytes += measureStringBytes(entry.originalMarkdownContent)
-    }
-    if (entry.updatedAt && (stats.lastUpdatedAt === null || entry.updatedAt > stats.lastUpdatedAt)) {
-      stats.lastUpdatedAt = entry.updatedAt
-    }
-  })
-  return stats
-}
-
-export async function getDocSourceCacheStats(): Promise<DocSourceCacheStats> {
-  if (globalThis.window === undefined) {
-    return { entries: 0, totalBytes: 0, lastUpdatedAt: null }
-  }
-  const stats: DocSourceCacheStats = { entries: 0, totalBytes: 0, lastUpdatedAt: null }
-  await collectStoreRecords<DocSourceCacheRecord>(SOURCE_STORE, (entry) => {
-    stats.entries += 1
-    stats.totalBytes += Number(entry.size || 0)
-    if (entry.updatedAt && (stats.lastUpdatedAt === null || entry.updatedAt > stats.lastUpdatedAt)) {
-      stats.lastUpdatedAt = entry.updatedAt
-    }
-  })
-  return stats
-}
-
-export async function clearDocContentCache() {
-  if (globalThis.window === undefined) return
-  await withStore(CONTENT_STORE, 'readwrite', (store) => store.clear())
-}
-
-export async function clearDocSourceCache() {
-  if (globalThis.window === undefined) return
-  await withStore(SOURCE_STORE, 'readwrite', (store) => store.clear())
 }
 
 async function clearStoreForScope(storeName: string, scope: string): Promise<number> {
   if (globalThis.window === undefined) return 0
-  if (!scope) return 0
+  if (scope.length === 0) throw new Error('缓存作用域不能为空')
   const scopedPrefix = `${scope}:`
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
+  let deletedCount = 0
+  await withStore(storeName, 'readwrite', (store, checkCommit, onError) => {
     const request = store.openCursor()
-    let deletedCount = 0
-    let settled = false
-
-    const close = () => {
-      db.close()
-    }
-
-    const resolveOnce = (value: number) => {
-      if (settled) return
-      settled = true
-      close()
-      resolve(value)
-    }
-
-    const rejectOnce = (reason: unknown, message: string) => {
-      if (settled) return
-      settled = true
-      close()
-      reject(toError(reason, message))
-    }
-
-    request.onsuccess = (event) => {
-      const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
-      if (!cursor) return
-      const recordId = typeof cursor.value?.id === 'string' ? cursor.value.id : ''
-      if (recordId.startsWith(scopedPrefix)) {
-        cursor.delete()
-        deletedCount += 1
+    request.addEventListener('success', () => {
+      if (!checkCommit()) return
+      const cursor = request.result
+      if (cursor === null) return
+      try {
+        const recordId = cursor.primaryKey
+        if (typeof recordId === 'string' && recordId.startsWith(scopedPrefix)) {
+          cursor.delete()
+          deletedCount += 1
+        }
+        cursor.continue()
+      } catch (error) {
+        onError(error)
       }
-      cursor.continue()
-    }
-    request.onerror = () => rejectOnce(request.error, `IndexedDB cursor failed for "${storeName}"`)
-    tx.oncomplete = () => resolveOnce(deletedCount)
-    tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
-    tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
+    })
+    return request
   })
-}
-
-export async function clearDocContentCacheForScope(scope: string = getAuthCacheScope()) {
-  return clearStoreForScope(CONTENT_STORE, scope)
-}
-
-export async function clearDocSourceCacheForScope(scope: string = getAuthCacheScope()) {
-  return clearStoreForScope(SOURCE_STORE, scope)
+  return deletedCount
 }
 
 export async function clearDocCachesForScope(scope: string = getAuthCacheScope()) {
   const [contentDeleted, sourceDeleted] = await Promise.all([
-    clearDocContentCacheForScope(scope),
-    clearDocSourceCacheForScope(scope),
+    clearStoreForScope(CONTENT_STORE, scope),
+    clearStoreForScope(SOURCE_STORE, scope),
   ])
   return {
     contentDeleted,
@@ -553,77 +474,5 @@ if (globalThis.window !== undefined) {
       notifyDocCacheInvalidationListeners()
     })
     writeState.authScopeListenerInstalled = true
-  }
-}
-
-async function pruneStoreByUpdatedAt(
-  storeName: string,
-  maxAgeMs: number,
-  nowMs: number
-): Promise<number> {
-  if (globalThis.window === undefined) return 0
-  const normalizedMaxAgeMs =
-    Number.isFinite(maxAgeMs) && maxAgeMs >= 0 ? Math.trunc(maxAgeMs) : DEFAULT_STALE_MAX_AGE_MS
-  const staleBefore = nowMs - normalizedMaxAgeMs
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.openCursor()
-    let deletedCount = 0
-    let settled = false
-
-    const close = () => {
-      db.close()
-    }
-
-    const resolveOnce = (value: number) => {
-      if (settled) return
-      settled = true
-      close()
-      resolve(value)
-    }
-
-    const rejectOnce = (reason: unknown, message: string) => {
-      if (settled) return
-      settled = true
-      close()
-      reject(toError(reason, message))
-    }
-
-    request.onsuccess = (event) => {
-      const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
-      if (!cursor) return
-      const updatedAt = normalizeFiniteNumber((cursor.value as { updatedAt?: number })?.updatedAt)
-      if (isRecordStaleByUpdatedAt(updatedAt, staleBefore)) {
-        cursor.delete()
-        deletedCount += 1
-      }
-      cursor.continue()
-    }
-    request.onerror = () => rejectOnce(request.error, `IndexedDB cursor failed for "${storeName}"`)
-    tx.oncomplete = () => resolveOnce(deletedCount)
-    tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
-    tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
-  })
-}
-
-export async function pruneStaleDocContentCache(maxAgeMs = DEFAULT_STALE_MAX_AGE_MS, nowMs = Date.now()) {
-  return pruneStoreByUpdatedAt(CONTENT_STORE, maxAgeMs, nowMs)
-}
-
-export async function pruneStaleDocSourceCache(maxAgeMs = DEFAULT_STALE_MAX_AGE_MS, nowMs = Date.now()) {
-  return pruneStoreByUpdatedAt(SOURCE_STORE, maxAgeMs, nowMs)
-}
-
-export async function pruneStaleDocCaches(maxAgeMs = DEFAULT_STALE_MAX_AGE_MS, nowMs = Date.now()) {
-  const [contentDeleted, sourceDeleted] = await Promise.all([
-    pruneStaleDocContentCache(maxAgeMs, nowMs),
-    pruneStaleDocSourceCache(maxAgeMs, nowMs),
-  ])
-  return {
-    contentDeleted,
-    sourceDeleted,
-    totalDeleted: contentDeleted + sourceDeleted,
   }
 }

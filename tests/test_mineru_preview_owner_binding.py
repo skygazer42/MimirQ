@@ -14,11 +14,11 @@ def _zip_bytes_with_markdown_and_image() -> bytes:
 
 
 def test_mineru_preview_image_sidecar_binds_owner_account(monkeypatch, tmp_path) -> None:
-    from app.services.mineru_service import MinerUService
+    from app.services.parsing.mineru import MinerUService
 
     tenant_id = str(uuid4())
     account_id = "preview-owner"
-    monkeypatch.setattr("app.services.mineru_service.settings.UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr("app.services.parsing.mineru.settings.UPLOAD_DIR", str(tmp_path), raising=False)
 
     service = MinerUService()
     markdown, images = service._extract_preview_images_from_zip_bytes(
@@ -40,7 +40,7 @@ def test_mineru_preview_image_sidecar_binds_owner_account(monkeypatch, tmp_path)
 
 
 def test_mineru_parser_forwards_account_id_to_preview_service(monkeypatch, tmp_path) -> None:
-    from app.parsing.parsers.mineru_parser import MinerUParser
+    from app.rag.ingestion.parsing.parsers.mineru_parser import MinerUParser
 
     captured: dict[str, object] = {}
     file_path = tmp_path / "demo.pdf"
@@ -51,10 +51,14 @@ def test_mineru_parser_forwards_account_id_to_preview_service(monkeypatch, tmp_p
         return []
 
     monkeypatch.setattr(
-        "app.parsing.parsers.mineru_parser.settings.MINERU_LOCAL_SERVER_URL", "http://mineru.local", raising=False
+        "app.rag.ingestion.parsing.parsers.mineru_parser.settings.MINERU_LOCAL_SERVER_URL",
+        "http://mineru.local",
+        raising=False,
     )
     monkeypatch.setattr(
-        "app.parsing.parsers.mineru_parser.mineru_service.parse_file_local", _fake_parse_file_local, raising=True
+        "app.rag.ingestion.parsing.parsers.mineru_parser.mineru_service.parse_file_local",
+        _fake_parse_file_local,
+        raising=True,
     )
 
     parser = MinerUParser()
@@ -68,7 +72,7 @@ def test_mineru_parser_forwards_account_id_to_preview_service(monkeypatch, tmp_p
 
 
 def test_document_parser_preview_forwards_owner_to_parser_factory(monkeypatch, tmp_path) -> None:
-    from app.parsing.processors.parser_service import DocumentParserService
+    from app.rag.ingestion.parsing.processors.parser_service import parse_for_preview
 
     captured: dict[str, object] = {}
     file_path = tmp_path / "demo.txt"
@@ -78,9 +82,9 @@ def test_document_parser_preview_forwards_owner_to_parser_factory(monkeypatch, t
         captured.update(kwargs)
         return [], "basic"
 
-    monkeypatch.setattr("app.parsing.processors.parser_service.parser_factory.parse", _fake_parse)
+    monkeypatch.setattr("app.rag.ingestion.parsing.processors.parser_service.parser_factory.parse", _fake_parse)
 
-    DocumentParserService().parse_for_preview(
+    parse_for_preview(
         file_path=file_path,
         tenant_id=uuid4(),
         account_id="preview-owner",

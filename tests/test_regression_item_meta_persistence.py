@@ -1,7 +1,5 @@
-
-
 def test_regression_item_model_has_meta_column():
-    from app.models.evaluation import RagasRegressionItem
+    from app.models.evaluation.results import RagasRegressionItem
 
     assert hasattr(RagasRegressionItem, "meta")
 
@@ -9,12 +7,12 @@ def test_regression_item_model_has_meta_column():
 def test_runtime_migrations_include_regression_item_meta():
     from pathlib import Path
 
-    text = Path("app/core/migrations.py").read_text(encoding="utf-8")
+    text = Path("app/infrastructure/database/migrations.py").read_text(encoding="utf-8")
     assert "ALTER TABLE ragas_regression_items ADD COLUMN IF NOT EXISTS meta JSONB" in text
 
 
 def test_build_regression_item_meta_includes_ids_and_abstain_fields():
-    from app.rag.evaluation.regression_sample_builder import build_regression_item_meta
+    from app.rag.evaluation.regression.regression_sample_builder import build_regression_item_meta
 
     meta = build_regression_item_meta(
         sample_kwargs={
@@ -84,11 +82,12 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "expected_refusal": None,
         "refusal_correct": None,
         "llm_judge": None,
+        "ragas_metric_errors": None,
     }
 
 
 def test_build_regression_item_meta_preserves_effective_context_metrics():
-    from app.rag.evaluation.regression_sample_builder import build_regression_item_meta
+    from app.rag.evaluation.regression.regression_sample_builder import build_regression_item_meta
 
     meta = build_regression_item_meta(
         sample_kwargs={},
@@ -107,7 +106,7 @@ def test_build_regression_item_meta_preserves_effective_context_metrics():
 
 
 def test_build_regression_item_meta_preserves_retrieval_audit_fields():
-    from app.rag.evaluation.regression_sample_builder import build_regression_item_meta
+    from app.rag.evaluation.regression.regression_sample_builder import build_regression_item_meta
 
     capsule = {
         "schema": "mimirq.evidence_capsule.v1",

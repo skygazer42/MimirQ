@@ -1,9 +1,9 @@
-
-import importlib
+import asyncio
 import logging
-import socket
 import subprocess
 import sys
+
+import pytest
 
 
 def test_worker_health_settings_do_not_import_torch() -> None:
@@ -16,24 +16,26 @@ def test_worker_health_settings_do_not_import_torch() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_worker_warns_when_redis_unreachable(caplog, monkeypatch):  # noqa: ANN001
-    """
-    Worker startup should be resilient to cold-start Redis.
+@pytest.mark.asyncio
+async def test_worker_warns_when_redis_heartbeat_fails(caplog, monkeypatch):  # noqa: ANN001
+    from app.services.observability import task_queue
+    from app.tasks.worker import WorkerSettings
 
-    We don't spin up Redis here; instead we simulate a connect failure and assert
-    the worker settings emit a clear WARNING and use non-trivial retry defaults.
-    """
+    redis_client = object()
+    heartbeat_attempted = asyncio.Event()
 
-    def _raise(*args, **kwargs):  # noqa: ANN001, ANN202
+    async def failed_heartbeat(*, redis, **_kwargs):
+        assert redis is redis_client
+        heartbeat_attempted.set()
         raise OSError("simulated redis connect failure")
 
-    monkeypatch.setattr(socket, "create_connection", _raise, raising=True)
-
-    caplog.set_level(logging.WARNING)
-
-    import app.tasks.worker as worker_module
-
-    importlib.reload(worker_module)
-
-    assert worker_module.WorkerSettings.redis_settings.conn_retries >= 30
-    assert any("Redis not reachable yet" in rec.message for rec in caplog.records)
+    monkeypatch.setattr(task_queue, "observe_task_worker_heartbeat", failed_heartbeat)
+    caplog.set_level(logging.WARNING, logger="tasks.worker")
+    context = {"redis": redis_client}
+    try:
+        await WorkerSettings.on_startup(context)
+        await asyncio.wait_for(heartbeat_attempted.wait(), timeout=5)
+        assert WorkerSettings.redis_settings.conn_retries >= 30
+        assert "Worker heartbeat failed; retrying: simulated redis connect failure" in caplog.text
+    finally:
+        await WorkerSettings.on_shutdown(context)

@@ -1,6 +1,6 @@
 # Knowledge Graph (知识图谱)
 
-MimirQ 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）”为核心结构：
+Ragvia 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）”为核心结构：
 - 从文档切片（chunk）中抽取事件（title/summary/content + 引用/extra）。
 - 识别并归一化实体（name/type/normalized_name）。
 - 建立事件↔实体关系，用于图谱可视化与 KG recall/搜索。
@@ -63,6 +63,8 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
   - `?gzip=true`：返回 gzip 压缩后的 GraphML（`Content-Encoding: gzip`，下载文件后缀为 `.graphml.gz`），适合大图导出。
 - `POST /kg/search`：KG 搜索（召回 -> 扩展 -> 重排），返回事件列表 + entities/clues/stats。
 - `GET /kg/events/{event_id}`：事件详情（含实体列表，受文档权限约束；支持 `pipeline_hash` 可选参数）。
+  事件引用匹配目标分块原文后，`event.references.evidence_quote` 返回对应的原文片段。`evidence_start_char` 和 `evidence_end_char` 是分块内左闭右开的字符区间。
+  同一实体在分块中多次出现时，抽取优先使用所属事件中的原文。按文档范围启用图谱问答后，流式问答在已取回的分块中复核事件引文，再将匹配的原文加入回答上下文。
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束；支持 `pipeline_hash` 可选参数）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
 
@@ -204,7 +206,7 @@ API：
 
 ## 存储与数据模型（如何落库）
 
-MimirQ 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL，并为向量召回额外写入 Milvus。
+Ragvia 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL，并为向量召回额外写入 Milvus。
 
 ### PostgreSQL（事实存储 + provenance）
 - `kg_source_events`：从 chunk 抽取的事件（chunk-scoped）。
@@ -240,7 +242,7 @@ KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 /
   - `RAG_KG_CHUNK_INJECTION_MAX_CHUNKS=5`：最多注入的 KG evidence chunks 数量上限。
 
 - KG ranking features（可选）：把 KG 从 “召回扩展” 提升为 “排序信号来源”。
-  - 当候选 chunk 带有 `retrieval_role="kg"`（来自 KG chunk injection）时，系统会在候选元数据里附加一组 **稳定、低基数** 的 KG 特征，用于后置精排（LTR 等）。
+  - 当候选 chunk 带有 `retrieval_role="kg"`（来自 KG chunk injection）时，系统会在候选元数据里附加一组 **稳定、低基数** 的 KG 特征，用于检索诊断与受支持的排序。
   - 这些特征只包含数值/布尔信号，不包含 tenant/dataset/event/entity 等 scope identifier，便于下游稳定解析与离线训练。
 
   当前特征（best-effort）：
@@ -250,8 +252,6 @@ KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 /
   - `kg_edge_conf_low|mid|high`: 边置信度桶（粗阈值 one-hot，低基数）
   - `kg_evidence_anchored`: 是否 evidence-anchored（布尔）
 
-  与 LTR 集成：
-  - LTR feature spec v2 会包含以上 KG 特征（`LTR_FEATURE_SPEC_VERSION=2`，详见 `docs/guides/reranking_ltr.md`）。
 
 ## 前端图谱（/graph）
 - Live：从后端实时加载（支持导出 GraphML）。
@@ -270,7 +270,7 @@ KG API 默认按 tenant + 文档权限进行过滤：
 
 ## KG Diagnostics（评测 / 诊断）
 
-MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用于提升抽取/搜索质量并可回归：
+Ragvia 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用于提升抽取/搜索质量并可回归：
 
 - API：`POST /api/v1/evaluations/kg/search/diagnostics`
 - Seed：使用 RAGAS regression cases（`reference_sources.chunk_id` 作为 evidence ground truth）

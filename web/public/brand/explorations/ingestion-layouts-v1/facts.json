@@ -1,0 +1,41 @@
+{
+  "page": "入库管理",
+  "dataset": "产品文档",
+  "source": "本地文件",
+  "executionMode": "parse_only",
+  "executionLabel": "入库并解析",
+  "primaryAction": "登记并解析",
+  "parser": "自动选择",
+  "dedup": "内容哈希",
+  "ingestMode": "追加导入",
+  "chunkSize": 600,
+  "chunkOverlap": 100,
+  "totalSize": "19.13 MB",
+  "maxFileSize": "2 GB",
+  "sources": [
+    {"label":"本地文件", "icon":"upload-cloud"},
+    {"label":"文件夹", "icon":"folder"},
+    {"label":"URL 列表", "icon":"link"},
+    {"label":"对象存储", "icon":"cloud"},
+    {"label":"API 导入", "icon":"archive"}
+  ],
+  "modes": [
+    {"value":"upload_only", "label":"仅登记", "description":"保存文件，不解析", "icon":"file-up"},
+    {"value":"parse_only", "label":"入库并解析", "description":"提取正文，不建索引", "icon":"parsing"},
+    {"value":"full_index", "label":"解析 + 索引", "description":"解析并建立检索索引", "icon":"database"}
+  ],
+  "documents": [
+    {"id":"f001", "name":"员工手册 2026.pdf", "kind":"pdf", "size":"2.40 MB", "format":"PDF", "status":"待提交"},
+    {"id":"f002", "name":"产品使用指南.docx", "kind":"word", "size":"1.80 MB", "format":"Word", "status":"待提交"},
+    {"id":"f003", "name":"接口接入规范.md", "kind":"md", "size":"42 KB", "format":"Markdown", "status":"待提交"},
+    {"id":"f004", "name":"客户资料.csv", "kind":"sheet", "size":"368 KB", "format":"CSV", "status":"待提交"},
+    {"id":"f005", "name":"部署操作说明.pdf", "kind":"pdf", "size":"3.20 MB", "format":"PDF", "status":"待提交"},
+    {"id":"f006", "name":"数据字典.xlsx", "kind":"sheet", "size":"840 KB", "format":"Excel", "status":"待提交"},
+    {"id":"f007", "name":"问题排查记录.md", "kind":"md", "size":"28 KB", "format":"Markdown", "status":"待提交"},
+    {"id":"f008", "name":"服务接入协议.pdf", "kind":"pdf", "size":"1.60 MB", "format":"PDF", "status":"待提交"},
+    {"id":"f009", "name":"帮助中心导出.html", "kind":"code", "size":"312 KB", "format":"HTML", "status":"待提交"},
+    {"id":"f010", "name":"变更说明.txt", "kind":"text", "size":"12 KB", "format":"TXT", "status":"待提交"},
+    {"id":"f011", "name":"数据字段映射.json", "kind":"json", "size":"24 KB", "format":"JSON", "status":"待提交"},
+    {"id":"f012", "name":"项目资料.zip", "kind":"zip", "size":"8.40 MB", "format":"ZIP", "status":"待提交"}
+  ]
+}

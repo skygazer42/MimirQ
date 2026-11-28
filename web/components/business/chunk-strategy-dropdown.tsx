@@ -1,77 +1,26 @@
 'use client'
 
-/**
- * 切块策略下拉选择组件
- * 带图标、描述和徽章的下拉菜单
- */
-import { type ReactNode, useState, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom'
-import {
-  Layers,
-  Hash,
-  AlignLeft,
-  GitBranch,
-  ChevronDown,
-  Check,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Layers, Hash, AlignLeft, GitBranch, ChevronDown, Check, type PlatformIcon } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import {
   buildChunkStrategyCatalog,
   getChunkStrategyOption,
-  ChunkStrategyOption,
-  type ChunkStrategyCatalogItem,
+  getChunkStrategyRecommendationLabel,
+  type ChunkStrategyOption,
   type ChunkStrategyRecommendation,
 } from '@/lib/chunk-strategies'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { pipelinePickerTokens } from '@/components/ui/system-page-tokens'
 
-// 图标映射
-const ICON_MAP: Record<ChunkStrategyOption['icon'], LucideIcon> = {
+const ICON_MAP: Record<ChunkStrategyOption['icon'], PlatformIcon> = {
   recursive: Layers,
   token: Hash,
   sentence: AlignLeft,
   separator: AlignLeft,
   hierarchical: GitBranch,
   integrated: Layers,
-}
-
-// 颜色映射
-const COLOR_MAP: Record<
-  ChunkStrategyOption['icon'],
-  { bg: string; text: string }
-> = {
-  recursive: { bg: 'bg-primary/10', text: 'text-primary' },
-  token: { bg: 'bg-warning/10', text: 'text-warning' },
-  sentence: { bg: 'bg-success/10', text: 'text-success' },
-  separator: { bg: 'bg-muted', text: 'text-muted-foreground' },
-  hierarchical: { bg: 'bg-accent/10', text: 'text-accent' },
-  integrated: { bg: 'bg-primary/10', text: 'text-primary' },
-}
-
-const RECOMMENDATION_STYLES: Record<
-  ChunkStrategyRecommendation,
-  { chip: string; section: string }
-> = {
-  mainstream: {
-    chip: 'bg-primary/10 text-primary',
-    section: 'text-primary',
-  },
-  specialized: {
-    chip: 'bg-muted text-muted-foreground',
-    section: 'text-muted-foreground',
-  },
-  experimental: {
-    chip: 'bg-warning/10 text-warning',
-    section: 'text-warning',
-  },
-  optional: {
-    chip: 'bg-accent/10 text-accent',
-    section: 'text-accent',
-  },
-  integrated: {
-    chip: 'bg-info/10 text-info',
-    section: 'text-info',
-  },
 }
 
 const RECOMMENDATION_SECTIONS: ChunkStrategyRecommendation[] = [
@@ -82,303 +31,209 @@ const RECOMMENDATION_SECTIONS: ChunkStrategyRecommendation[] = [
   'integrated',
 ]
 
-interface ChunkStrategyDropdownProps {
+const ENABLED_OPTION_SELECTOR = 'button[role="menuitemradio"]:not(:disabled)'
+
+type ChunkStrategyDropdownProps = {
   value: string
   onChange: (value: string) => void
-  className?: string
-  surface?: 'default' | 'ocean'
+  compact?: boolean
+  disabled?: boolean
 }
 
 export function ChunkStrategyDropdown({
   value,
   onChange,
-  className,
-  surface = 'default',
+  compact = false,
+  disabled = false,
 }: Readonly<ChunkStrategyDropdownProps>) {
   const [isOpen, setIsOpen] = useState(false)
-  const [openUpward, setOpenUpward] = useState(false)
-  const [menuMaxHeight, setMenuMaxHeight] = useState(420)
-  const [menuRect, setMenuRect] = useState<{
-    left: number
-    width: number
-    top?: number
-    bottom?: number
-  } | null>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const { capabilities, chunkStrategyAvailable } = usePipelineCapabilities()
+  useEffect(() => {
+    if (disabled) setIsOpen(false)
+  }, [disabled])
+  const focusLastOptionRef = useRef(false)
+  const { capabilities } = usePipelineCapabilities()
 
   const catalog = buildChunkStrategyCatalog(capabilities?.chunk_strategies)
-  const selectedCatalogItem =
-    catalog.find((option) => option.value === String(value || '').trim().toLowerCase()) || null
+  const normalizedValue = value.trim().toLowerCase()
+  const selectedOption = catalog.find((option) => option.value === normalizedValue) ?? getChunkStrategyOption(value)
+  const SelectedIcon = ICON_MAP[selectedOption.icon]
 
-  const selectedOption = getChunkStrategyOption(value)
-  const selectedRecommendation =
-    selectedCatalogItem?.recommendation || 'mainstream'
-  const selectedRecommendationLabel =
-    selectedCatalogItem?.recommendationLabel || '主流推荐'
-  const selectedRecommendationStyle = RECOMMENDATION_STYLES[selectedRecommendation]
-  const resolvedSelectedRecommendationStyle =
-    surface === 'ocean'
-      ? { chip: 'bg-info/[0.08] text-info', section: 'text-info' }
-      : selectedRecommendationStyle
-  const selectedView: ChunkStrategyCatalogItem = selectedCatalogItem || {
-    ...selectedOption,
-    recommendation: selectedRecommendation,
-    recommendationLabel: selectedRecommendationLabel,
-  }
-  const SelectedIcon = ICON_MAP[selectedView.icon]
-  const selectedColor = COLOR_MAP[selectedView.icon]
-  const resolvedSelectedColor =
-    surface === 'ocean'
-      ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-      : selectedColor
-  const resolvedIconFrameSize = surface === 'ocean' ? 'size-6' : 'size-8'
-  const normalizedValue = String(value || '').trim().toLowerCase()
-
-  // 点击外部关闭
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as Node
-      if (dropdownRef.current?.contains(target)) return
-      if (menuRef.current?.contains(target)) return
+  function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Tab') {
+      event.preventDefault()
       setIsOpen(false)
+      return
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(ENABLED_OPTION_SELECTOR))
+    if (items.length === 0) return
+    event.preventDefault()
+    const current = items.findIndex((item) => item === document.activeElement)
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    items[next].focus()
+  }
+
+  function focusMenuOption(event: Event) {
+    const focusLastOption = focusLastOptionRef.current
+    focusLastOptionRef.current = false
+    const menu = event.currentTarget
+    if (!(menu instanceof HTMLElement)) return
+
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>(ENABLED_OPTION_SELECTOR))
+    const selected = items.find((item) => item.getAttribute('aria-checked') === 'true')
+    const focusTarget = selected ?? items.at(focusLastOption ? -1 : 0)
+    if (focusTarget) {
+      event.preventDefault()
+      focusTarget.focus()
+    }
+  }
 
   const groupedOptions = RECOMMENDATION_SECTIONS.map((recommendation) => ({
     recommendation,
     items: catalog.filter((option) => option.recommendation === recommendation),
   })).filter((section) => section.items.length > 0)
 
-  function updateMenuPlacement() {
-    const triggerRect = triggerRef.current?.getBoundingClientRect()
-    if (!triggerRect) return
+  const menu = (
+    <PopoverContent
+      data-dropdown-menu="chunk-strategy"
+      role="menu"
+      aria-label="切块策略"
+      align="start"
+      sideOffset={8}
+      collisionPadding={12}
+      onKeyDown={handleMenuKeyDown}
+      onOpenAutoFocus={focusMenuOption}
+      className={cn(
+        'z-[1000] max-h-[min(420px,var(--radix-popover-content-available-height))] w-[max(360px,var(--radix-popover-trigger-width))] max-w-[var(--radix-popover-content-available-width)] select-none overflow-y-auto overscroll-contain p-1 no-scrollbar',
+        pipelinePickerTokens.menu,
+      )}
+    >
+      {groupedOptions.map((section) => {
+        const isExperimental = section.recommendation === 'experimental'
+        return (
+          <div key={section.recommendation} className="py-1">
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <span className={cn('text-xs font-medium', isExperimental ? 'text-warning' : 'text-muted-foreground')}>
+                {getChunkStrategyRecommendationLabel(section.recommendation)}
+              </span>
+              <span className="text-[10px] text-muted-foreground">{section.items.length}</span>
+            </div>
+            {section.items.map((option) => {
+              const Icon = ICON_MAP[option.icon]
+              const isSelected = option.value === normalizedValue
+              const isDisabled = option.disabled === true || option.available === false
 
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-    const spaceBelow = viewportHeight - triggerRect.bottom
-    const spaceAbove = triggerRect.top
-    const shouldOpenUpward = spaceBelow < 440 && spaceAbove > spaceBelow
-    const availableSpace = shouldOpenUpward ? spaceAbove - 16 : spaceBelow - 16
-    const menuWidth = Math.min(
-      Math.max(triggerRect.width, 360),
-      Math.max(240, viewportWidth - 24)
-    )
-    const menuLeft = Math.min(
-      Math.max(12, triggerRect.left),
-      Math.max(12, viewportWidth - menuWidth - 12)
-    )
-
-    setOpenUpward(shouldOpenUpward)
-    setMenuMaxHeight(Math.max(180, Math.min(420, Math.floor(availableSpace))))
-    setMenuRect({
-      left: menuLeft,
-      width: menuWidth,
-      ...(shouldOpenUpward
-        ? { bottom: viewportHeight - triggerRect.top + 8 }
-        : { top: triggerRect.bottom + 8 }),
-    })
-  }
-
-  useEffect(() => {
-    if (!isOpen) return
-
-    updateMenuPlacement()
-    window.addEventListener('resize', updateMenuPlacement)
-    window.addEventListener('scroll', updateMenuPlacement, true)
-
-    return () => {
-      window.removeEventListener('resize', updateMenuPlacement)
-      window.removeEventListener('scroll', updateMenuPlacement, true)
-    }
-  }, [isOpen])
-
-  let menu: ReactNode = null
-  if (isOpen && menuRect && typeof document !== 'undefined') {
-    const placementStyle = openUpward
-      ? { bottom: menuRect.bottom }
-      : { top: menuRect.top }
-
-    menu = createPortal(
-        <div
-          ref={menuRef}
-          className={cn(
-            'fixed z-[1000] overflow-hidden rounded-lg border',
-            surface === 'ocean'
-              ? 'border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
-              : 'border-border bg-card shadow-lg'
-          )}
-          style={{
-            left: menuRect.left,
-            width: menuRect.width,
-            ...placementStyle,
-          }}
-        >
-          <div
-            className="overflow-auto overscroll-contain py-1 no-scrollbar"
-            style={{ maxHeight: menuMaxHeight }}
-          >
-            {groupedOptions.map((section) => {
-              const sectionStyle = RECOMMENDATION_STYLES[section.recommendation]
-              const resolvedSectionStyle =
-                surface === 'ocean'
-                  ? { chip: 'bg-info/[0.06] text-info', section: 'text-info' }
-                  : sectionStyle
-              const sectionLabel = section.items[0]?.recommendationLabel || ''
               return (
-                <div key={section.recommendation} className="py-1">
-                  <div className="flex items-center justify-between px-3 py-1.5">
-                    <span className={cn('text-[10px] font-semibold tracking-[0.08em]', resolvedSectionStyle.section)}>
-                      {sectionLabel}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">{section.items.length}</span>
-                  </div>
-                  {section.items.map((option: ChunkStrategyCatalogItem) => {
-                    const Icon = ICON_MAP[option.icon]
-                    const color = COLOR_MAP[option.icon]
-                    const resolvedColor =
-                      surface === 'ocean'
-                        ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-                        : color
-                    const isSelected = option.value === normalizedValue
-                    const isDisabled = !!option.disabled || chunkStrategyAvailable(option.value) === false
-                    const recommendationStyle = RECOMMENDATION_STYLES[option.recommendation]
-                    const resolvedRecommendationStyle =
-                      surface === 'ocean'
-                        ? { chip: 'bg-info/[0.06] text-info', section: 'text-info' }
-                        : recommendationStyle
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        disabled={isDisabled}
-                        onClick={() => {
-                          if (isDisabled) return
-                          onChange(option.value)
-                          setIsOpen(false)
-                        }}
+                <button
+                  key={option.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={isSelected}
+                  data-strategy={option.value}
+                  disabled={isDisabled}
+                  onClick={() => {
+                    onChange(option.value)
+                    setIsOpen(false)
+                  }}
+                  className={cn(
+                    pipelinePickerTokens.row,
+                    isSelected ? pipelinePickerTokens.selectedRow : !isDisabled && pipelinePickerTokens.idleRow,
+                    isDisabled && 'cursor-not-allowed',
+                  )}
+                >
+                  <span
+                    className={cn('grid size-7 shrink-0 place-items-center rounded-md', pipelinePickerTokens.iconFrame)}
+                  >
+                    <Icon className="size-3.5 text-muted-foreground" />
+                  </span>
+                  <span className="min-w-0 flex-1 text-left">
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span
                         className={cn(
-                          'h-[72px] w-full flex items-center gap-2.5 px-3 transition-colors',
-                          isSelected
-                            ? surface === 'ocean' ? 'bg-info/[0.10]' : 'bg-primary/10'
-                            : surface === 'ocean' ? 'hover:bg-info/[0.06]' : 'hover:bg-muted',
-                          isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
+                          'text-[13px] font-medium leading-5',
+                          isDisabled ? 'text-muted-foreground' : 'text-foreground',
                         )}
                       >
-                        <div className={cn('grid shrink-0 place-items-center rounded-md', resolvedIconFrameSize, resolvedColor.bg)}>
-                          <Icon className={cn('size-3.5', resolvedColor.text)} />
-                        </div>
-                        <div className="min-w-0 flex-1 text-left">
-                          <div className="flex h-5 min-w-0 items-center gap-1.5">
-                            <span
-                              className={cn(
-                                'min-w-0 flex-1 truncate text-[11px] font-medium',
-                                isSelected
-                                  ? surface === 'ocean' ? 'text-info' : 'text-primary'
-                                  : 'text-foreground'
-                              )}
-                            >
-                              {option.label}
-                            </span>
-                            <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium', resolvedRecommendationStyle.chip)}>
-                              {option.recommendationLabel}
-                            </span>
-                            {option.badge ? (
-                              <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
-                                {option.badge}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{option.description}</p>
-                        </div>
-                        {isSelected ? (
-                          <Check
-                            className={cn(
-                              'size-4 flex-shrink-0',
-                              surface === 'ocean' ? 'text-info' : 'text-primary'
-                            )}
-                          />
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                </div>
+                        {option.label}
+                      </span>
+                      {option.badge ? (
+                        <span
+                          className={cn(
+                            'shrink-0 rounded px-1.5 py-px text-[10px] font-medium leading-4',
+                            isExperimental ? 'bg-warning/10 text-warning' : pipelinePickerTokens.badge,
+                          )}
+                        >
+                          {option.badge}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{option.description}</span>
+                  </span>
+                  {isDisabled ? (
+                    <span className="shrink-0 text-[11px] leading-5 text-muted-foreground">未启用</span>
+                  ) : null}
+                  {isSelected ? <Check className="size-4 flex-shrink-0 text-foreground" /> : null}
+                </button>
               )
             })}
           </div>
-        </div>,
-        document.body
-      )
-  }
+        )
+      })}
+    </PopoverContent>
+  )
 
   return (
-    <div ref={dropdownRef} className={cn('relative', className)}>
-      {/* 触发按钮 */}
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => {
-          if (!isOpen) updateMenuPlacement()
-          setIsOpen(!isOpen)
-        }}
-        className={cn(
-          'h-[60px] w-full flex items-center gap-2.5 rounded-lg border px-2.5 transition-colors duration-150 motion-reduce:transition-none',
-          surface === 'ocean'
-            ? 'bg-info/[0.045] hover:bg-info/[0.075]'
-            : 'bg-card hover:bg-muted',
-          isOpen
-            ? surface === 'ocean'
-              ? 'border-info/35 ring-2 ring-info/10'
-              : 'border-primary/30 ring-2 ring-primary/10'
-            : surface === 'ocean'
-              ? 'border-info/20 hover:border-info/30'
-              : 'border-border hover:border-border'
-        )}
-      >
-        <div className={cn('grid shrink-0 place-items-center rounded-md', resolvedIconFrameSize, resolvedSelectedColor.bg)}>
-          <SelectedIcon className={cn('size-3.5', resolvedSelectedColor.text)} />
-        </div>
-        <div className="min-w-0 flex-1 text-left">
-          <div className="flex h-5 min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
-              {selectedView.label}
+    <Popover modal open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={`选择切块策略，${selectedOption.label}`}
+          aria-haspopup="menu"
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+            event.preventDefault()
+            focusLastOptionRef.current = event.key === 'ArrowUp'
+            setIsOpen(true)
+          }}
+          className={cn(
+            'w-full flex items-center gap-2.5 border transition-colors duration-150 motion-reduce:transition-none focus-ring disabled:opacity-50',
+            compact ? 'h-[34px] rounded-md px-2' : 'h-[60px] rounded-lg px-3',
+            pipelinePickerTokens.trigger,
+            isOpen ? 'border-input ring-2 ring-foreground/10' : 'hover:border-border',
+          )}
+        >
+          {!compact && (
+            <span className={cn('grid size-7 shrink-0 place-items-center rounded-md', pipelinePickerTokens.iconFrame)}>
+              <SelectedIcon className="size-3.5 text-muted-foreground" />
             </span>
-            <span
-              className={cn(
-                'shrink-0 rounded px-1.5 py-px text-[10px] font-medium leading-4',
-                resolvedSelectedRecommendationStyle.chip
-              )}
-            >
-              {selectedRecommendationLabel}
+          )}
+          <span className="min-w-0 flex-1 text-left">
+            <span className="flex h-5 min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                {compact ? selectedOption.label.replace(/^(LangChain|LlamaIndex)\s*/i, '') : selectedOption.label}
+              </span>
             </span>
-            {selectedView.badge && (
+            {!compact && (
               <span
-                className={cn(
-                  'shrink-0 rounded px-1.5 py-px text-[10px] font-medium leading-4',
-                  surface === 'ocean'
-                    ? 'bg-info/[0.08] text-info'
-                    : 'bg-primary/10 text-primary'
-                )}
+                title={selectedOption.description}
+                className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground"
               >
-                {selectedView.badge}
+                {selectedOption.description}
               </span>
             )}
-          </div>
-          <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">{selectedView.description}</p>
-        </div>
-        <ChevronDown
-          className={cn(
-            'h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform',
-            isOpen && 'rotate-180'
-          )}
-        />
-      </button>
+          </span>
+          <ChevronDown
+            className={cn('h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
+          />
+        </button>
+      </PopoverTrigger>
       {menu}
-    </div>
+    </Popover>
   )
 }

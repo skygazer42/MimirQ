@@ -40,17 +40,15 @@ def _config_path() -> Path:
 
 
 def _existing_snapshot_root(path: Path) -> str | None:
-    if not path.exists():
+    if not path.is_dir():
         return None
-    snapshots = [p for p in path.iterdir() if p.is_dir()]
-    if not snapshots:
-        return None
-    snapshots.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return str(snapshots[0])
+    latest = max(
+        (entry for entry in path.iterdir() if entry.is_dir()), key=lambda entry: entry.stat().st_mtime, default=None
+    )
+    return str(latest) if latest is not None else None
 
 
-def _load_config() -> dict:
-    cfg_path = _config_path()
+def _load_config(cfg_path: Path) -> dict:
     if not cfg_path.exists():
         return {}
     try:
@@ -75,10 +73,10 @@ def _discover_local_model_dirs() -> dict[str, str]:
 
 
 def _configured_model_dirs() -> dict[str, str]:
-    models_dir = _load_config().get("models-dir")
+    models_dir = _load_config(_config_path()).get("models-dir")
     if not isinstance(models_dir, dict):
         return {}
-    return {str(key): str(value) for key, value in models_dir.items() if isinstance(value, str) and value.strip()}
+    return {key: value for key, value in models_dir.items() if isinstance(value, str) and value.strip()}
 
 
 def _candidate_model_roots(model_type: str) -> list[Path]:
@@ -153,14 +151,7 @@ def ensure_local_model_config() -> Path | None:
     cfg_path = _config_path()
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data: dict = {}
-    if cfg_path.exists():
-        try:
-            loaded = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
-        except (OSError, json.JSONDecodeError):
-            data = {}
+    data = _load_config(cfg_path)
 
     discovered = _discover_local_model_dirs()
     if not discovered:

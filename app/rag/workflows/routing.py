@@ -7,18 +7,18 @@ Routes queries to specialized handlers.
 Pattern: Classify -> Route -> Handler -> Result
 """
 
-
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
+    model_response_text,
 )
 
-logger = get_logger("rag.workflows.routing")
+logger = logging.getLogger("rag.workflows.routing")
 
 
 class RouteHandler:
@@ -29,7 +29,7 @@ class RouteHandler:
         name: str,
         handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         description: str = "",
-    ):
+    ) -> None:
         self.name = name
         self.handler = handler
         self.description = description
@@ -57,8 +57,8 @@ class RoutingWorkflow(BaseWorkflow):
         self,
         classifier: Callable[[str], Awaitable[str]] | None = None,
         default_route: str = "default",
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the routing workflow.
 
@@ -182,10 +182,12 @@ class RoutingWorkflow(BaseWorkflow):
             logger.debug("Routing to handler: %s", handler.name)
             current_state = await handler.execute(current_state)
             execution_path.append(handler.name)
+            error = current_state.get("error")
 
             return self.create_result(
                 current_state,
-                success=True,
+                success=not bool(error),
+                error=error,
                 execution_path=execution_path,
                 metadata={"route": route_name},
             )
@@ -216,9 +218,7 @@ def create_llm_classifier(
     Returns:
         Classifier function
     """
-    route_descriptions = "\n".join(
-        f"- {name}: {desc}" for name, desc in routes.items()
-    )
+    route_descriptions = "\n".join(f"- {name}: {desc}" for name, desc in routes.items())
 
     prompt_template = f"""Classify the following query into one of these categories:
 
@@ -232,7 +232,7 @@ Respond with ONLY the category name, nothing else."""
         try:
             prompt = prompt_template.format(query=query)
             response = await llm.ainvoke(prompt)
-            result = response.content.strip().lower() if hasattr(response, 'content') else str(response).strip().lower()
+            result = model_response_text(response).strip().lower()
 
             # Match against known routes
             for route in routes:
@@ -240,7 +240,8 @@ Respond with ONLY the category name, nothing else."""
                     return route
 
             return default
-        except Exception:
+        except Exception as exc:
+            logger.warning("Query classification failed (%s), using default route", type(exc).__name__)
             return default
 
     return classifier

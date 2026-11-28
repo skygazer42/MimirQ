@@ -1,4 +1,4 @@
-
+import json
 import uuid
 
 import pytest
@@ -10,7 +10,7 @@ class _ModeRetriever:
         self._docs_by_mode = {str(k): list(v or []) for k, v in (docs_by_mode or {}).items()}
         self._mode = str(mode or "vector")
         self._last_debug_metrics: dict = {
-            "query_normalization": {"normalized": "q"},
+            "query_normalization": {"original": "q", "normalized": "q", "applied_rules": []},
         }
 
     def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
@@ -26,7 +26,7 @@ class _ModeRetriever:
 def _mk_tag_doc(*, table_id: str) -> Document:
     chunk_id = uuid.uuid4()
     document_id = uuid.uuid4()
-    page_content = '{"kind":"tag_table_store","rows":[["ok"]]}'
+    page_content = json.dumps({"kind": "tag_table_store", "table_id": table_id, "sql": "", "rows": [["ok"]]})
     return Document(
         page_content=page_content,
         id=str(chunk_id),
@@ -47,7 +47,10 @@ def _mk_tag_doc(*, table_id: str) -> Document:
 
 def test_orchestrator_secondary_pass_recovers_partial_miss(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -68,7 +71,9 @@ def test_orchestrator_secondary_pass_recovers_partial_miss(monkeypatch: pytest.M
         },
         mode="vector",
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -111,7 +116,10 @@ def test_orchestrator_secondary_pass_recovers_partial_miss(monkeypatch: pytest.M
 
 def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -136,7 +144,9 @@ def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.Mo
         },
         mode="vector",
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -148,6 +158,8 @@ def test_orchestrator_contextual_followup_adds_candidates(monkeypatch: pytest.Mo
             "document_ids": [str(uuid.uuid4())],
             "top_k": 5,
             "retrieval_mode": "vector",
+            "must_recall": True,
+            "must_recall_expected_source_keys": ["inventory"],
             "metrics": {},
         }
     )

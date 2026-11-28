@@ -7,7 +7,7 @@ import pytest
 
 
 def test_document_status_contract_accepts_deleting_tombstones() -> None:
-    from app.api.schemas.document import DocumentStatus, DocumentStatusEnum
+    from app.api.schemas.documents.document import DocumentStatus, DocumentStatusEnum
 
     payload = DocumentStatus(
         id=uuid.uuid4(),
@@ -16,22 +16,6 @@ def test_document_status_contract_accepts_deleting_tombstones() -> None:
     )
 
     assert payload.status is DocumentStatusEnum.deleting
-
-
-def test_documents_exports_delegate_to_shared_services() -> None:
-    from app.api.v1 import documents
-    from app.services import document_access_service, document_lifecycle_service
-
-    assert documents.NO_DOCUMENT_ACCESS_DETAIL == document_access_service.NO_DOCUMENT_ACCESS_DETAIL
-    assert documents._assert_document_acl_readable is document_access_service.assert_document_acl_readable
-    assert documents._get_document_for_lifecycle is document_access_service.get_document_for_lifecycle
-    assert (
-        documents._assert_document_writable_for_lifecycle
-        is document_access_service.assert_document_writable_for_lifecycle
-    )
-    assert documents._get_document_for_delete is document_lifecycle_service._get_document_for_delete
-    assert documents._delete_document_file is document_lifecycle_service._delete_document_file
-    assert documents._delete_document_lifecycle is document_lifecycle_service._delete_document_lifecycle
 
 
 class _LifecycleDB:
@@ -88,7 +72,7 @@ class _LifecycleDB:
 async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -112,7 +96,7 @@ async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
         return None
 
     monkeypatch.setattr(
-        dls.DatasetService, "ensure_member", lambda _db, tid, aid: membership_calls.append((tid, aid)), raising=True
+        dls.dataset_service, "ensure_member", lambda _db, tid, aid: membership_calls.append((tid, aid)), raising=True
     )
     monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
@@ -148,7 +132,7 @@ async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
 async def test_delete_document_lifecycle_persists_deleting_state_before_external_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -171,7 +155,7 @@ async def test_delete_document_lifecycle_persists_deleting_state_before_external
     async def _noop_async(**_kwargs) -> None:  # noqa: ANN003
         return None
 
-    monkeypatch.setattr(dls.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dls.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(dls, "_abort_document_tasks_before_delete", _noop_async, raising=True)
@@ -231,7 +215,7 @@ async def test_delete_document_lifecycle_persists_deleting_state_before_external
 async def test_delete_document_lifecycle_keeps_tombstone_when_minio_cleanup_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -282,7 +266,7 @@ async def test_delete_document_lifecycle_keeps_tombstone_when_minio_cleanup_fail
 async def test_delete_document_lifecycle_keeps_tombstone_when_object_reference_resolution_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -368,7 +352,7 @@ def test_minio_delete_helpers_propagate_client_failures(monkeypatch: pytest.Monk
 def test_cleanup_document_kg_artifacts_propagates_event_index_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -409,7 +393,7 @@ def test_cleanup_document_kg_artifacts_propagates_event_index_failures(
 
 
 def test_delete_document_file_skips_malformed_minio_uri(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     monkeypatch.setattr(dls.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(
@@ -429,13 +413,14 @@ def test_delete_document_file_skips_malformed_minio_uri(monkeypatch: pytest.Monk
         dataset_id=uuid.uuid4(),
         file_type="pdf",
         file_path="minio://missing-object",
+        doc_metadata={},
     )
 
     dls._delete_document_file(tenant_id=uuid.uuid4(), document=document)
 
 
 def test_delete_document_file_skips_missing_object_delete_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     class _Store:
         def delete_object(self, *, object_name: str) -> None:
@@ -463,7 +448,7 @@ def test_delete_document_file_skips_missing_object_delete_error(monkeypatch: pyt
 async def test_rtbf_cascade_uses_system_membership_bypass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import rtbf_cascade as cascade
+    from app.services.retention import rtbf as cascade
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -523,7 +508,7 @@ async def test_rtbf_cascade_uses_system_membership_bypass(
 async def test_knowledge_asset_retention_uses_system_membership_bypass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import retention_jobs
+    from app.services.retention import jobs as retention_jobs
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -574,7 +559,7 @@ async def test_knowledge_asset_retention_uses_system_membership_bypass(
 
 
 def test_delete_document_file_deletes_generic_object_storage_uri(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     deleted: list[str] = []
 

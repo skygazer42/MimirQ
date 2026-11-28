@@ -3,10 +3,9 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import router as v1_router
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1 import get_router
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -29,10 +28,10 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     """Contract test: reports endpoint exists and returns key sections."""
     dataset_id = uuid.uuid4()
 
-    import app.api.v1.reports as reports_module
-    from app.api.schemas.dataset_profile import DatasetProfileSummary
-    from app.api.schemas.document_folders import DocumentFolderNode, DocumentFolderTreeResponse
-    from app.api.schemas.report import ComplianceSummary, DatasetReportOut, DatasetRetrievalAuditOut
+    import app.api.v1.datasets.reports as reports_module
+    from app.api.schemas.datasets.profile import DatasetProfileSummary
+    from app.api.schemas.documents.folders import DocumentFolderNode, DocumentFolderTreeResponse
+    from app.api.schemas.evaluation.reports import ComplianceSummary, DatasetReportOut, DatasetRetrievalAuditOut
 
     dummy_profile = DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -66,7 +65,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
         ),
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -76,7 +75,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
-    app.include_router(v1_router, prefix="/api/v1")
+    app.include_router(get_router(), prefix="/api/v1")
     client = TestClient(app)
 
     res = client.get(f"/api/v1/reports/datasets/{dataset_id}")
@@ -103,8 +102,8 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
 
 
 def test_dataset_retrieval_audit_summary_categorizes_regression_failures() -> None:
-    from app.api.schemas.report import DatasetRegressionRunSummaryOut
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.api.schemas.evaluation.reports import DatasetRegressionRunSummaryOut
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     latest = DatasetRegressionRunSummaryOut(
         run_id=uuid.UUID("00000000-0000-0000-0000-000000000111"),
@@ -147,7 +146,7 @@ def test_dataset_retrieval_audit_summary_categorizes_regression_failures() -> No
 
 
 def test_dataset_retrieval_audit_summary_uses_dataset_metadata_snapshot_without_regression_run() -> None:
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     audit = _build_retrieval_audit_summary(
         latest_regression_run=None,
@@ -194,7 +193,7 @@ def test_dataset_retrieval_audit_summary_uses_dataset_metadata_snapshot_without_
 
 
 def test_dataset_retrieval_audit_summary_categorizes_adapter_binding_failure() -> None:
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     audit = _build_retrieval_audit_summary(
         latest_regression_run=None,
@@ -233,8 +232,8 @@ def test_dataset_retrieval_audit_summary_categorizes_adapter_binding_failure() -
 
 
 def test_dataset_retrieval_audit_summary_failed_run_without_categories_is_not_marked_passed() -> None:
-    from app.api.schemas.report import DatasetRegressionRunSummaryOut
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.api.schemas.evaluation.reports import DatasetRegressionRunSummaryOut
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     latest = DatasetRegressionRunSummaryOut(
         run_id=uuid.UUID("00000000-0000-0000-0000-000000000333"),
@@ -254,8 +253,8 @@ def test_dataset_retrieval_audit_summary_failed_run_without_categories_is_not_ma
 
 
 def test_dataset_retrieval_audit_summary_merges_regression_and_dataset_metadata_snapshot() -> None:
-    from app.api.schemas.report import DatasetRegressionRunSummaryOut
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.api.schemas.evaluation.reports import DatasetRegressionRunSummaryOut
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     latest = DatasetRegressionRunSummaryOut(
         run_id=uuid.UUID("00000000-0000-0000-0000-000000000222"),
@@ -301,7 +300,7 @@ def test_dataset_retrieval_audit_summary_merges_regression_and_dataset_metadata_
 
 
 def test_dataset_retrieval_audit_summary_surfaces_kg_enablement_recommendation() -> None:
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     audit = _build_retrieval_audit_summary(
         latest_regression_run=None,
@@ -330,7 +329,7 @@ def test_dataset_retrieval_audit_summary_surfaces_kg_enablement_recommendation()
 
 
 def test_dataset_retrieval_audit_summary_keeps_kg_disabled_when_compare_regresses() -> None:
-    from app.services.report_service import _build_retrieval_audit_summary
+    from app.services.reports.aggregation import _build_retrieval_audit_summary
 
     audit = _build_retrieval_audit_summary(
         latest_regression_run=None,
@@ -359,7 +358,7 @@ def test_dataset_retrieval_audit_summary_keeps_kg_disabled_when_compare_regresse
 
 
 def test_dataset_report_metadata_replaces_raw_retrieval_audit_with_safe_snapshot() -> None:
-    from app.services.report_service import _build_retrieval_audit_summary, _safe_dataset_report_metadata
+    from app.services.reports.aggregation import _build_retrieval_audit_summary, _safe_dataset_report_metadata
 
     raw_metadata = {
         "owner": "platform",
@@ -395,9 +394,9 @@ def test_dataset_report_metadata_replaces_raw_retrieval_audit_with_safe_snapshot
 def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
     dataset_id = uuid.uuid4()
 
-    import app.api.v1.reports as reports_module
-    from app.api.schemas.dataset_profile import DatasetProfileSummary
-    from app.api.schemas.report import ComplianceSummary, DatasetReportOut
+    import app.api.v1.datasets.reports as reports_module
+    from app.api.schemas.datasets.profile import DatasetProfileSummary
+    from app.api.schemas.evaluation.reports import ComplianceSummary, DatasetReportOut
 
     dummy_profile = DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -417,7 +416,7 @@ def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
         dataset_metadata={},
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -427,7 +426,7 @@ def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
-    app.include_router(v1_router, prefix="/api/v1")
+    app.include_router(get_router(), prefix="/api/v1")
     client = TestClient(app)
 
     res = client.get(f"/api/v1/reports/datasets/{dataset_id}/export-html?redact=false")
@@ -445,9 +444,9 @@ def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
 def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
     dataset_id = uuid.uuid4()
 
-    import app.api.v1.reports as reports_module
-    from app.api.schemas.dataset_profile import DatasetProfileSummary
-    from app.api.schemas.report import ComplianceSummary, DatasetReportOut
+    import app.api.v1.datasets.reports as reports_module
+    from app.api.schemas.datasets.profile import DatasetProfileSummary
+    from app.api.schemas.evaluation.reports import ComplianceSummary, DatasetReportOut
 
     dummy_profile = DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -467,7 +466,7 @@ def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
         dataset_metadata={},
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -477,7 +476,7 @@ def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
-    app.include_router(v1_router, prefix="/api/v1")
+    app.include_router(get_router(), prefix="/api/v1")
     client = TestClient(app)
 
     res = client.get(f"/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html?redact=false")

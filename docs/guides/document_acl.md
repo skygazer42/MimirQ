@@ -54,7 +54,7 @@
 
 ## 对检索与引用的影响
 
-MimirQ 的 RAG/Chat 检索侧会在“默认文档范围”与“显式 document_ids”两种场景下做权限裁剪：
+Ragvia 的 RAG/Chat 检索侧会在“默认文档范围”与“显式 document_ids”两种场景下做权限裁剪：
 
 - 先做数据集权限过滤
 - 再做文档级 ACL 过滤（fail-closed）

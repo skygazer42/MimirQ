@@ -1,69 +1,52 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 
+import { readOidcExpiresIn } from '@/lib/auth-response-schema'
 import { getOidcServerProvidersFromEnv, resolveOidcServerProvider } from '@/lib/oidc-providers'
+import { readNonEmptyString } from '@/lib/primitive-text'
 import {
   OIDC_PROVIDER_COOKIE_NAME,
   OIDC_REFRESH_COOKIE_NAME,
+  discoverOidcTokenEndpoint,
   isFalsey,
   jsonNoStore,
+  normalizeOidcTokenType,
+  oidcClientBasicAuthorization,
   readEnv,
   requireSameOrigin,
 } from '@/lib/server-auth-route'
 
 export const runtime = 'nodejs'
 
-type OidcDiscovery = {
-  token_endpoint: string
-}
-
 type ExchangeRequestBody = {
-  provider_id?: string
-  code?: string
-  code_verifier?: string
-  redirect_uri?: string
+  provider_id?: unknown
+  code?: unknown
+  code_verifier?: unknown
+  redirect_uri?: unknown
 }
 
 type TokenResponse = {
   access_token?: string
   token_type?: string
-  expires_in?: number
+  expires_in?: unknown
   refresh_token?: string
   id_token?: string
   error?: string
   error_description?: string
 }
 
-function resolveRedirectUri(req: NextRequest, clientProvided?: string): string {
+function resolveRedirectUri(req: NextRequest, clientProvided: string | null | undefined): string {
   const override = readEnv('NEXT_PUBLIC_OIDC_REDIRECT_URI')
   if (override) return override
 
   // Prefer the redirect_uri from the client transaction to avoid proxy origin mismatches.
-  const candidate = String(clientProvided || '').trim()
+  const candidate = clientProvided?.trim()
   if (candidate) return candidate
 
-  const xfProto = String(req.headers.get('x-forwarded-proto') || '').trim()
-  const xfHost = String(req.headers.get('x-forwarded-host') || '').trim()
-  if (xfProto && xfHost) return `${xfProto}://${xfHost}/auth/oidc/callback`
+  const forwardedProto = req.headers.get('x-forwarded-proto')?.trim()
+  const forwardedHost = req.headers.get('x-forwarded-host')?.trim()
+  if (forwardedProto && forwardedHost) return `${forwardedProto}://${forwardedHost}/auth/oidc/callback`
 
   return `${req.nextUrl.origin}/auth/oidc/callback`
-}
-async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
-  const url = `${issuer}/.well-known/openid-configuration`
-  const res = await fetch(url, { method: 'GET' })
-  if (!res.ok) {
-    throw new Error(`oidc_discovery_failed_${res.status}`)
-  }
-  const data = (await res.json().catch(() => null))
-  const tokenEndpoint = typeof data?.token_endpoint === 'string' ? data.token_endpoint.trim() : ''
-  if (!tokenEndpoint) {
-    throw new Error('oidc_discovery_missing_endpoints')
-  }
-  return { token_endpoint: tokenEndpoint }
-}
-
-function normalizeTokenType(raw: unknown): string {
-  const t = typeof raw === 'string' ? raw.trim() : ''
-  return t ? t.toLowerCase() : 'bearer'
 }
 
 export async function POST(req: NextRequest) {
@@ -76,9 +59,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as ExchangeRequestBody | null
-  const code = body?.code?.trim() ?? ''
-  const codeVerifier = body?.code_verifier?.trim() ?? ''
-  const redirectUri = resolveRedirectUri(req, body?.redirect_uri)
+  const rawCode = body?.code
+  const rawCodeVerifier = body?.code_verifier
+  const rawProviderId = body?.provider_id
+  const rawRedirectUri = body?.redirect_uri
+  if (
+    (rawCode != null && typeof rawCode !== 'string') ||
+    (rawCodeVerifier != null && typeof rawCodeVerifier !== 'string') ||
+    (rawProviderId != null && typeof rawProviderId !== 'string') ||
+    (rawRedirectUri != null && typeof rawRedirectUri !== 'string')
+  ) {
+    return jsonNoStore({ error: 'invalid_request' }, { status: 400 })
+  }
+  const code = rawCode?.trim()
+  const codeVerifier = rawCodeVerifier?.trim()
+  const redirectUri = resolveRedirectUri(req, rawRedirectUri)
 
   if (!code || !codeVerifier) {
     return jsonNoStore({ error: 'missing_code_or_verifier' }, { status: 400 })
@@ -87,7 +82,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: 'invalid_request' }, { status: 400 })
   }
 
-  const providerId = body?.provider_id?.trim() || undefined
+  const providerId = rawProviderId?.trim()
   const provider = resolveOidcServerProvider(providerId)
   if (!provider) {
     const available = getOidcServerProvidersFromEnv()
@@ -102,12 +97,12 @@ export async function POST(req: NextRequest) {
   const issuer = provider.issuer.trim()
   const clientId = provider.client_id.trim()
 
-  let tokenEndpoint = ''
+  let tokenEndpoint: string
   try {
-    tokenEndpoint = (await discoverTokenEndpoint(issuer)).token_endpoint
+    tokenEndpoint = await discoverOidcTokenEndpoint(issuer)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'oidc_discovery_failed'
-    return jsonNoStore({ error: String(message || 'oidc_discovery_failed') }, { status: 400 })
+    return jsonNoStore({ error: message || 'oidc_discovery_failed' }, { status: 400 })
   }
 
   const secret = provider.client_secret?.trim() ?? ''
@@ -125,33 +120,36 @@ export async function POST(req: NextRequest) {
 
   const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
   if (secret && authMethod === 'basic') {
-    const credentials = `${clientId}:${secret}`
-    headers.Authorization = `Basic ${Buffer.from(credentials).toString('base64')}`
+    headers.Authorization = oidcClientBasicAuthorization(clientId, secret)
   }
 
   const res = await fetch(tokenEndpoint, {
     method: 'POST',
     headers,
     body: form.toString(),
-  })
+  }).catch(() => null)
+  if (res === null) return jsonNoStore({ error: 'oidc_token_endpoint_unavailable' }, { status: 502 })
 
   const data = (await res.json().catch(() => null)) as TokenResponse | null
   if (!res.ok) {
-    const msg = String(data?.error_description || data?.error || '').trim()
-    return jsonNoStore({ error: msg || `oidc_token_exchange_failed_${res.status}` }, { status: 400 })
+    const message = readNonEmptyString(data?.error_description) ?? readNonEmptyString(data?.error)
+    return jsonNoStore({ error: message ?? `oidc_token_exchange_failed_${res.status}` }, { status: 400 })
   }
 
-  const accessToken = String(data?.access_token || '').trim()
+  const accessToken = readNonEmptyString(data?.access_token)
   if (!accessToken) {
     return jsonNoStore({ error: 'oidc_missing_access_token' }, { status: 400 })
   }
 
-  const refreshToken = String(data?.refresh_token || '').trim()
+  const refreshToken = readNonEmptyString(data?.refresh_token)
+  const expiresIn = readOidcExpiresIn(data?.expires_in)
+  if (expiresIn === null) return jsonNoStore({ error: 'oidc_invalid_expiry' }, { status: 502 })
+
   const out = {
     access_token: accessToken,
-    token_type: normalizeTokenType(data?.token_type),
-    expires_in: Number.isFinite(Number(data?.expires_in)) ? Number(data?.expires_in) : 3600,
-    id_token: data?.id_token ? String(data.id_token) : undefined,
+    token_type: normalizeOidcTokenType(data?.token_type),
+    expires_in: expiresIn,
+    id_token: readNonEmptyString(data?.id_token),
   }
 
   const resp = jsonNoStore(out)

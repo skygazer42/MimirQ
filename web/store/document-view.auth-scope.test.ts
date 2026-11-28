@@ -36,15 +36,18 @@ describe('document view auth scope', () => {
   it('rejects persisted context from another tenant or user', async () => {
     localStorage.setItem('mimirq_tenant_id', 'tenant-b')
     localStorage.setItem('mimirq_user_id', 'user-b')
-    localStorage.setItem('mimirq_document_view_v1', JSON.stringify({
-      state: {
-        authScope: 'tenant-a:user-a',
-        isOpen: true,
-        documentId: 'private-doc',
-        sourceContext: { chunkContent: 'private content' },
-      },
-      version: 0,
-    }))
+    localStorage.setItem(
+      'mimirq_document_view_v1',
+      JSON.stringify({
+        state: {
+          authScope: 'tenant-a:user-a',
+          isOpen: true,
+          documentId: 'private-doc',
+          sourceContext: { chunkContent: 'private content' },
+        },
+        version: 0,
+      }),
+    )
 
     await useDocumentView.persist.rehydrate()
 
@@ -73,7 +76,7 @@ describe('document view auth scope', () => {
         key: 'mimirq_user_id',
         oldValue: 'user-a',
         newValue: 'user-b',
-      })
+      }),
     )
 
     expect(useDocumentView.getState()).toMatchObject({

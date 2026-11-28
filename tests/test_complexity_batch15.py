@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from app.core.config import settings
-from app.parsing.enrich import (
+from app.infrastructure.config import settings
+from app.rag.ingestion.parsing.enrich import (
     chart_to_data,
     formula_ocr,
     image_caption,
@@ -14,8 +14,8 @@ from app.parsing.enrich import (
     image_understanding,
     vlm_image_caption,
 )
-from app.parsing.enrich.table_cell_schema import TableCell, TableExtraction
-from app.parsing.enrich.table_image_algorithms import bind_ocr_lines_to_table_cells
+from app.rag.ingestion.parsing.enrich.table_cell_schema import TableCell, TableExtraction
+from app.rag.ingestion.parsing.enrich.table_image_algorithms import bind_ocr_lines_to_table_cells
 
 
 def _write_png(path: Path, *, color: str = "white", size: tuple[int, int] = (8, 8)) -> bytes:
@@ -228,6 +228,13 @@ def test_add_vlm_image_captions_characterizes_alt_and_filename_fallback(
     image_path = tmp_path / "camera-shot.png"
     _write_png(image_path)
     monkeypatch.setattr(vlm_image_caption.settings, "MAX_INLINE_IMAGE_BYTES", 10_000, raising=False)
+    backend_requests = []
+
+    def unavailable_caption(*, api_url, filename, **_kwargs):
+        backend_requests.append((api_url, filename))
+        return "", "http_503"
+
+    monkeypatch.setattr(vlm_image_caption, "_call_caption_backend", unavailable_caption)
     result, added, audit = vlm_image_caption.add_vlm_image_captions(
         "![Detailed alt](camera-shot.png)\n![image](missing.png)\n![photo](camera-shot.png)\n",
         origin_path=tmp_path,
@@ -236,18 +243,19 @@ def test_add_vlm_image_captions_characterizes_alt_and_filename_fallback(
         max_image_bytes=10_000,
     )
 
-    assert added == 3
+    assert backend_requests == [("http://caption", "camera-shot.png")]
+    assert added == 2
     assert result == (
         "![Detailed alt](camera-shot.png)\n"
         "Image caption: Detailed alt\n"
         "![image](missing.png)\n"
-        "Image caption: image\n"
+        "Image caption: missing.png\n"
         "![photo](camera-shot.png)\n"
-        "Image caption: photo\n"
     )
-    assert audit.captions_added == 3
-    assert audit.images_attempted == 0
+    assert audit.captions_added == 2
+    assert audit.images_attempted == 1
     assert audit.images_succeeded == 0
+    assert audit.error == "image_unavailable; http_503"
 
 
 def test_load_image_for_ocr_characterizes_path_then_base64_fallback(

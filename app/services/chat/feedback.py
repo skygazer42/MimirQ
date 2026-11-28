@@ -1,0 +1,741 @@
+import logging
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Callable
+from uuid import UUID
+
+from fastapi import HTTPException, status
+from sqlalchemy import and_, func
+from sqlalchemy.orm import Session
+
+from app.infrastructure.hashing import stable_hash
+from app.models.conversations.chat import Conversation, Message, MessageFeedback
+from app.rag.feedback_loop.candidates import build_feedback_loop_candidates as build_feedback_loop_candidate_payload
+from app.rag.industry_rules.schema import IndustryRuleset
+from app.services.chat.conversation_access import ensure_conversation_access
+from app.services.observability.rag_traces import list_rag_traces
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
+
+    from app.rag.tracing.schemas import RagTraceListResponse
+
+_SERVER_MANAGED_FEEDBACK_EXTRA_KEYS = {
+    "archived",
+    "archived_at",
+    "archived_by",
+    "dataset_id",
+    "eval_case_status",
+    "eval_case_id",
+    "eval_case_promoted_by",
+    "source",
+    "feedback_id",
+    "message_id",
+    "rating",
+    "feedback_category",
+    "feedback_category_source",
+    "rag_config_snapshot",
+    "retrieval_trace",
+    "retrieval_trace_request_id",
+}
+
+
+def _coerce_mapping(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if hasattr(value, "model_dump"):
+        try:
+            return dict(value.model_dump(mode="json"))
+        except Exception:
+            return {}
+    out: dict[str, Any] = {}
+    for key in dir(value):
+        if key.startswith("_"):
+            continue
+        try:
+            current = getattr(value, key)
+        except Exception:
+            logging.getLogger("app.services.feedback_service").debug(
+                "Skipping item after non-critical exception", exc_info=True
+            )
+            continue
+        if callable(current):
+            continue
+        out[key] = current
+    return out
+
+
+def _find_trace_by_request_id(
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    request_id: str,
+    list_rag_traces_fn: "Callable[..., RagTraceListResponse]" = list_rag_traces,
+) -> dict[str, Any] | None:
+    rid = request_id.strip()
+    if not rid:
+        return None
+    try:
+        traces = list_rag_traces_fn(
+            tenant_id=str(tenant_id),
+            conversation_id=str(conversation_id),
+            limit=100,
+            window_minutes=7 * 24 * 60,
+            max_bytes=10_000_000,
+        )
+    except Exception:
+        return None
+    for item in traces.items:
+        if item.request_id != rid:
+            continue
+        return _coerce_mapping(item)
+    return None
+
+
+def _extract_rag_config_snapshot(trace_payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(trace_payload, dict):
+        return {}
+    retrieval = trace_payload.get("retrieval")
+    if not isinstance(retrieval, dict):
+        return {}
+    return dict(retrieval)
+
+
+def _augment_feedback_extra_with_snapshots(
+    *,
+    extra: dict[str, Any] | None,
+    trace_payload: dict[str, Any] | None,
+    request_id: str | None,
+    dataset_id: UUID | None,
+) -> dict[str, Any]:
+    payload = dict(extra or {})
+    if dataset_id is not None:
+        payload["dataset_id"] = str(dataset_id)
+    if request_id:
+        payload["retrieval_trace_request_id"] = str(request_id)
+    if isinstance(trace_payload, dict) and trace_payload:
+        payload["retrieval_trace"] = dict(trace_payload)
+        rag_config_snapshot = _extract_rag_config_snapshot(trace_payload)
+        if rag_config_snapshot:
+            payload["rag_config_snapshot"] = rag_config_snapshot
+    return payload
+
+
+def _safe_text(value: Any, *, max_len: int = 4000) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return ""
+    return text[: max(0, int(max_len or 0))]
+
+
+def _normalize_feedback_category(value: Any) -> str | None:
+    category = _safe_text(value, max_len=32)
+    if not category:
+        return None
+    category = category.lower()
+    if category == "generation_error":
+        category = "wrong_answer"
+    if category not in {"retrieval_miss", "wrong_answer", "out_of_scope", "other"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid feedback category")
+    return category
+
+
+def _feedback_loop_reference_sources(citations: Any) -> list[dict[str, Any]]:
+    if not isinstance(citations, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in citations:
+        if not isinstance(item, dict):
+            continue
+        doc_id = _safe_text(item.get("document_id"), max_len=200)
+        chunk_id = _safe_text(item.get("chunk_id"), max_len=200)
+        if not chunk_id:
+            continue
+        key = (doc_id, chunk_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        row: dict[str, Any] = {"chunk_id": chunk_id}
+        if doc_id:
+            row["document_id"] = doc_id
+        for key_name in ("page_number", "start_char", "end_char", "chunk_index", "pipeline_hash", "quote", "label"):
+            if key_name in item and item.get(key_name) is not None:
+                row[key_name] = item.get(key_name)
+        out.append(row)
+        if len(out) >= 100:
+            break
+    return out
+
+
+def _previous_user_question(
+    *,
+    messages: list[Message],
+    conversation_id: UUID,
+    assistant_created_at: datetime | None,
+) -> str | None:
+    candidates: list[Message] = []
+    for msg in messages:
+        if msg.conversation_id != conversation_id:
+            continue
+        if msg.role.lower() != "user":
+            continue
+        created_at = msg.created_at
+        if (
+            isinstance(assistant_created_at, datetime)
+            and isinstance(created_at, datetime)
+            and created_at > assistant_created_at
+        ):
+            continue
+        candidates.append(msg)
+    candidates.sort(
+        key=lambda item: item.created_at or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return _safe_text(candidates[0].content, max_len=4000) if candidates else None
+
+
+def _load_feedback_message(db: Session, *, tenant_id: UUID, message_id: UUID) -> Message:
+    msg = db.query(Message).filter(Message.id == message_id, Message.tenant_id == tenant_id).first()
+    if not msg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if msg.role.lower() != "assistant":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only assistant messages can be rated")
+    return msg
+
+
+def _load_feedback_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID | None,
+) -> Conversation | None:
+    conv = (
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    )
+    if conv is not None:
+        ensure_conversation_access(db, tenant_id, account_id, conv)
+    return conv
+
+
+def _feedback_message_meta(msg: Message) -> dict[str, Any]:
+    return msg.message_metadata if isinstance(msg.message_metadata, dict) else {}
+
+
+def _feedback_dataset_id(*, meta: dict[str, Any], conv: Conversation | None) -> UUID | None:
+    raw_dataset_id = meta.get("dataset_id")
+    if isinstance(raw_dataset_id, str) and raw_dataset_id.strip():
+        try:
+            return UUID(raw_dataset_id.strip())
+        except Exception:
+            return None
+    return conv.dataset_id if conv is not None else None
+
+
+def _feedback_extra_payload(
+    *,
+    extra: dict[str, Any] | None,
+    meta: dict[str, Any],
+    conv: Conversation | None,
+    tenant_id: UUID,
+    request_id: str | None,
+    dataset_id: UUID | None,
+    list_rag_traces_fn: "Callable[..., RagTraceListResponse]",
+) -> dict[str, Any]:
+    trace_payload = None
+    if conv is not None and request_id:
+        trace_payload = _find_trace_by_request_id(
+            tenant_id=tenant_id,
+            conversation_id=conv.id,
+            request_id=request_id,
+            list_rag_traces_fn=list_rag_traces_fn,
+        )
+    client_extra = {
+        key: value
+        for key, value in (extra.items() if isinstance(extra, dict) else [])
+        if key not in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS
+    }
+    return _augment_feedback_extra_with_snapshots(
+        extra=client_extra,
+        trace_payload=trace_payload,
+        request_id=request_id,
+        dataset_id=dataset_id,
+    )
+
+
+def _feedback_reference_values(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    msg: Message,
+    meta: dict[str, Any],
+    request_id: str | None,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    profile = meta.get("retrieval_profile")
+    if profile is not None:
+        profile = profile[:64]
+    question = _previous_user_question(
+        messages=db.query(Message)
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == msg.conversation_id,
+        )
+        .all(),
+        conversation_id=msg.conversation_id,
+        assistant_created_at=msg.created_at,
+    )
+    query_hash = meta.get("query_hash", stable_hash(question, length=64) if question else None)
+    if query_hash is not None:
+        query_hash = query_hash[:64]
+    retrieval_trace_ref = request_id[:255] if request_id is not None else None
+    judge_score_ref = meta.get("judge_score_ref")
+    if judge_score_ref is not None:
+        judge_score_ref = judge_score_ref[:255]
+    return query_hash, retrieval_trace_ref, judge_score_ref, profile
+
+
+def _apply_feedback_row_update(
+    *,
+    row: MessageFeedback,
+    rating: int,
+    reason: str | None,
+    tags: list[str],
+    expected_answer: str | None,
+    normalized_category: str | None,
+    query_hash: str | None,
+    retrieval_trace_ref: str | None,
+    profile: str | None,
+    judge_score_ref: str | None,
+    extra_payload: dict[str, Any],
+) -> None:
+    previous_extra = dict(row.extra or {}) if isinstance(row.extra, dict) else {}
+    for key in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS:
+        if key in previous_extra:
+            extra_payload[key] = previous_extra[key]
+    row.rating = int(rating)
+    row.reason = reason
+    row.tags = tags
+    row.expected_answer = expected_answer
+    if normalized_category is not None and row.category_source != "reviewer":
+        row.category = normalized_category
+        row.category_source = "user"
+    row.query_hash = query_hash
+    row.retrieval_trace_ref = retrieval_trace_ref
+    row.profile = profile
+    row.judge_score_ref = judge_score_ref
+    row.extra = extra_payload
+
+
+def _build_feedback_query(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    conversation_id: UUID | None,
+    message_id: UUID | None,
+    min_rating: int | None,
+    max_rating: int | None,
+    owner_account_id: str | None = None,
+) -> "Query[MessageFeedback]":
+    query = db.query(MessageFeedback).filter(MessageFeedback.tenant_id == tenant_id)
+    if owner_account_id is not None:
+        query = query.join(
+            Conversation,
+            and_(
+                Conversation.id == MessageFeedback.conversation_id,
+                Conversation.tenant_id == MessageFeedback.tenant_id,
+            ),
+        ).filter(Conversation.owner_account_id == owner_account_id.strip())
+    if conversation_id:
+        query = query.filter(MessageFeedback.conversation_id == conversation_id)
+    if message_id:
+        query = query.filter(MessageFeedback.message_id == message_id)
+    if min_rating is not None:
+        query = query.filter(MessageFeedback.rating >= int(min_rating))
+    if max_rating is not None:
+        query = query.filter(MessageFeedback.rating <= int(max_rating))
+    return query
+
+
+def _ensure_member(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    ensure_member_fn: Callable[[Session, UUID, str], Any] | None,
+) -> None:
+    if callable(ensure_member_fn):
+        ensure_member_fn(db, tenant_id, account_id)
+
+
+def upsert_message_feedback(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    message_id: UUID,
+    rating: int,
+    reason: str | None,
+    tags: list[str] | None,
+    expected_answer: str | None,
+    extra: dict[str, Any] | None,
+    category: str | None = None,
+    ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+    list_rag_traces_fn: "Callable[..., RagTraceListResponse]" = list_rag_traces,
+) -> MessageFeedback:
+    _ensure_member(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        ensure_member_fn=ensure_member_fn,
+    )
+
+    msg = _load_feedback_message(db, tenant_id=tenant_id, message_id=message_id)
+    conv = _load_feedback_conversation(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_id=msg.conversation_id,
+    )
+    meta = _feedback_message_meta(msg)
+    request_id = meta.get("request_id")
+    if request_id is not None:
+        request_id = request_id.strip()
+    dataset_id = _feedback_dataset_id(meta=meta, conv=conv)
+    extra_payload = _feedback_extra_payload(
+        extra=extra,
+        meta=meta,
+        conv=conv,
+        tenant_id=tenant_id,
+        request_id=request_id,
+        dataset_id=dataset_id,
+        list_rag_traces_fn=list_rag_traces_fn,
+    )
+    normalized_category = _normalize_feedback_category(category)
+    if normalized_category is not None and int(rating) > 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Feedback category is only valid for ratings 1-2",
+        )
+    query_hash, retrieval_trace_ref, judge_score_ref, profile = _feedback_reference_values(
+        db=db,
+        tenant_id=tenant_id,
+        msg=msg,
+        meta=meta,
+        request_id=request_id,
+    )
+
+    row = (
+        db.query(MessageFeedback)
+        .filter(
+            MessageFeedback.tenant_id == tenant_id,
+            MessageFeedback.message_id == msg.id,
+            MessageFeedback.account_id == account_id,
+        )
+        .first()
+    )
+    normalized_tags = [str(item) for item in (tags or [])]
+    if row:
+        _apply_feedback_row_update(
+            row=row,
+            rating=rating,
+            reason=reason,
+            tags=normalized_tags,
+            expected_answer=expected_answer,
+            normalized_category=normalized_category,
+            query_hash=query_hash,
+            retrieval_trace_ref=retrieval_trace_ref,
+            profile=profile,
+            judge_score_ref=judge_score_ref,
+            extra_payload=extra_payload,
+        )
+        db.commit()
+        db.refresh(row)
+        return row
+
+    row = MessageFeedback(
+        tenant_id=tenant_id,
+        conversation_id=msg.conversation_id,
+        message_id=msg.id,
+        account_id=account_id,
+        rating=int(rating),
+        reason=reason,
+        tags=normalized_tags,
+        expected_answer=expected_answer,
+        category=normalized_category,
+        category_source="user" if normalized_category else None,
+        query_hash=query_hash,
+        retrieval_trace_ref=retrieval_trace_ref,
+        profile=profile,
+        judge_score_ref=judge_score_ref,
+        extra=extra_payload,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def list_message_feedback(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID | None,
+    message_id: UUID | None,
+    min_rating: int | None,
+    max_rating: int | None,
+    skip: int,
+    limit: int,
+    ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+    enforce_conversation_owner: bool = True,
+) -> dict[str, Any]:
+    _ensure_member(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        ensure_member_fn=ensure_member_fn,
+    )
+    start = max(0, int(skip or 0))
+    size = max(1, int(limit or 1))
+    updated_at = func.coalesce(MessageFeedback.updated_at, MessageFeedback.created_at)
+
+    def _ordered_query() -> "Query[MessageFeedback]":
+        return _build_feedback_query(
+            db=db,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            min_rating=min_rating,
+            max_rating=max_rating,
+            owner_account_id=account_id if enforce_conversation_owner else None,
+        ).order_by(updated_at.desc(), MessageFeedback.id.desc())
+
+    total = int(_ordered_query().count())
+    rows = _ordered_query().offset(start).limit(size).all()
+    return {"total": total, "items": list(rows)}
+
+
+def list_message_feedback_enriched(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID | None,
+    message_id: UUID | None,
+    min_rating: int | None,
+    max_rating: int | None,
+    skip: int,
+    limit: int,
+    ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+    enforce_conversation_owner: bool = True,
+) -> dict[str, Any]:
+    base = list_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        min_rating=min_rating,
+        max_rating=max_rating,
+        skip=skip,
+        limit=limit,
+        ensure_member_fn=ensure_member_fn,
+        enforce_conversation_owner=enforce_conversation_owner,
+    )
+
+    rows: list[MessageFeedback] = list(base["items"])
+    message_ids = [row.message_id for row in rows if row.message_id is not None]
+    conversation_ids = [row.conversation_id for row in rows if row.conversation_id is not None]
+
+    message_map: dict[UUID, Message] = {}
+    if message_ids:
+        messages = db.query(Message).filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids)).all()
+        message_map = {item.id: item for item in messages}
+
+    conversation_map: dict[UUID, Conversation] = {}
+    if conversation_ids:
+        conversations = (
+            db.query(Conversation)
+            .filter(Conversation.tenant_id == tenant_id, Conversation.id.in_(conversation_ids))
+            .all()
+        )
+        conversation_map = {item.id: item for item in conversations}
+
+    items: list[MessageFeedback] = []
+    for fb in rows:
+        msg = message_map.get(fb.message_id)
+        conv = conversation_map.get(fb.conversation_id)
+        fb.conversation_title = conv.title if conv is not None else None
+        content = msg.content.strip() if msg is not None else None
+        fb.message_content = content[:4000] if content else None
+        fb.message_created_at = getattr(msg, "created_at", None)
+        items.append(fb)
+
+    return {"total": base["total"], "items": items}
+
+
+def patch_message_feedback(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    feedback_id: UUID,
+    archived: bool | None,
+    category: str | None = None,
+    category_source: str | None = None,
+    ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+) -> MessageFeedback:
+    _ensure_member(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        ensure_member_fn=ensure_member_fn,
+    )
+    row = (
+        db.query(MessageFeedback)
+        .filter(MessageFeedback.tenant_id == tenant_id, MessageFeedback.id == feedback_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")
+
+    payload = dict(row.extra or {})
+    if archived is not None:
+        payload["archived"] = bool(archived)
+        if archived:
+            payload["archived_at"] = datetime.now(timezone.utc).isoformat()
+            payload["archived_by"] = account_id
+        else:
+            payload.pop("archived_at", None)
+            payload.pop("archived_by", None)
+
+    normalized_category = _normalize_feedback_category(category)
+    if normalized_category is not None:
+        if int(row.rating or 0) > 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Feedback category is only valid for ratings 1-2",
+            )
+        source = _safe_text(category_source, max_len=32)
+        source = source.lower() if source is not None else None
+        source = source or "reviewer"
+        if source not in {"user", "llm_auto", "reviewer"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid feedback category source")
+        row.category = normalized_category
+        row.category_source = source
+
+    row.extra = payload
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def build_feedback_loop_candidates(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    max_rating: int = 2,
+    limit: int = 200,
+    ruleset: IndustryRuleset | None = None,
+    ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+) -> dict[str, Any]:
+    _ensure_member(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        ensure_member_fn=ensure_member_fn,
+    )
+    listed = list_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_id=None,
+        message_id=None,
+        min_rating=1,
+        max_rating=max(1, int(max_rating or 2)),
+        skip=0,
+        limit=max(1, int(limit or 1)),
+        ensure_member_fn=None,
+        enforce_conversation_owner=False,
+    )
+    feedback_rows: list[MessageFeedback] = list(listed.get("items") or [])
+    if not feedback_rows:
+        return build_feedback_loop_candidate_payload([], ruleset=ruleset, max_rating=max_rating)
+
+    message_ids = [row.message_id for row in feedback_rows if row.message_id is not None]
+    conversation_ids = [row.conversation_id for row in feedback_rows if row.conversation_id is not None]
+
+    assistant_map: dict[UUID, Message] = {}
+    if message_ids:
+        assistants = db.query(Message).filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids)).all()
+        assistant_map = {item.id: item for item in assistants}
+
+    conversation_map: dict[UUID, Conversation] = {}
+    if conversation_ids:
+        conversations = (
+            db.query(Conversation)
+            .filter(Conversation.tenant_id == tenant_id, Conversation.id.in_(conversation_ids))
+            .all()
+        )
+        conversation_map = {item.id: item for item in conversations}
+
+    conversation_messages: list[Message] = []
+    if conversation_ids:
+        conversation_messages = (
+            db.query(Message)
+            .filter(Message.tenant_id == tenant_id, Message.conversation_id.in_(conversation_ids))
+            .all()
+        )
+
+    candidate_rows: list[dict[str, Any]] = []
+    for fb in feedback_rows:
+        assistant = assistant_map.get(fb.message_id)
+        conv = conversation_map.get(fb.conversation_id)
+        if assistant is None:
+            continue
+
+        extra = dict(fb.extra or {}) if isinstance(fb.extra, dict) else {}
+        meta = dict(assistant.message_metadata or {}) if isinstance(assistant.message_metadata, dict) else {}
+        dataset_id = meta.get("dataset_id", extra.get("dataset_id", conv.dataset_id if conv is not None else None))
+        if dataset_id is not None:
+            dataset_id = str(dataset_id)[:128]
+        retrieval_trace = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else {}
+
+        candidate_rows.append(
+            {
+                "feedback_id": str(fb.id),
+                "rating": int(fb.rating),
+                "reason": fb.reason,
+                "tags": list(fb.tags or []),
+                "expected_answer": fb.expected_answer,
+                "category": fb.category,
+                "category_source": fb.category_source,
+                "query_hash": fb.query_hash,
+                "retrieval_trace_ref": fb.retrieval_trace_ref,
+                "profile": fb.profile,
+                "judge_score_ref": fb.judge_score_ref,
+                "eval_case_status": extra.get("eval_case_status"),
+                "archived": bool(extra.get("archived")),
+                "dataset_id": dataset_id,
+                "conversation_id": str(fb.conversation_id),
+                "message_id": str(fb.message_id),
+                "original_query": _previous_user_question(
+                    messages=conversation_messages,
+                    conversation_id=fb.conversation_id,
+                    assistant_created_at=assistant.created_at,
+                ),
+                "reference_sources": _feedback_loop_reference_sources(assistant.citations),
+                "retrieval_trace": retrieval_trace,
+            }
+        )
+
+    return build_feedback_loop_candidate_payload(
+        candidate_rows,
+        ruleset=ruleset,
+        max_rating=max_rating,
+    )

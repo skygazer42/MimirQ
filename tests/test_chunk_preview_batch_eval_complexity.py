@@ -48,18 +48,6 @@ def test_main_emits_quality_row_with_separator_overlap_disabled(
 
     monkeypatch.setattr(batch_eval.chunker_factory, "resolve_strategy", lambda _value: "separator")
     monkeypatch.setattr(batch_eval.chunker_factory, "get_chunker", lambda *_args: _Chunker())
-    monkeypatch.setattr(
-        batch_eval,
-        "_compute_chunk_coverage_metrics_from_ranges",
-        lambda ranges, **_kwargs: {
-            "ranges": ranges,
-            "covered_chars": 10,
-            "coverage_ratio": 10 / 14,
-            "overlap_waste_ratio": 0.0,
-            "gap_count": 1,
-            "largest_gap": 4,
-        },
-    )
     monkeypatch.setattr(batch_eval, "_compute_chunk_preview_quality", compute_quality)
 
     assert (
@@ -88,7 +76,7 @@ def test_main_emits_quality_row_with_separator_overlap_disabled(
         "chunk_overlap": 0,
         "chunks": 2,
         "coverage": {
-            "ranges": [[0, 5], [9, 14]],
+            "sum_chunk_chars": 10,
             "covered_chars": 10,
             "coverage_ratio": 10 / 14,
             "overlap_waste_ratio": 0.0,

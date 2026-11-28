@@ -5,6 +5,26 @@ import pytest
 from langchain_core.documents import Document
 
 
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from types import SimpleNamespace
+
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.infrastructure import tokens
+    from app.infrastructure.config import settings
+    from app.rag.runtime import engine
+
+    pool = SimpleNamespace(get_external_sync_client=lambda: None, get_external_async_client=lambda: None)
+    monkeypatch.setattr(engine, "get_http_client_pool", lambda: pool)
+    monkeypatch.setattr(
+        engine.RAGEngine,
+        "_build_llm",
+        lambda *_args, **_kwargs: FakeListChatModel(responses=[settings.LLM_MOCK_RESPONSE]),
+    )
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
+
+
 class _SequentialRetriever:
     def __init__(self, docs_by_call: list[list[Document]]) -> None:
         self._docs_by_call = [list(items) for items in docs_by_call]
@@ -42,7 +62,7 @@ def _mk_doc(*, doc_id: str, chunk_index: int, score: float = 0.95) -> Document:
 
 
 def _disable_optional_features(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -67,9 +87,8 @@ def _disable_optional_features(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_stream_chat_retries_retrieval_when_corrective_abstain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     monkeypatch.setattr(settings, "RAG_CORRECTIVE_ENABLED", True, raising=False)
@@ -85,7 +104,8 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
             [_mk_doc(doc_id="doc-a", chunk_index=0)],
         ]
     )
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", retriever, raising=True)
 
     engine = RAGEngine()
     loop_thread_id = threading.get_ident()
@@ -149,9 +169,8 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
 async def test_stream_chat_serial_retrieval_failure_emits_error_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     monkeypatch.setattr(settings, "RAG_CORRECTIVE_ENABLED", False, raising=False)
@@ -163,7 +182,8 @@ async def test_stream_chat_serial_retrieval_failure_emits_error_event(
             {"channel": "vector", "error_type": "ConnectionError"},
         ],
     }
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", retriever, raising=True)
 
     stream = RAGEngine().stream_chat(
         question="What failed?",
@@ -194,19 +214,18 @@ async def test_stream_chat_serial_retrieval_failure_emits_error_event(
 async def test_stream_chat_emits_quality_warning_when_faithfulness_is_low(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     monkeypatch.setattr(settings, "RAG_CORRECTIVE_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE", 0.8, raising=False)
 
     retriever = _SequentialRetriever(docs_by_call=[[_mk_doc(doc_id="doc-b", chunk_index=0)]])
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", retriever, raising=True)
     monkeypatch.setattr(
-        engine_mod,
-        "compute_faithfulness_score",
+        "app.rag.runtime.streaming.generation.compute_faithfulness_score",
         lambda **_kwargs: {
             "score": 0.4,
             "supported_claims": 1,
@@ -253,9 +272,8 @@ async def test_stream_chat_emits_quality_warning_when_faithfulness_is_low(
 async def test_stream_chat_does_not_split_redacted_pii_across_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     raw_id = "138001380001234567"
@@ -269,12 +287,9 @@ async def test_stream_chat_does_not_split_redacted_pii_across_chunks(
     monkeypatch.setattr(settings, "FAITHFULNESS_SCORE_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "SHOW_IMAGE_IN_ANSWER", False, raising=False)
     monkeypatch.setattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False, raising=False)
-    monkeypatch.setattr(
-        engine_mod,
-        "hybrid_retriever",
-        _SequentialRetriever(docs_by_call=[[_mk_doc(doc_id="doc-pii", chunk_index=0)]]),
-        raising=True,
-    )
+    _stream_retriever = _SequentialRetriever(docs_by_call=[[_mk_doc(doc_id="doc-pii", chunk_index=0)]])
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", _stream_retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", _stream_retriever, raising=True)
 
     stream = RAGEngine().stream_chat(
         question="Return the test response.",

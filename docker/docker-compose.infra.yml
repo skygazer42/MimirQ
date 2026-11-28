@@ -21,6 +21,8 @@ services:
   mimirq-redis:
     image: redis:7
     restart: unless-stopped
+    command:
+      ["redis-server", "--maxmemory", "${REDIS_MAXMEMORY:-512mb}", "--maxmemory-policy", "${REDIS_MAXMEMORY_POLICY:-noeviction}"]
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:

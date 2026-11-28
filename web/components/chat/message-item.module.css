@@ -1,0 +1,86 @@
+.historyAvatar,
+.citationIcon {
+  --tray-ink: var(--icon-process);
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--tray-ink) / 0.14);
+  border-radius: 50%;
+  background: color-mix(in srgb, hsl(var(--tray-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--tray-ink));
+}
+.assistantAvatar {
+  --tray-ink: var(--icon-knowledge);
+}
+.citationIcon {
+  --tray-ink: var(--icon-source);
+  border-radius: 6px;
+}
+.citationOrder {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.studioMessages :global([data-chat-message-variant='default'].justify-end) > :first-child {
+  outline: 1px solid hsl(var(--border));
+  outline-offset: -1px;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+}
+
+.studioMessages :global([class~='group/card']) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+  transition:
+    border-color 150ms,
+    background-color 150ms,
+    box-shadow 150ms;
+}
+
+.studioMessages :global([class~='group/card']):hover {
+  border-color: hsl(var(--foreground) / 0.22);
+  background: hsl(var(--surface-2));
+  box-shadow: 0 3px 8px -2px hsl(var(--foreground) / 0.08);
+}
+
+.studioMessages :global(button.rounded-full:has(> span.truncate)) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
+}
+
+.studioMessages :global(button.rounded-full:has(> span.truncate)):hover {
+  border-color: hsl(var(--foreground) / 0.22);
+  background: hsl(var(--surface-2));
+}
+
+.studioMessages :global(div:has(> button[aria-controls^='chat-steps-'])) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2) / 0.7);
+}
+
+.studioMessages :global(button[aria-controls^='chat-steps-'] span.rounded-full.border) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studioMessages :global([class~='group/card']) {
+    transition: none;
+  }
+}

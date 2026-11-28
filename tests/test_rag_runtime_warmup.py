@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.services import rag_runtime_warmup as warmup
+from app.services.runtime import model_warmup as warmup
 
 
 def _reset_state() -> None:

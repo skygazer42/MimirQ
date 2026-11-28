@@ -12,11 +12,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.parsing.models.hf_cache import download_hf_snapshot  # noqa: E402
-from app.parsing.models.manifest import SmallModelManifest, SmallModelSpec, load_small_model_manifest  # noqa: E402
+from app.rag.ingestion.parsing.models.hf_cache import download_hf_snapshot  # noqa: E402
+from app.rag.ingestion.parsing.models.manifest import (  # noqa: E402
+    SmallModelManifest,
+    SmallModelSpec,
+    load_small_model_manifest,
+)
 
 _DEFAULT_MANIFEST = _REPO_ROOT / "config" / "parsing_small_models.yaml"
-_DEFAULT_OUTPUT_ROOT = _REPO_ROOT / "app" / "deepdoc" / "resources" / "models"
+_DEFAULT_OUTPUT_ROOT = _REPO_ROOT / "app" / "rag" / "ingestion" / "parsing" / "resources" / "models"
 _SAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -26,6 +30,14 @@ def _slug(value: str) -> str:
 
 def _model_cache_name(spec: SmallModelSpec) -> str:
     return "__".join([_slug(spec.task), _slug(spec.model_id), _slug(spec.repo_id or spec.model_id)])
+
+
+def _model_record(spec: SmallModelSpec) -> dict[str, Any]:
+    return {
+        "task": spec.task,
+        "model_id": spec.model_id,
+        "kind": spec.kind,
+    }
 
 
 def _iter_hf_specs(
@@ -223,9 +235,9 @@ def bootstrap_selected_models(
     convert_onnx: bool = False,
     onnx_opset: int = 17,
 ) -> dict[str, Any]:
-    manifest_path = Path(manifest_path).resolve()
     output_root = Path(output_root).resolve()
     manifest = load_small_model_manifest(manifest_path, base_dir=_REPO_ROOT)
+    manifest_path = manifest.path
     specs = _iter_hf_specs(manifest, selections=list(selections), all_optional=bool(all_optional))
 
     models: list[dict[str, Any]] = []
@@ -235,10 +247,8 @@ def bootstrap_selected_models(
         cpu_skip = _cpu_skip_reason(spec)
         if cpu_skip:
             models.append(
-                {
-                    "task": spec.task,
-                    "model_id": spec.model_id,
-                    "kind": spec.kind,
+                _model_record(spec)
+                | {
                     "repo_id": spec.repo_id,
                     "revision": spec.revision,
                     "status": "skipped",
@@ -248,10 +258,8 @@ def bootstrap_selected_models(
             continue
         if not spec.repo_id:
             models.append(
-                {
-                    "task": spec.task,
-                    "model_id": spec.model_id,
-                    "kind": spec.kind,
+                _model_record(spec)
+                | {
                     "status": "skipped",
                     "reason": "hf_repo_missing",
                 }
@@ -289,10 +297,8 @@ def bootstrap_selected_models(
             status = "downloaded_with_onnx"
 
         models.append(
-            {
-                "task": spec.task,
-                "model_id": spec.model_id,
-                "kind": spec.kind,
+            _model_record(spec)
+            | {
                 "repo_id": spec.repo_id,
                 "revision": spec.revision,
                 "status": status,
@@ -335,7 +341,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-root",
         default=str(_DEFAULT_OUTPUT_ROOT),
-        help="Project model resource root. Defaults to app/deepdoc/resources/models.",
+        help="Project model resource root. Defaults to app/rag/ingestion/parsing/resources/models.",
     )
     parser.add_argument(
         "--convert-onnx", action="store_true", help="Try ONNX conversion when the HF snapshot has no .onnx file."

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Frontend Handbook Overview
 
-This handbook is for **frontend developers and full-stack engineers**, helping you understand MimirQ Web's routing structure, component system, and API call layer. Types and paths use [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) as the authoritative reference; frontend routes follow `web/app/**/page.tsx`.
+This handbook is for **frontend developers and full-stack engineers**, helping you understand Ragvia Web's routing structure, component system, and API call layer. Types and paths use [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) as the authoritative reference; frontend routes follow `web/app/**/page.tsx`.
 
 ## Tech Stack
 

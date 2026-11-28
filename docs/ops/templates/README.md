@@ -1,6 +1,6 @@
 # Ops Templates (Prometheus + Grafana)
 
-This folder contains **copy-pasteable** operational templates for MimirQ:
+This folder contains **copy-pasteable** operational templates for Ragvia:
 
 - `prometheus-rule-mimirq.yaml`: a `PrometheusRule` (Kubernetes / Prometheus Operator) with baseline alerts
 - `grafana-dashboard-mimirq.json`: a Grafana dashboard JSON for an “Ops Overview” view
@@ -15,7 +15,7 @@ This folder contains **copy-pasteable** operational templates for MimirQ:
 
 ## What’s covered
 
-Alerts and dashboards are aligned to the built-in metrics shipped by MimirQ:
+Alerts and dashboards are aligned to the built-in metrics shipped by Ragvia:
 
 - **HTTP**
   - `http_requests_total`
@@ -41,7 +41,7 @@ Alerts and dashboards are aligned to the built-in metrics shipped by MimirQ:
 
 ### Helm (recommended for Kubernetes installs)
 
-If you deploy MimirQ via the built-in Helm chart (`deploy/helm/mimirq`), you can enable these templates via values:
+If you deploy Ragvia via the built-in Helm chart (`deploy/helm/mimirq`), you can enable these templates via values:
 
 ```yaml
 prometheus:

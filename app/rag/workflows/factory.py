@@ -4,11 +4,11 @@ Workflow factory for creating workflow instances.
 Provides factory functions and configuration-based workflow selection.
 """
 
-
+import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode
 from app.rag.workflows.chain import ChainWorkflow
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
@@ -17,14 +17,14 @@ from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
 from app.rag.workflows.react import ReActWorkflow
 from app.rag.workflows.routing import RoutingWorkflow
 
-logger = get_logger("rag.workflows.factory")
+logger = logging.getLogger("rag.workflows.factory")
 
 # Configuration
-WORKFLOW_MODE = getattr(settings, "WORKFLOW_MODE", "chain")
+WORKFLOW_MODE = settings.WORKFLOW_MODE
 
 
 # Registry of workflow classes
-WORKFLOW_REGISTRY: dict[WorkflowMode, type] = {
+WORKFLOW_REGISTRY: dict[WorkflowMode, type[BaseWorkflow]] = {
     WorkflowMode.CHAIN: ChainWorkflow,
     WorkflowMode.ROUTING: RoutingWorkflow,
     WorkflowMode.PARALLEL: ParallelWorkflow,
@@ -79,16 +79,13 @@ def resolve_mode(mode: str | WorkflowMode) -> WorkflowMode:
     except ValueError:
         pass
 
-    valid_modes = list(MODE_ALIASES.keys())
-    raise ValueError(
-        f"Unknown workflow mode: '{mode}'. "
-        f"Valid modes: {valid_modes}"
-    )
+    valid_modes = list(MODE_ALIASES)
+    raise ValueError(f"Unknown workflow mode: '{mode}'. Valid modes: {valid_modes}")
 
 
 def create_workflow(
     mode: str | WorkflowMode,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseWorkflow:
     """
     Create a workflow instance for the specified mode.
@@ -115,7 +112,7 @@ def create_workflow(
 
 def get_workflow(
     mode: str | WorkflowMode | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseWorkflow:
     """
     Get a workflow instance, using config default if mode not specified.
@@ -159,17 +156,20 @@ def list_available_modes() -> dict[str, str]:
 
 
 def create_rag_workflow(
-    retrieve_func: Any,
-    generate_func: Any,
+    retrieve_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    generate_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
     mode: str | WorkflowMode = "chain",
-    **kwargs,
+    **kwargs: Any,
 ) -> BaseWorkflow:
     """
     Create a standard RAG workflow.
 
+    Chain binds retrieval and generation. Parallel binds retrieval only;
+    other modes return their basic workflow instance for caller configuration.
+
     Args:
         retrieve_func: Retrieval function
-        generate_func: Generation function
+        generate_func: Generation function used by chain mode
         mode: Workflow mode
         **kwargs: Additional configuration
 
@@ -180,24 +180,23 @@ def create_rag_workflow(
 
     if resolved_mode == WorkflowMode.CHAIN:
         from app.rag.workflows.chain import create_rag_chain
+
         return create_rag_chain(retrieve_func, generate_func, **kwargs)
 
-    elif resolved_mode == WorkflowMode.PARALLEL:
+    if resolved_mode == WorkflowMode.PARALLEL:
         workflow = ParallelWorkflow(**kwargs)
         workflow.add_task("retrieve", retrieve_func)
         return workflow
 
-    else:
-        # For other modes, create basic workflow
-        return create_workflow(mode, **kwargs)
+    return create_workflow(resolved_mode, **kwargs)
 
 
 def create_multi_query_workflow(
-    retrieve_func: Any,
-    query_rewrite_func: Any,
+    retrieve_func: Callable[[str], Awaitable[list[dict[str, Any]]]],
+    query_rewrite_func: Callable[[str, int], Awaitable[str]],
     generate_func: Any,
     num_queries: int = 3,
-    **kwargs,
+    **kwargs: Any,
 ) -> ParallelWorkflow:
     """
     Create a multi-query parallel retrieval workflow.
@@ -205,7 +204,7 @@ def create_multi_query_workflow(
     Args:
         retrieve_func: Retrieval function
         query_rewrite_func: Query rewriting function
-        generate_func: Generation function
+        generate_func: Compatibility argument; this helper retrieves and aggregates only
         num_queries: Number of query variations
         **kwargs: Additional configuration
 
@@ -216,14 +215,15 @@ def create_multi_query_workflow(
 
     from app.rag.workflows.parallelization import create_multi_query_aggregator
 
-    def create_query_task(query_id: int):
+    def create_query_task(query_id: int) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
         async def task(state: dict[str, Any]) -> dict[str, Any]:
-            question = state.get("question") or state.get("query") or ""
+            question = BaseWorkflow.get_question(state)
             # Rewrite query
             rewritten = await query_rewrite_func(question, query_id)
             # Retrieve
             contexts = await retrieve_func(rewritten)
             return {"contexts": contexts, "rewritten_query": rewritten}
+
         return task
 
     # Create workflow with aggregator

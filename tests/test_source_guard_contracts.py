@@ -10,107 +10,100 @@ ROOT = Path(__file__).resolve().parents[1]
 SILENT_PASS_RE = re.compile(r"except[^\n]*:\n[ \t]*pass\b")
 
 SILENT_PASS_GUARD_PATHS = (
-    "app/api/v1/audit.py",
-    "app/api/v1/chat.py",
-    "app/api/v1/connectors.py",
-    "app/api/v1/datasets.py",
-    "app/api/v1/evaluations.py",
-    "app/api/v1/evidence.py",
-    "app/api/v1/ltr.py",
-    "app/api/v1/parsing.py",
-    "app/api/v1/pipeline.py",
-    "app/api/v1/pipeline_support/auto_annotations.py",
-    "app/api/v1/pipeline_support/capabilities.py",
-    "app/api/v1/pipeline_support/clean_preview.py",
-    "app/api/v1/pipeline_support/governance_profiles.py",
-    "app/api/v1/pipeline_support/ingestion_preview.py",
-    "app/deepdoc/parser/docling_parser.py",
-    "app/deepdoc/parser/excel_parser.py",
-    "app/parsing/enrich/image_understanding.py",
-    "app/parsing/parsers/deepseek_ocr_parser.py",
-    "app/parsing/parsers/email_parser.py",
-    "app/parsing/preprocess/image_preprocess.py",
-    "app/parsing/preprocess/watermark.py",
-    "app/parsing/quality/scorer.py",
-    "app/parsing/subprocess_runner.py",
-    "app/parsing/subprocess_worker.py",
-    "app/parsing/utils/text.py",
-    "app/rag/checkpointer/time_travel.py",
-    "app/rag/chunking/strategies/llama_index.py",
-    "app/rag/core/citations.py",
+    "app/api/v1/system/audit.py",
+    "app/api/v1/conversations/routes.py",
+    "app/api/v1/connectors/routes.py",
+    "app/api/v1/datasets/routes.py",
+    "app/api/v1/evaluation/routes.py",
+    "app/api/v1/evaluation/evidence.py",
+    "app/api/v1/pipelines/parsing.py",
+    "app/api/v1/pipelines/routes.py",
+    "app/api/v1/pipelines/support/auto_annotations.py",
+    "app/api/v1/pipelines/support/capabilities.py",
+    "app/api/v1/pipelines/support/clean_preview.py",
+    "app/api/v1/pipelines/support/governance_profiles.py",
+    "app/api/v1/pipelines/support/ingestion_preview.py",
+    "app/rag/ingestion/parsing/parsers/docling_parser.py",
+    "app/rag/ingestion/parsing/parsers/excel_parser.py",
+    "app/rag/ingestion/parsing/enrich/image_understanding.py",
+    "app/rag/ingestion/parsing/parsers/deepseek_ocr_parser.py",
+    "app/rag/ingestion/parsing/parsers/email_parser.py",
+    "app/rag/ingestion/parsing/preprocess/image_preprocess.py",
+    "app/rag/ingestion/parsing/preprocess/watermark.py",
+    "app/rag/ingestion/parsing/quality/scorer.py",
+    "app/rag/ingestion/parsing/subprocess_runner.py",
+    "app/rag/ingestion/parsing/subprocess_worker.py",
+    "app/rag/ingestion/parsing/utils/text.py",
+    "app/rag/ingestion/chunking/strategies/model_based/llama_index.py",
+    "app/rag/retrieval/evidence/citations.py",
     "app/rag/embedding/adapter.py",
-    "app/rag/engine.py",
-    "app/rag/engine_support/common.py",
-    "app/rag/engine_support/doc_utils.py",
-    "app/rag/engine_support/llm_routing.py",
-    "app/rag/evaluation/ragas.py",
-    "app/rag/evaluation/regression_sample_builder.py",
+    "app/rag/runtime/engine.py",
+    "app/rag/runtime/contracts.py",
+    "app/rag/runtime/model_routing.py",
+    "app/rag/evaluation/regression/ragas.py",
+    "app/rag/evaluation/regression/regression_sample_builder.py",
     "app/rag/kg/extraction/extractor.py",
-    "app/rag/preprocessing/diagnostics.py",
-    "app/rag/preprocessing/processor.py",
-    "app/rag/retrieval/hybrid/bm25_index.py",
-    "app/rag/retrieval/hybrid/colbert_index.py",
-    "app/rag/retrieval/hybrid/common.py",
-    "app/rag/retrieval/hybrid/dedup.py",
-    "app/rag/retrieval/hybrid/fusion.py",
-    "app/rag/retrieval/hybrid/lexical.py",
-    "app/rag/retrieval/hybrid/post_process.py",
-    "app/rag/retrieval/hybrid/sparse_index.py",
-    "app/rag/retrieval/orchestration/anchors.py",
-    "app/rag/retrieval/orchestration/channel_budget.py",
-    "app/rag/retrieval/orchestration/citation_quality.py",
-    "app/rag/retrieval/orchestration/common.py",
-    "app/rag/retrieval/orchestration/debug_sanitize.py",
-    "app/rag/retrieval/orchestration/hierarchy.py",
-    "app/rag/retrieval/orchestration/kg_merge_boost.py",
+    "app/rag/ingestion/governance/diagnostics.py",
+    "app/rag/ingestion/governance/processor.py",
+    "app/rag/retrieval/corpus.py",
+    "app/rag/retrieval/recall/common.py",
+    "app/rag/retrieval/ranking/diversity.py",
+    "app/rag/retrieval/ranking/channels.py",
+    "app/rag/retrieval/recall/lexical_search.py",
+    "app/rag/retrieval/recall/enrichment.py",
+    "app/rag/retrieval/ranking/anchors.py",
+    "app/rag/retrieval/configuration/channel_budget.py",
+    "app/rag/retrieval/evidence/quality.py",
+    "app/rag/retrieval/results.py",
+    "app/rag/tracing/retrieval_debug.py",
+    "app/rag/retrieval/ranking/hierarchy.py",
+    "app/rag/retrieval/ranking/knowledge_graph.py",
     "app/rag/retrieval/orchestrator.py",
-    "app/rag/retriever.py",
+    "app/rag/retrieval/recall/retriever.py",
     "app/rag/workflows/evaluator_optimizer.py",
-    "app/services/dataset_precheck_scan_runner.py",
-    "app/services/deps_diagnostics_service.py",
-    "app/services/evidence_reference_repair_service.py",
-    "app/services/indexer.py",
-    "app/services/ingestion_run_service.py",
-    "app/services/metrics_logger.py",
-    "app/services/mineru_service.py",
-    "app/services/rag_metrics_dashboard.py",
-    "app/services/report_service.py",
-    "app/services/retention_jobs.py",
+    "app/services/datasets/precheck/scan.py",
+    "app/services/observability/dependencies.py",
+    "app/services/evidence/reference_repair.py",
+    "app/rag/ingestion/indexing/indexer.py",
+    "app/services/documents/ingestion_runs.py",
+    "app/services/observability/metrics_log.py",
+    "app/services/parsing/mineru.py",
+    "app/services/observability/rag_dashboard.py",
+    "app/services/reports/aggregation.py",
+    "app/services/retention/jobs.py",
     "app/storage/vector/milvus.py",
     "app/tasks/jobs.py",
     "app/tasks/locks.py",
 )
 
 REQUESTS_GUARD_PATHS = (
-    "app/deepdoc/parser/mineru_parser.py",
-    "app/deepdoc/parser/tcadp_parser.py",
-    "app/parsing/enrich/chart_to_data.py",
-    "app/parsing/enrich/formula_ocr.py",
-    "app/parsing/enrich/vlm_image_caption.py",
-    "app/parsing/parsers/mathpix_parser.py",
-    "app/parsing/preprocess/deskew.py",
-    "app/parsing/preprocess/handwriting_cleanup.py",
-    "app/parsing/preprocess/watermark.py",
-    "app/services/mineru_service.py",
-    "app/third_party/integrated_pipeline/chunkers/naive.py",
+    "app/rag/ingestion/parsing/parsers/mineru_parser.py",
+    "app/rag/ingestion/parsing/enrich/chart_to_data.py",
+    "app/rag/ingestion/parsing/enrich/formula_ocr.py",
+    "app/rag/ingestion/parsing/enrich/vlm_image_caption.py",
+    "app/rag/ingestion/parsing/preprocess/deskew.py",
+    "app/rag/ingestion/parsing/preprocess/handwriting_cleanup.py",
+    "app/rag/ingestion/parsing/preprocess/watermark.py",
+    "app/services/parsing/mineru.py",
+    "app/rag/ingestion/parsing/files/general.py",
 )
 
 # Line-count ratchet for modules that were deliberately split into support
 # packages. Budgets may only go DOWN (keep splitting) or be raised explicitly
 # in the same change that justifies the growth — never drift back up silently.
 MODULE_LINE_BUDGETS = {
-    "app/api/v1/integrations_dify.py": 8000,
-    "app/api/v1/pipeline.py": 1800,
-    "app/core/config.py": 2550,
-    "app/parsing/processors/processor.py": 4750,
-    "app/rag/engine.py": 4100,
-    "app/rag/kg/api/routes.py": 2600,
+    "app/api/v1/integrations/dify.py": 8000,
+    "app/api/v1/pipelines/routes.py": 1800,
+    "app/infrastructure/config.py": 2550,
+    "app/rag/ingestion/indexing/processor.py": 4750,
+    "app/rag/runtime/engine.py": 4100,
+    "app/api/v1/knowledge_graph/routes.py": 2600,
     "app/rag/retrieval/orchestrator.py": 4800,
-    "app/rag/retriever.py": 3400,
+    "app/rag/retrieval/recall/retriever.py": 3400,
     "web/app/knowledge/ingestion/page-client.tsx": 4200,
     "web/app/knowledge/quarantine/page.tsx": 1950,
     "web/app/reports/page-client.tsx": 800,
-    "web/components/graph/kg-snapshots-page.tsx": 50,
+    "web/app/graph/snapshots/page.tsx": 50,
     "web/components/ragviz/similarity-workbench.tsx": 2300,
 }
 
@@ -210,8 +203,7 @@ def test_managed_http_modules_do_not_bypass_shared_clients(rel_path: str) -> Non
 
 
 def test_time_context_helpers_do_not_use_naive_datetime_now() -> None:
-    assert 'datetime.now().strftime("%Y-%m-%d %H:%M")' not in _read("app/rag/middleware/base.py")
-    assert 'datetime.now().strftime("%Y%m%d_%H%M%S")' not in _read("app/deepdoc/parser/tcadp_parser.py")
+    assert 'datetime.now().strftime("%Y-%m-%d %H:%M")' not in _read("app/rag/agents/middleware/base.py")
 
 
 def test_fastapi_sync_db_routes_do_not_run_on_event_loop() -> None:
@@ -376,11 +368,11 @@ def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary(
     assert "生产环境禁止设为 *" in env_example
 
 
-def test_env_example_documents_image_embedding_opt_in_default() -> None:
+def test_env_example_documents_retired_local_image_embedding() -> None:
     env_example = _read(".env.example")
 
     assert "IMAGE_EMBEDDING_ENABLED=false" in env_example
-    assert "默认关闭，避免最小部署额外拉取重量级 ML 依赖" in env_example
+    assert "本地 CLIP 图片向量检索已退出；兼容字段必须保持 false" in env_example
 
 
 def test_production_make_targets_validate_and_propagate_environment() -> None:
@@ -408,7 +400,7 @@ def test_production_make_targets_validate_and_propagate_environment() -> None:
 
     makefile = _read("Makefile")
     assert "prod-preflight: init" in makefile
-    assert 'ENV=production $(PY) -c "from app.core.config import settings"' in makefile
+    assert 'ENV=production $(PY) -c "from app.infrastructure.config import settings"' in makefile
     assert "up-prod: prod-preflight" in makefile
     assert "ENV=production $(COMPOSE) up -d --build" in makefile
     assert "up-prod-web: prod-preflight" in makefile
@@ -518,7 +510,7 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
         assert "PowerShell" in document
         assert "Dify" in document
 
-    assert "旧版 MimirQ" in deployment_guide
+    assert "旧版 Ragvia" in deployment_guide
     assert "backup_restore.md" in deployment_guide
     assert "docker compose up -d" in deployment_guide
 
@@ -535,7 +527,7 @@ def test_full_project_user_guide_is_discoverable_and_covers_the_closed_loop() ->
 
     assert "[完整操作指南](./docs/user_guide.md)" in readme
     assert "[user_guide.md](./user_guide.md)" in docs_index
-    assert "guide: [{type: 'autogenerated', dirName: 'guide'}]" in sidebars
+    assert re.search(r"guide:\s*\[\{\s*type: 'autogenerated',\s*dirName: 'guide'\s*\}\]", sidebars)
     assert "sidebarId: 'guide'" in docusaurus_config
 
     required_user_steps = (
@@ -574,7 +566,7 @@ def test_full_project_user_guide_is_discoverable_and_covers_the_closed_loop() ->
         assert screenshot in handbook_guide
         assert screenshot in handbook_guide_en
     assert "'../docs/images'" in docusaurus_config
-    assert 'path.join(REPO, "docs", "images")' in link_checker
+    assert re.search(r"""path\.join\(REPO,\s*['"]docs['"],\s*['"]images['"]\)""", link_checker)
 
 
 def test_retrieval_handbook_uses_the_live_knowledge_tab_route() -> None:
@@ -585,8 +577,9 @@ def test_retrieval_handbook_uses_the_live_knowledge_tab_route() -> None:
     assert "/knowledge/retrieval" not in retrieval_doc
     assert "`/knowledge`" in retrieval_doc
     assert "检索测试" in retrieval_doc
-    assert "type TabKey = 'documents' | 'retrieval' | 'settings'" in knowledge_page
-    assert "searchParams.get('tab')" in knowledge_query_state
+    assert "TABS = ['documents', 'retrieval'] as const" in knowledge_query_state
+    assert "readQueryOption(searchParams.get('tab'), TABS, 'documents')" in knowledge_query_state
+    assert "parseKnowledgeQueryState" in knowledge_page
 
 
 def test_current_release_metadata_is_consistent() -> None:
@@ -659,7 +652,7 @@ def test_helm_runtime_validation_has_fail_fast_guards_for_multi_instance_risks()
     assert "Distributed MimirQ deployments require ENV=production." in template
     assert "Distributed MimirQ deployments require DB_CREATE_ALL_ON_STARTUP=false." in template
     assert "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." in template
-    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in template
+    assert "Chroma vector backend has been retired; choose a supported backend." in template
     assert (
         "Distributed MimirQ deployments with local document storage require "
         "persistence.uploads.accessModes to include ReadWriteMany." in template

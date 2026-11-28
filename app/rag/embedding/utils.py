@@ -3,13 +3,62 @@ Embedding utility functions.
 """
 
 import hashlib
+import logging
 import os
+from typing import Annotated, NotRequired, TypedDict
 from urllib.parse import urlsplit, urlunsplit
 
-from app.core.constants import EmbeddingProviders
-from app.rag.core.logging import get_logger
+from pydantic import AliasChoices, ConfigDict, Field, FiniteFloat, TypeAdapter
 
-logger = get_logger("rag.embedding")
+from app.infrastructure.model_policy import EmbeddingProviders
+
+logger = logging.getLogger("rag.embedding")
+_VECTORS = TypeAdapter(
+    list[Annotated[list[FiniteFloat], Field(min_length=1)]],
+    config=ConfigDict(strict=True, hide_input_in_errors=True),
+)
+
+
+class _EmbeddingItem(TypedDict):
+    embedding: object
+    index: NotRequired[Annotated[int, Field(ge=0, validation_alias=AliasChoices("index", "text_index"))]]
+
+
+_EMBEDDING_ITEMS = TypeAdapter(list[_EmbeddingItem], config=ConfigDict(strict=True, hide_input_in_errors=True))
+
+
+def decode_embedding_response(value: object, *, count: int, dimension: int | None) -> list[list[float]]:
+    """Use provider indexes when present; index-free compatible APIs retain their order."""
+    items = _EMBEDDING_ITEMS.validate_python(value)
+    indexed = {item.get("index", position): item["embedding"] for position, item in enumerate(items)}
+    if len(items) != count or len(indexed) != count or any(index >= count for index in indexed):
+        raise ValueError("Embedding response indexes do not match the requested batch")
+    return validate_embedding_vectors([indexed[index] for index in range(count)], count=count, dimension=dimension)
+
+
+def validate_embedding_vectors(value: object, *, count: int, dimension: int | None = None) -> list[list[float]]:
+    """Validate one external batch without changing its row order or vector space."""
+    vectors = _VECTORS.validate_python(value)
+    if len(vectors) != count:
+        raise ValueError(f"Embedding count mismatch: expected {count}, got {len(vectors)}")
+    if not vectors:
+        return vectors
+    expected_dimension = len(vectors[0]) if dimension is None else dimension
+    if any(len(vector) != expected_dimension for vector in vectors):
+        raise ValueError(f"Embedding dimension mismatch: expected {expected_dimension}")
+    return vectors
+
+
+def normalize_embedding_vectors(vectors: list[list[float]]) -> list[list[float]]:
+    """Normalize embedding vectors to unit length, preserving zero vectors."""
+    import numpy as np
+
+    if not vectors:
+        return []
+    array = np.array(vectors, dtype=float)
+    norms = np.linalg.norm(array, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return (array / norms).tolist()
 
 
 def hashstr(input_string: str, length: int | None = None) -> str:
@@ -22,14 +71,11 @@ def hashstr(input_string: str, length: int | None = None) -> str:
     Returns:
         Hash string (hex format)
     """
-    try:
-        encoded_string = str(input_string).encode("utf-8")
-    except UnicodeEncodeError:
-        encoded_string = str(input_string).encode("utf-8", errors="replace")
+    encoded_string = input_string.encode("utf-8", errors="replace")
 
     # BLAKE2 is fast and avoids weak-hash hotspots (e.g. MD5) while keeping a compact digest.
     hash_value = hashlib.blake2b(encoded_string, digest_size=16).hexdigest()
-    if length:
+    if length is not None:
         return hash_value[:length]
     return hash_value
 
@@ -50,27 +96,15 @@ def get_docker_safe_url(base_url: str | None) -> str | None:
         return base_url
 
     if os.getenv("RUNNING_IN_DOCKER") == "true":
-        updated = base_url
-        try:
-            u = urlsplit(base_url)
-            if u.scheme and u.netloc and u.hostname in {"localhost", "127.0.0.1"}:
-                # Preserve scheme/userinfo/port/path/query/fragment.
-                userinfo = ""
-                if u.username:
-                    userinfo = u.username
-                    if u.password:
-                        userinfo += f":{u.password}"
-                    userinfo += "@"
-                port = f":{u.port}" if u.port else ""
-                netloc = f"{userinfo}host.docker.internal{port}"
-                updated = urlunsplit((u.scheme, netloc, u.path, u.query, u.fragment))
-        except Exception:
-            # Best-effort fallback: keep the scheme and just swap the hostname.
-            updated = updated.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
-
-        if updated != base_url:
-            logger.info("Running in docker, using %s as base url", updated)
-        base_url = updated
+        parsed = urlsplit(base_url)
+        if parsed.hostname in {"localhost", "127.0.0.1"}:
+            userinfo = parsed.netloc.rpartition("@")[0]
+            if userinfo:
+                userinfo += "@"
+            port = f":{parsed.port}" if parsed.port is not None else ""
+            netloc = f"{userinfo}host.docker.internal{port}"
+            base_url = urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+            logger.info("Using host.docker.internal for Docker embedding endpoint")
     return base_url
 
 
@@ -88,24 +122,14 @@ def current_embedding_space_hash(*, length: int | None = 16) -> str:
     - We best-effort normalize base_url to reduce accidental cache busting.
     """
     # Lazy import to avoid import cycles at module import time.
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
-    provider_raw = (settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
-    provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, provider_raw)
-    model = (settings.EMBEDDING_MODEL or "").strip()
-    base_url = (settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "").strip()
-
-    # Normalize base_url: keep scheme/host/path, drop query/fragment.
-    norm_base = ""
-    if base_url:
-        try:
-            u = urlsplit(base_url)
-            norm_base = f"{u.scheme}://{u.netloc}{u.path}".rstrip("/")
-        except Exception:
-            norm_base = base_url.rstrip("/")
-
-    key = f"provider={provider}|model={model}|base_url={norm_base}"
-    return hashstr(key, length=length)
+    return embedding_space_hash_for_config(
+        provider=settings.EMBEDDING_PROVIDER,
+        model=settings.EMBEDDING_MODEL,
+        base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE,
+        length=length,
+    )
 
 
 def embedding_space_hash_for_config(
@@ -129,11 +153,8 @@ def embedding_space_hash_for_config(
 
     norm_base = ""
     if base:
-        try:
-            u = urlsplit(base)
-            norm_base = f"{u.scheme}://{u.netloc}{u.path}".rstrip("/")
-        except Exception:
-            norm_base = base.rstrip("/")
+        parsed = urlsplit(base)
+        norm_base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
 
     key = f"provider={mapped_provider}|model={model0}|base_url={norm_base}"
     return hashstr(key, length=length)
@@ -141,7 +162,10 @@ def embedding_space_hash_for_config(
 
 __all__ = [
     "current_embedding_space_hash",
+    "decode_embedding_response",
     "embedding_space_hash_for_config",
     "get_docker_safe_url",
     "hashstr",
+    "normalize_embedding_vectors",
+    "validate_embedding_vectors",
 ]

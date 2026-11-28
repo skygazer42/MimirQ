@@ -1,8 +1,9 @@
 import uuid
 from types import SimpleNamespace
 
-from app.api.v1 import document_health as document_health_api
-from app.services.document_index_channel_service import DocumentIndexChannelSummary
+from app.api.schemas.documents import DocumentHealthQuery
+from app.api.v1.documents import health as document_health_api
+from app.rag.ingestion.indexing.index_channels import DocumentIndexChannelSummary
 
 
 class _Query:
@@ -14,6 +15,9 @@ class _Query:
         return self
 
     def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+        return self
+
+    def with_entities(self, *_entities):  # noqa: ANN002
         return self
 
     def first(self):  # noqa: ANN201
@@ -55,11 +59,11 @@ def test_document_health_card_exposes_index_readiness(monkeypatch) -> None:  # n
     )
 
     monkeypatch.setattr(
-        document_health_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+        document_health_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(
         document_health_api,
-        "assert_document_acl_readable",
+        "assert_document_readable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -90,12 +94,10 @@ def test_document_health_card_exposes_index_readiness(monkeypatch) -> None:  # n
 
     card = document_health_api.get_document_health_card(
         document_id=document.id,
-        window_minutes=60,
-        max_bytes=1024,
-        max_chunks_scored=0,
         tenant_id=document.tenant_id,
         account_id="acct-1",
         db=_DB(document),
+        params=DocumentHealthQuery(window_minutes=60, max_bytes=1024, max_chunks_scored=0),
     )
 
     assert card.index_readiness is not None

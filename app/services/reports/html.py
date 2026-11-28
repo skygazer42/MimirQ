@@ -1,0 +1,1844 @@
+"""
+HTML report rendering (single-file, offline-friendly).
+
+Design goals:
+- One self-contained HTML file (no external JS/CSS)
+- Objective numbers only (no subjective scoring)
+- Optional redaction for sharing (hide dataset id/name/path)
+"""
+
+import math
+from datetime import datetime
+from html import escape
+from typing import Any
+
+EMPTY_DATA_DIV = '<div class="empty">暂无数据</div>'
+TABLE_TBODY_CLOSE = "</tbody></table>"
+REDACTED_TEXT = "[REDACTED]"
+BARS_METRIC_TABLE_HEADER = '<table class="bars"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>'
+EMPTY_BRIEF_DIV = '<div class="empty">暂无</div>'
+_RETRIEVAL_AUDIT_HTML_METRIC_KEYS = (
+    "hit_at_1",
+    "hit_at_3",
+    "hit_at_5",
+    "retrieval_hit_at_1",
+    "retrieval_hit_at_3",
+    "retrieval_hit_at_5",
+    "retrieval_recall",
+    "retrieval_mrr",
+    "retrieval_ndcg",
+    "retrieval_ndcg_at_20",
+    "retrieval_effective_context_rate",
+    "retrieval_noise_rate",
+    "expected_metadata_hit_rate",
+    "expected_metadata_recall",
+    "expected_metadata_cases_total",
+    "expected_metadata_fields_total",
+    "expected_metadata_fields_matched",
+    "top_1_expected_metadata_match_rate",
+    "top_3_expected_metadata_match_rate",
+    "top_5_expected_metadata_match_rate",
+    "kg_noise_rate",
+    "answer_grounding_rate",
+    "answer_key_point_recall",
+)
+
+
+def _optional_text(*values: Any) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _format_text(*values: Any) -> str:
+    """Encode an absent optional value as a blank HTML text cell."""
+    text = _optional_text(*values)
+    return text if text is not None else ""
+
+
+def _fmt_int(n: Any) -> str:
+    try:
+        return f"{int(n):,}"
+    except (TypeError, ValueError, OverflowError):
+        return "0"
+
+
+def _fmt_bytes(n: Any) -> str:
+    try:
+        b = int(n)
+    except (TypeError, ValueError, OverflowError):
+        b = 0
+    if b <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    v = float(b)
+    idx = 0
+    while v >= 1024.0 and idx < len(units) - 1:
+        v /= 1024.0
+        idx += 1
+    if idx == 0:
+        return f"{int(v)} {units[idx]}"
+    return f"{v:.2f} {units[idx]}"
+
+
+def _as_items(mapping: Any, *, top: int = 12) -> list[tuple[str, int]]:
+    if not isinstance(mapping, dict):
+        return []
+    items: list[tuple[str, int]] = []
+    for k, v in mapping.items():
+        key = _optional_text(k) or "unknown"
+        try:
+            n = int(v or 0)
+        except Exception:
+            n = 0
+        if n <= 0:
+            continue
+        items.append((key, n))
+    items.sort(key=lambda kv: (-kv[1], kv[0]))
+    if top > 0:
+        items = items[:top]
+    return items
+
+
+def _render_bar_table(items: list[tuple[str, int]], *, total: int) -> str:
+    if not items:
+        return EMPTY_DATA_DIV
+    total = max(1, int(total or 0))
+    rows: list[str] = []
+    for k, v in items:
+        pct = min(100.0, max(0.0, (float(v) / float(total)) * 100.0))
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(str(k))}</td>'
+            f'<td class="v">{_fmt_int(v)}</td>'
+            f'<td class="bar"><div class="bar-bg"><div class="bar-fill" style="width:{pct:.2f}%"></div></div></td>'
+            "</tr>"
+        )
+    return (
+        '<table class="bars">'
+        '<thead><tr><th>Key</th><th>Count</th><th style="width:55%">Ratio</th></tr></thead>'
+        "<tbody>" + "".join(rows) + TABLE_TBODY_CLOSE
+    )
+
+
+def _render_histogram(bins: Any) -> str:
+    if not isinstance(bins, list) or not bins:
+        return EMPTY_DATA_DIV
+    rows: list[tuple[str, int]] = []
+    total = 0
+    for b in bins:
+        if not isinstance(b, dict):
+            continue
+        label = b["label"].strip()
+        try:
+            cnt = int(b.get("count") or 0)
+        except Exception:
+            cnt = 0
+        total += max(0, cnt)
+        rows.append((label, cnt))
+
+    return _render_bar_table(rows, total=total)
+
+
+def _fmt_scalar(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return _fmt_int(value)
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def _safe_text_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> list[str]:
+    values = raw if isinstance(raw, list | tuple | set) else [raw]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = _optional_text(item)
+        if not text or len(text) > max_len or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    gates: list[dict[str, Any]] = []
+    for gate in raw.get("gates") if isinstance(raw.get("gates"), list) else []:
+        if not isinstance(gate, dict):
+            continue
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        safe_metrics = {
+            key: value
+            for key in _RETRIEVAL_AUDIT_HTML_METRIC_KEYS
+            if isinstance((value := metrics.get(key)), int) or (isinstance(value, float) and math.isfinite(value))
+        }
+        gates.append(
+            {
+                "name": gate["name"].strip(),
+                "status": gate.get("status", "unavailable").strip(),
+                "metrics": safe_metrics,
+                "failed_conditions": _safe_text_list(gate.get("failed_conditions")),
+                "generated_at": _optional_text(gate.get("generated_at")),
+                "source": _optional_text(gate.get("source")),
+            }
+        )
+    failure_categories = raw.get("failure_categories") if isinstance(raw.get("failure_categories"), dict) else {}
+    return {
+        "status": raw.get("status", "unavailable").strip(),
+        "plugin_refs": _safe_text_list(raw.get("plugin_refs")),
+        "plugin_package_hashes": _safe_text_list(raw.get("plugin_package_hashes")),
+        "failure_categories": {
+            str(key): int(value or 0)
+            for key, value in failure_categories.items()
+            if key is not None and str(key).strip()
+        },
+        "kg_recommendation": _optional_text(raw.get("kg_recommendation")),
+        "recommended_next_action": _optional_text(raw.get("recommended_next_action")),
+        "gates": gates,
+    }
+
+
+def _report_with_safe_retrieval_audit(report: Any) -> Any:
+    if not isinstance(report, dict):
+        return report
+    out = dict(report)
+    safe = _safe_retrieval_audit_payload(report.get("retrieval_audit"))
+    if safe is not None:
+        out["retrieval_audit"] = safe
+    return out
+
+
+def _render_retrieval_audit_section(report: Any) -> str:
+    audit = _safe_retrieval_audit_payload(report.get("retrieval_audit")) if isinstance(report, dict) else None
+    if not audit:
+        return ""
+
+    status = _format_text(audit.get("status")) or "unavailable"
+    plugin_refs = _safe_text_list(audit.get("plugin_refs"), max_items=5)
+    hashes = [value[:8] for value in _safe_text_list(audit.get("plugin_package_hashes"), max_items=5) if value]
+    failure_categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
+    kg_recommendation = _format_text(audit.get("kg_recommendation"))
+    next_action = _format_text(audit.get("recommended_next_action"))
+
+    meta_rows = [
+        ("status", status),
+        ("plugin_refs", ", ".join(plugin_refs)),
+        ("plugin_package_hashes", ", ".join(hashes)),
+        ("failure_categories", ", ".join(f"{key}:{value}" for key, value in sorted(failure_categories.items()))),
+        ("kg_recommendation", kg_recommendation),
+        ("next_action", next_action),
+    ]
+    meta_table = (
+        BARS_METRIC_TABLE_HEADER
+        + "".join(
+            f'<tr><td class="k">{escape(key)}</td><td class="v">{escape(value)}</td><td></td></tr>'
+            for key, value in meta_rows
+            if value
+        )
+        + TABLE_TBODY_CLOSE
+    )
+
+    metric_rows: list[str] = []
+    for gate in audit.get("gates") if isinstance(audit.get("gates"), list) else []:
+        if not isinstance(gate, dict):
+            continue
+        gate_name = str(gate.get("name") or "gate").strip()
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        for key in _RETRIEVAL_AUDIT_HTML_METRIC_KEYS:
+            if key not in metrics:
+                continue
+            metric_rows.append(
+                "<tr>"
+                f'<td class="k">{escape(f"{gate_name}.{key}")}</td>'
+                f'<td class="v">{escape(_fmt_scalar(metrics.get(key)))}</td>'
+                "<td></td>"
+                "</tr>"
+            )
+    metric_table = (
+        BARS_METRIC_TABLE_HEADER + "".join(metric_rows[:40]) + TABLE_TBODY_CLOSE if metric_rows else EMPTY_DATA_DIV
+    )
+
+    return (
+        '<div class="section two">'
+        "<div><h2>Retrieval Audit</h2>"
+        f"{meta_table}"
+        "</div>"
+        "<div><h2>Retrieval Audit Metrics</h2>"
+        f"{metric_table}"
+        "</div>"
+        "</div>"
+    )
+
+
+_REDACTION_PROFILE_KEYS = {
+    "generated_at",
+    "total_documents",
+    "total_size_bytes",
+    "by_status",
+    "by_file_type",
+    "by_quality_bucket",
+    "file_size_histogram",
+    "length_percentiles",
+    "length_histogram",
+    "chunk_count_percentiles",
+    "chunk_count_histogram",
+    "avg_chunk_chars_percentiles",
+    "avg_chunk_chars_histogram",
+    "chunk_length_percentiles",
+    "chunk_length_histogram",
+    "chunk_token_percentiles",
+    "chunk_token_histogram",
+    "avg_chunk_tokens_percentiles",
+    "avg_chunk_tokens_histogram",
+    "chunk_coverage_percentiles",
+    "chunk_coverage_histogram",
+    "chunk_overlap_waste_percentiles",
+    "chunk_overlap_waste_histogram",
+    "page_number_histogram",
+    "parse_quality_histogram",
+    "language_mix",
+    "pdf_scan",
+    "parsing_provenance",
+    "pii_hits_total",
+    "secrets_hits_total",
+}
+_REDACTION_COMPLIANCE_KEYS = {"pii_hits_total", "secrets_hits_total", "quarantined_documents", "failed_documents"}
+_REDACTION_KG_KEYS = {
+    "events",
+    "entities",
+    "links",
+    "events_with_document_id",
+    "events_with_chunk_id",
+    "events_with_page_ref",
+    "links_with_provenance",
+    "links_with_page_ref",
+    "documents_with_kg_extracted_at",
+    "documents_with_kg_events",
+    "event_count_from_documents",
+    "skipped_chunks_total",
+    "skipped_short_chunks_total",
+    "failed_chunks_total",
+    "retry_chunks_total",
+    "entity_types",
+    "updated_at",
+}
+_REDACTION_PRECHECK_KEYS = {
+    "generated_at",
+    "total_files",
+    "total_size_bytes",
+    "by_file_type",
+    "file_size_histogram",
+    "token_histogram",
+    "language_mix",
+    "pii_hits_total",
+    "secrets_hits_total",
+    "pdf_scan",
+}
+
+
+def _select_keys(source: Any, keys: set[str]) -> dict[str, Any]:
+    if not isinstance(source, dict):
+        return {}
+    return {key: source[key] for key in keys if key in source}
+
+
+def _objective_metrics_only(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if value is None or isinstance(value, int):
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): scrubbed for key, item in value.items() if (scrubbed := _objective_metrics_only(item)) is not None
+        }
+    if isinstance(value, list):
+        return [scrubbed for item in value if (scrubbed := _objective_metrics_only(item)) is not None]
+    return None
+
+
+def _collect_labeled_counts(items: Any, *, skip_nonpositive: bool = False) -> list[tuple[str, int]]:
+    rows: list[tuple[str, int]] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        key = _optional_text(item.get("label"), item.get("key")) or "unknown"
+        try:
+            count = int(item.get("count") or 0)
+        except Exception:
+            count = 0
+        if skip_nonpositive and count <= 0:
+            continue
+        rows.append((key, count))
+    rows.sort(key=lambda kv: (-kv[1], kv[0]))
+    return rows
+
+
+def _render_table_or_empty(header: str, rows: list[str], *, empty: str = EMPTY_DATA_DIV) -> str:
+    if not rows:
+        return empty
+    return header + "".join(rows) + TABLE_TBODY_CLOSE
+
+
+def _render_metric_value_table(rows: list[tuple[str, Any]]) -> str:
+    rendered = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
+        for key, value in rows
+        if value not in ("", None)
+    ]
+    return _render_table_or_empty(BARS_METRIC_TABLE_HEADER, rendered)
+
+
+def _render_field_value_table(rows: list[tuple[str, Any]], *, field_label: str = "Field") -> str:
+    rendered = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
+        for key, value in rows
+    ]
+    header = f'<table class="bars"><thead><tr><th>{escape(field_label)}</th><th>Value</th><th></th></tr></thead><tbody>'
+    return _render_table_or_empty(header, rendered)
+
+
+def _render_kpi_card(label: str, value: str) -> str:
+    return f'      <div class="card"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div></div>'
+
+
+def _render_grid(cards: list[tuple[str, str]]) -> str:
+    lines = ['    <div class="grid">']
+    lines.extend(_render_kpi_card(label, value) for label, value in cards)
+    lines.append("    </div>")
+    return "\n".join(lines)
+
+
+def _render_section_block(title: str, body: str) -> str:
+    return "\n".join(
+        [
+            '    <div class="section">',
+            f"      <h2>{title}</h2>",
+            f"      {body}",
+            "    </div>",
+        ]
+    )
+
+
+def _render_two_column_section(
+    left_title: str,
+    left_body: str,
+    right_title: str,
+    right_body: str,
+) -> str:
+    return "\n".join(
+        [
+            '    <div class="section two">',
+            "      <div>",
+            f"        <h2>{left_title}</h2>",
+            f"        {left_body}",
+            "      </div>",
+            "      <div>",
+            f"        <h2>{right_title}</h2>",
+            f"        {right_body}",
+            "      </div>",
+            "    </div>",
+        ]
+    )
+
+
+def _render_page_subtitle(
+    *,
+    dataset_name: str,
+    dataset_id: str,
+    generated_at: str,
+    root_path: str | None = None,
+) -> str:
+    parts = [
+        'dataset: <span style="font-family:var(--mono)">',
+        escape(dataset_name),
+        '</span> · id: <span style="font-family:var(--mono)">',
+        escape(dataset_id),
+        "</span>",
+    ]
+    if root_path is not None:
+        parts.extend(
+            [
+                ' · root: <span style="font-family:var(--mono)">',
+                escape(root_path),
+                "</span>",
+            ]
+        )
+    parts.extend(
+        [
+            ' · generated_at: <span style="font-family:var(--mono)">',
+            escape(generated_at),
+            "</span>",
+        ]
+    )
+    return '    <div class="sub">' + "".join(parts) + "</div>"
+
+
+def _render_page_style(
+    *,
+    gradient_rgba: str,
+    key_width: int,
+    value_width: int,
+    include_pre: bool = False,
+    include_notes: bool = False,
+    include_emoji_fonts: bool = False,
+    include_status_colors: bool = False,
+) -> str:
+    sans_fonts = (
+        "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "
+        '"Apple Color Emoji", "Segoe UI Emoji"'
+        if include_emoji_fonts
+        else "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+    )
+    lines = [
+        "  <style>",
+        "    :root {",
+        "      --bg: #0b1020;",
+        "      --card: rgba(255,255,255,.06);",
+        "      --muted: rgba(255,255,255,.65);",
+        "      --text: rgba(255,255,255,.92);",
+        "      --border: rgba(255,255,255,.10);",
+        "      --accent: #38bdf8;",
+        "      --accent2: #22c55e;",
+    ]
+    if include_status_colors:
+        lines.extend(
+            [
+                "      --warn: #f59e0b;",
+                "      --err: #fb7185;",
+            ]
+        )
+    lines.extend(
+        [
+            (
+                "      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "
+                '"Liberation Mono", "Courier New", monospace;'
+            ),
+            f"      --sans: {sans_fonts};",
+            "    }",
+            (
+                "    body { margin: 0; background: radial-gradient(1200px 800px at 10% 10%, "
+                f"{gradient_rgba}, transparent), var(--bg); color: var(--text); "
+                "font-family: var(--sans); }"
+            ),
+            "    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }",
+            "    .title { font-size: 22px; font-weight: 800; letter-spacing: .2px; }",
+            "    .sub { margin-top: 6px; color: var(--muted); font-size: 13px; }",
+            "    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }",
+            (
+                "    .card { border: 1px solid var(--border); border-radius: 14px; "
+                "background: var(--card); padding: 12px 12px; }"
+            ),
+            "    .kpi-label { color: var(--muted); font-size: 12px; }",
+            "    .kpi-value { font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }",
+            (
+                "    .section { margin-top: 16px; border: 1px solid var(--border); "
+                "border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }"
+            ),
+            "    .section h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }",
+            "    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }",
+            "    .empty { color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }",
+            "    table.bars { width: 100%; border-collapse: collapse; }",
+            (
+                "    table.bars th { text-align: left; font-size: 12px; color: var(--muted); "
+                "font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }"
+            ),
+            (
+                "    table.bars td { padding: 7px 6px; border-bottom: 1px solid "
+                "rgba(255,255,255,.06); vertical-align: middle; }"
+            ),
+            (
+                "    table.bars td.k { font-family: var(--mono); font-size: 12px; "
+                f"color: var(--text); max-width: {key_width}px; overflow: hidden; "
+                "text-overflow: ellipsis; white-space: nowrap; }"
+            ),
+            (
+                "    table.bars td.v { font-family: var(--mono); font-size: 12px; "
+                f"color: var(--muted); width: {value_width}px; "
+                "}"
+            ),
+            ("    .bar-bg { height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }"),
+            (
+                "    .bar-fill { height: 10px; border-radius: 99px; background: "
+                "linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }"
+            ),
+        ]
+    )
+    if include_pre:
+        lines.append(
+            (
+                "    pre { white-space: pre-wrap; word-break: break-word; "
+                "background: rgba(0,0,0,.22); padding: 12px; border: 1px solid "
+                "rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); "
+                "font-size: 12px; color: var(--text); }"
+            )
+        )
+    if include_notes:
+        lines.extend(
+            [
+                "    .notes { color: var(--muted); font-size: 13px; line-height: 1.6; }",
+                "    .notes ul { margin: 0; padding-left: 18px; }",
+                "    .notes li { margin: 6px 0; }",
+            ]
+        )
+    lines.extend(
+        [
+            "    .footer { margin-top: 18px; color: var(--muted); font-size: 12px; }",
+            (
+                "    @media (max-width: 980px) { .grid { grid-template-columns: "
+                "repeat(2, 1fr); } .two { grid-template-columns: 1fr; } }"
+            ),
+            "  </style>",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _format_generated_at(generated_at: datetime | str | None) -> str:
+    return generated_at.isoformat() if isinstance(generated_at, datetime) else _format_text(generated_at)
+
+
+def _display_identity(*, redact: bool, value: str | None) -> str:
+    return REDACTED_TEXT if redact else _format_text(value)
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _int_from(mapping: Any, key: str) -> int:
+    try:
+        return int(_as_dict(mapping).get(key) or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _text_from(mapping: Any, key: str) -> str:
+    return _format_text(_as_dict(mapping).get(key))
+
+
+def _percentile_int(mapping: Any, key: str, percentile: str) -> int:
+    return _int_from(_as_dict(mapping).get(key), percentile)
+
+
+def _render_redacted_latest_regression(report: dict[str, Any], safe: dict[str, Any]) -> None:
+    regression = report.get("latest_regression_run")
+    if not isinstance(regression, dict):
+        return
+    regression_safe = _select_keys(regression, {"status", "metrics"})
+    summary = _objective_metrics_only(regression.get("summary"))
+    if isinstance(summary, dict) and summary:
+        regression_safe["summary"] = summary
+    if regression_safe:
+        safe["latest_regression_run"] = regression_safe
+
+
+def _render_redacted_retrieval_audit(report: dict[str, Any], safe: dict[str, Any]) -> None:
+    retrieval_audit = report.get("retrieval_audit")
+    if not isinstance(retrieval_audit, dict):
+        return
+    audit_safe = _select_keys(retrieval_audit, {"status", "failure_categories"})
+    if audit_safe:
+        safe["retrieval_audit"] = audit_safe
+
+
+def _render_chunk_targets_table(chunk_targets: Any) -> str:
+    rows: list[str] = []
+    for item in _as_list(chunk_targets):
+        if not isinstance(item, dict):
+            continue
+        suggestions = "; ".join(str(s).strip() for s in _as_list(item.get("suggestions")) if str(s).strip())[:500]
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(_format_text(item.get("label"), item.get("key")) or "unknown")}</td>'
+            f'<td class="v">{escape(_format_text(item.get("status")) or "unknown")}</td>'
+            f'<td class="v">{escape(_format_text(item.get("message")))}</td>'
+            f'<td class="v">{escape(suggestions)}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        (
+            '<table class="bars"><thead><tr><th>Check</th><th>Status</th><th>Message</th>'
+            "<th>Suggestions</th></tr></thead><tbody>"
+        ),
+        rows,
+    )
+
+
+def _render_recall_risk_table(recall_risk_hints: Any) -> str:
+    rows: list[str] = []
+    for item in _as_list(recall_risk_hints):
+        if not isinstance(item, dict):
+            continue
+        observed = _as_dict(item.get("observed"))
+        observed_str = ", ".join(
+            f"{str(key)}={str(value)}"
+            for key, value in sorted(observed.items(), key=lambda kv: (kv[0] is not None, str(kv[0])))[:6]
+        )[:220]
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(_format_text(item.get("label"), item.get("key")) or "unknown")}</td>'
+            f'<td class="v">{escape(_format_text(item.get("severity")) or "warning")}</td>'
+            f'<td class="v">{escape(observed_str)}</td>'
+            f'<td class="v">{escape(_format_text(item.get("message")))}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        (
+            '<table class="bars"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th>'
+            "<th>Message</th></tr></thead><tbody>"
+        ),
+        rows,
+    )
+
+
+def _collect_version_items(versions: Any) -> list[tuple[str, int]]:
+    items: list[tuple[str, int]] = []
+    for item in _as_list(versions):
+        if not isinstance(item, dict):
+            continue
+        count = _int_from(item, "documents")
+        if count <= 0:
+            continue
+        items.append((_optional_text(item.get("pipeline_hash")) or "unknown", count))
+    return items
+
+
+def _render_connector_runs_table(connectors: Any) -> str:
+    rows = [
+        "<tr>"
+        f'<td class="k">{escape(item["connector_id"])}</td>'
+        f'<td class="v">{escape(item["status"])}</td>'
+        f'<td class="v">{escape(_format_text(item["created_at"]))}</td>'
+        "</tr>"
+        for item in _as_list(connectors)[:30]
+        if isinstance(item, dict)
+    ]
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>connector_id</th><th>status</th><th>created_at</th></tr></thead><tbody>',
+        rows,
+    )
+
+
+def _collect_kg_type_items(raw_types: Any) -> list[tuple[str, int]]:
+    items: list[tuple[str, int]] = []
+    for item in _as_list(raw_types)[:50]:
+        if not isinstance(item, dict):
+            continue
+        count = _int_from(item, "count")
+        if count <= 0:
+            continue
+        items.append((_optional_text(item.get("type")) or "unknown", count))
+    return items
+
+
+def _render_kg_top_docs_table(kgd: dict[str, Any], *, redact: bool, include_failures: bool) -> str:
+    if redact:
+        return EMPTY_DATA_DIV
+    rows: list[str] = []
+    for item in _as_list(kgd.get("top_documents"))[:10]:
+        if not isinstance(item, dict):
+            continue
+        did = _format_text(item.get("document_id"))
+        if not did:
+            continue
+        source = _format_text(item.get("source"))
+        if include_failures:
+            rows.append(
+                "<tr>"
+                f'<td class="k">{escape(source or did[:8])}</td>'
+                f'<td class="v">{_fmt_int(_int_from(item, "event_count"))}</td>'
+                f'<td class="v">{_fmt_int(_int_from(item, "skipped_chunks"))}</td>'
+                f'<td class="v">{_fmt_int(_int_from(item, "failed_chunks"))}</td>'
+                "</tr>"
+            )
+            continue
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(source or did[:8])}</td>'
+            f'<td class="v">{_fmt_int(_int_from(item, "event_count"))}</td>'
+            "<td></td>"
+            "</tr>"
+        )
+    header = (
+        '<table class="bars"><thead><tr><th>doc</th><th>events</th><th>skipped</th><th>failed</th></tr></thead><tbody>'
+        if include_failures
+        else '<table class="bars"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>'
+    )
+    return _render_table_or_empty(header, rows)
+
+
+def _render_regression_meta_table(rrd: dict[str, Any], *, include_extended_fields: bool) -> str:
+    metrics = ", ".join(str(item) for item in _as_list(rrd.get("metrics")) if item is not None and str(item).strip())[
+        :200
+    ]
+    rows = [("status", _text_from(rrd, "status")), ("created_at", _text_from(rrd, "created_at"))]
+    if include_extended_fields:
+        rows.extend(
+            [
+                ("run_id", _text_from(rrd, "run_id")),
+                ("metrics", metrics),
+                ("started_at", _text_from(rrd, "started_at")),
+            ]
+        )
+    rows.append(("finished_at", _text_from(rrd, "finished_at")))
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Field</th><th>Value</th><th></th></tr></thead><tbody>',
+        [
+            f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(str(value))}</td><td></td></tr>'
+            for key, value in rows
+            if value
+        ],
+    )
+
+
+def _render_regression_summary_table(rr_summary: Any) -> str:
+    rows = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
+        for key, value in sorted(_as_dict(rr_summary).items(), key=lambda kv: (kv[0] is not None, str(kv[0])))
+        if key is not None
+        and str(key).strip()
+        and (isinstance(value, bool) or (isinstance(value, (int, float)) and not isinstance(value, bool)))
+    ]
+    return _render_table_or_empty(BARS_METRIC_TABLE_HEADER, rows)
+
+
+def _render_rr_slice_table(rr_slices: Any, dim: str, *, redact: bool) -> str:
+    if redact and dim == "directory":
+        return '<div class="empty">已脱敏：directory 不展示</div>'
+    buckets = _as_list(_as_dict(_as_dict(rr_slices).get(dim)).get("buckets"))
+    rows: list[str] = []
+    for bucket in buckets[:10]:
+        if not isinstance(bucket, dict):
+            continue
+        key = _format_text(bucket.get("key"))
+        if not key:
+            continue
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(key)}</td>'
+            f'<td class="v">{_fmt_int(_int_from(bucket, "items"))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("retrieval_recall")))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("retrieval_hit_at_20")))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("retrieval_mrr")))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("abstain_rate")))}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        (
+            '<table class="bars"><thead><tr><th>bucket</th><th>items</th><th>recall</th>'
+            "<th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
+        ),
+        rows,
+        empty='<div class="empty">暂无数据</div>',
+    )
+
+
+def _render_rr_slices_section(
+    rr_summary: Any,
+    *,
+    redact: bool,
+    title: str,
+    rows: tuple[tuple[str, ...], ...],
+) -> str:
+    rr_slices = _as_dict(_as_dict(rr_summary).get("retrieval_slices"))
+    if not rr_slices:
+        return ""
+    blocks: list[str] = [f'<div class="section"><h2>{title}</h2>']
+    for index, dims in enumerate(rows):
+        margin = ' style="margin-top:12px"' if index > 0 else ""
+        blocks.append(f'<div class="two"{margin}>')
+        for dim in dims:
+            blocks.append(f"<div><h2>{dim}</h2>{_render_rr_slice_table(rr_slices, dim, redact=redact)}</div>")
+        blocks.append("</div>")
+    blocks.append("</div>")
+    return "".join(blocks)
+
+
+def _render_governance_audit_section(governance_audit: Any) -> str:
+    ga0 = _as_dict(governance_audit)
+    if not ga0:
+        return ""
+    ga_used_docs = _int_from(ga0, "used_documents")
+    ratio = max(0.0, min(1.0, float(ga0.get("char_reduction_ratio") or 0.0)))
+    note = ""
+    if ga_used_docs > 0:
+        truncated = " (truncated)" if bool(ga0.get("truncated") or False) else ""
+        note = f'<div class="sub" style="margin-top:6px">sample: {escape(_fmt_int(ga_used_docs))}{truncated}</div>'
+    rows = [
+        ("docs_changed", _int_from(ga0, "docs_changed")),
+        ("docs_dropped", _int_from(ga0, "docs_dropped")),
+        (
+            "docs_with_char_stats",
+            _int_from(ga0, "docs_with_char_stats") or _int_from(ga0, "docs_with_parsed_content_persisted"),
+        ),
+        ("docs_with_parsed_content_persisted", _int_from(ga0, "docs_with_parsed_content_persisted")),
+        ("parsed_content_truncated_docs", _int_from(ga0, "parsed_content_truncated_docs")),
+        ("original_chars_total", _int_from(ga0, "original_chars_total")),
+        ("cleaned_chars_total", _int_from(ga0, "cleaned_chars_total")),
+        ("char_reduction_ratio", f"{ratio:.2f} ({ratio * 100.0:.1f}%)"),
+        ("char_reduction_pct_p50", f"{_fmt_int(_percentile_int(ga0, 'char_reduction_pct_percentiles', 'p50'))}%"),
+        ("char_reduction_pct_p90", f"{_fmt_int(_percentile_int(ga0, 'char_reduction_pct_percentiles', 'p90'))}%"),
+        ("char_reduction_pct_p99", f"{_fmt_int(_percentile_int(ga0, 'char_reduction_pct_percentiles', 'p99'))}%"),
+        ("docs_with_governance_quality", _int_from(ga0, "docs_with_governance_quality")),
+        ("density_pct_p50", f"{_fmt_int(_percentile_int(ga0, 'density_pct_percentiles', 'p50'))}%"),
+        ("density_pct_p90", f"{_fmt_int(_percentile_int(ga0, 'density_pct_percentiles', 'p90'))}%"),
+        ("heading_ratio_pct_p50", f"{_fmt_int(_percentile_int(ga0, 'heading_ratio_pct_percentiles', 'p50'))}%"),
+        ("heading_ratio_pct_p90", f"{_fmt_int(_percentile_int(ga0, 'heading_ratio_pct_percentiles', 'p90'))}%"),
+        ("paragraphs_dropped_total", _int_from(ga0, "paragraphs_dropped_total")),
+        ("references_removed_lines_total", _int_from(ga0, "references_removed_lines_total")),
+        ("urls_changed_total", _int_from(ga0, "urls_changed_total")),
+        ("boilerplate_removed_sections_total", _int_from(ga0, "boilerplate_removed_sections_total")),
+        ("boilerplate_removed_lines_total", _int_from(ga0, "boilerplate_removed_lines_total")),
+        ("images_removed_total", _int_from(ga0, "images_removed_total")),
+        ("tables_normalized_total", _int_from(ga0, "tables_normalized_total")),
+        ("table_rows_changed_total", _int_from(ga0, "table_rows_changed_total")),
+        ("code_lines_stripped_total", _int_from(ga0, "code_lines_stripped_total")),
+    ]
+    return (
+        '<div class="section"><h2>Governance Audit（治理效果）</h2>'
+        + note
+        + _render_metric_value_table(rows)
+        + "</div>"
+    )
+
+
+def _render_precheck_dir_table(items: Any, *, redact: bool, max_rows: int = 20) -> str:
+    if redact:
+        return '<div class="empty">已脱敏：目录结构不展示</div>'
+    rows: list[str] = []
+    for item in _as_list(items)[: max(0, int(max_rows))]:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(str(item.get("path") or "."))}</td>'
+            f'<td class="v">{_fmt_int(_int_from(item, "risky_files"))}/{_fmt_int(_int_from(item, "total_files"))}</td>'
+            f'<td class="v">{escape(_fmt_bytes(item.get("total_size_bytes") or 0))}</td>'
+            "</tr>"
+        )
+    return _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Directory</th><th>Risky/Total</th><th>Bytes</th></tr></thead><tbody>',
+        rows,
+    )
+
+
+def _render_precheck_samples_section(samples: Any) -> str:
+    samples_dict = _as_dict(samples)
+    if not samples_dict:
+        return ""
+
+    def _render_file_list(items: Any, *, max_rows: int = 60) -> str:
+        rows = [
+            (
+                f'<tr><td class="k">{escape(item["name"])}</td>'
+                f'<td class="v">{escape(item["file_type"])}</td>'
+                f'<td class="v">{escape(_fmt_bytes(item.get("file_size")))}</td></tr>'
+            )
+            for item in _as_list(items)[: max(0, int(max_rows))]
+            if isinstance(item, dict)
+        ]
+        return _render_table_or_empty(
+            '<table class="bars"><thead><tr><th>File</th><th>Type</th><th>Size</th></tr></thead><tbody>',
+            rows,
+            empty=EMPTY_BRIEF_DIV,
+        )
+
+    needs_rows = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{_fmt_int(len(value))}</td></tr>'
+        for key, value in sorted(
+            _as_dict(samples_dict.get("needs_review")).items(), key=lambda kv: (kv[0] is not None, str(kv[0]))
+        )
+        if isinstance(value, list) and value
+    ]
+    needs_table = _render_table_or_empty(
+        '<table class="bars"><thead><tr><th>Bucket</th><th>Samples</th></tr></thead><tbody>',
+        needs_rows,
+        empty=EMPTY_BRIEF_DIV,
+    )
+    return (
+        '<div class="section two">'
+        "<div><h2>代表性样本（按格式/大小/PDF类型分层）</h2>"
+        + _render_file_list(samples_dict.get("representative"), max_rows=60)
+        + "</div><div><h2>需复核样本（按问题分桶）</h2>"
+        + needs_table
+        + "</div></div>"
+    )
+
+
+def _render_precheck_tips_html(
+    *,
+    summary: dict[str, Any],
+    pdf_scanned: int,
+    p90: int,
+    tok_p90: int,
+    pii: list[tuple[str, int]],
+    secrets: list[tuple[str, int]],
+) -> str:
+    findings = _as_list(summary.get("findings"))
+    finding_counts = {
+        _format_text(item.get("key")).lower(): _int_from(item, "count")
+        for item in findings
+        if isinstance(item, dict) and _format_text(item.get("key"))
+    }
+    tips: list[str] = []
+    if pdf_scanned > 0:
+        tips.append(
+            f"检测到疑似扫描 PDF：{_fmt_int(pdf_scanned)}（建议启用 OCR 解析链路，并优先复核 pdf_unknown/低密度页面）"
+        )
+    if _int_from(finding_counts, "gibberish_text") > 0:
+        tips.append(
+            "检测到疑似乱码/编码问题（抽样信号）：建议检查源文件编码、解析器后备策略，并优先启用治理低密度过滤/隔离"
+        )
+    if _int_from(finding_counts, "empty_text") > 0:
+        tips.append("存在“未提取到文本”的文件：若这些文件需要入库，建议调整解析/路由（PDF 走 OCR、二进制先转换）")
+    if tok_p90 >= 20_000:
+        tips.append(
+            (
+                f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size "
+                "或使用结构化 chunk_strategy（markdown_header/outline），"
+                "入库后用 chunk-preview + gate 验证分布"
+            )
+        )
+    elif tok_p90 >= 5_000:
+        tips.append(
+            (
+                f"P90 文本长度偏长（~{_fmt_int(tok_p90)} tokens）：建议检查 "
+                "chunk_size/overlap，避免 chunk 数过多导致成本/延迟上升"
+            )
+        )
+    elif p90 > 0:
+        tips.append(
+            "tokens 分布为空（可能未启用文本抽取或文件类型非文本）；"
+            "如需成本估算，建议开启 enable_text_extract 并重跑预检"
+        )
+    if pii:
+        tips.append("检测到 PII 命中（来自抽样/治理信号）：建议启用治理脱敏/隔离规则（governance_pii_*）并人工复核样本")
+    if secrets:
+        tips.append(
+            "检测到 Secrets/Token 命中（来自抽样/治理信号）：建议启用 secrets "
+            "脱敏/隔离（governance_secrets_*）并人工复核样本"
+        )
+    if not tips:
+        tips.append("暂无显著风险信号；建议先用 chunk-preview 小样本调参，再进行小批量入库验证（可回归）")
+    return '<div class="notes"><ul>' + "".join(f"<li>{escape(tip)}</li>" for tip in tips) + "</ul></div>"
+
+
+def _render_precheck_section(precheck_summary: Any, *, redact: bool) -> str:
+    pre = _as_dict(precheck_summary)
+    if not pre:
+        return ""
+    pre_total_files = _int_from(pre, "total_files")
+    pre_total_bytes = _int_from(pre, "total_size_bytes")
+    pdf0 = _as_dict(pre.get("pdf_scan"))
+    pre_meta = _render_field_value_table(
+        [
+            ("scan_run_id", REDACTED_TEXT if redact else _text_from(pre, "scan_run_id")),
+            ("generated_at", _text_from(pre, "generated_at")),
+            ("total_files", _fmt_int(pre_total_files)),
+            ("total_size", _fmt_bytes(pre_total_bytes)),
+            (
+                "pdf_scan (scanned/text/unknown)",
+                f"{_fmt_int(_int_from(pdf0, 'scanned'))}/"
+                f"{_fmt_int(_int_from(pdf0, 'not_scanned'))}/"
+                f"{_fmt_int(_int_from(pdf0, 'unknown'))}",
+            ),
+        ]
+    )
+    pre_finding_rows = _collect_labeled_counts(pre.get("findings"), skip_nonpositive=True)
+    format_table = _render_bar_table(_as_items(pre.get("by_file_type"), top=12), total=max(1, pre_total_files))
+    file_size_histogram = _render_histogram(pre.get("file_size_histogram"))
+    token_histogram = _render_histogram(pre.get("token_histogram"))
+    language_table = _render_bar_table(_as_items(pre.get("language_mix"), top=4), total=max(1, pre_total_files))
+    findings_table = _render_bar_table(pre_finding_rows[:12], total=max(1, pre_total_files))
+    pii_table = _render_bar_table(_as_items(pre.get("pii_hits_total"), top=12), total=max(1, pre_total_files))
+    secrets_table = _render_bar_table(
+        _as_items(pre.get("secrets_hits_total"), top=12),
+        total=max(1, pre_total_files),
+    )
+    directory_table = _render_precheck_dir_table(pre.get("directory_stats"), redact=redact, max_rows=20)
+    return "\n".join(
+        [
+            '<div class="section">',
+            "<h2>Precheck（入库前摸底）</h2>",
+            '<div class="two">',
+            f"<div><h2>概览</h2>{pre_meta}</div>",
+            f"<div><h2>格式分布（Top）</h2>{format_table}</div>",
+            "</div>",
+            '<div class="two" style="margin-top:12px">',
+            f"<div><h2>文件大小分布</h2>{file_size_histogram}</div>",
+            f"<div><h2>长度分布（tokens）</h2>{token_histogram}</div>",
+            "</div>",
+            '<div class="two" style="margin-top:12px">',
+            f"<div><h2>语言分布（抽样）</h2>{language_table}</div>",
+            f"<div><h2>问题清单（可操作）</h2>{findings_table}</div>",
+            "</div>",
+            '<div class="two" style="margin-top:12px">',
+            f"<div><h2>PII 命中（次数）</h2>{pii_table}</div>",
+            f"<div><h2>Secrets/Token 命中（次数）</h2>{secrets_table}</div>",
+            "</div>",
+            '<div style="margin-top:12px">',
+            f"<h2>目录结构（Top 风险聚集区）</h2>{directory_table}",
+            "</div></div>",
+        ]
+    )
+
+
+def _scrub_report_for_redaction(report: Any) -> dict:
+    """
+    Best-effort scrubber for `redact=True` HTML exports.
+
+    Goal: prevent leaking dataset identity / paths / internal IDs via the embedded Raw JSON block.
+    We keep objective, aggregate metrics that are already rendered elsewhere in the HTML.
+    """
+
+    if not isinstance(report, dict):
+        return {"redacted": True}
+
+    safe: dict[str, Any] = {"redacted": True}
+    if "dataset_name" in report:
+        safe["dataset_name"] = REDACTED_TEXT
+    if "dataset_id" in report:
+        safe["dataset_id"] = REDACTED_TEXT
+
+    for output_key, source_key, keys in (
+        ("profile", "profile", _REDACTION_PROFILE_KEYS),
+        ("compliance", "compliance", _REDACTION_COMPLIANCE_KEYS),
+        ("kg_stats", "kg_stats", _REDACTION_KG_KEYS),
+        ("precheck_summary", "precheck_summary", _REDACTION_PRECHECK_KEYS),
+    ):
+        section = _select_keys(report.get(source_key), keys)
+        if section:
+            safe[output_key] = section
+
+    for section in ("governance_metrics", "governance_audit", "chunk_quality_metrics"):
+        objective = _objective_metrics_only(report.get(section))
+        if isinstance(objective, dict) and objective:
+            safe[section] = objective
+
+    _render_redacted_latest_regression(report, safe)
+    _render_redacted_retrieval_audit(report, safe)
+    return safe
+
+
+def render_dataset_profile_html(
+    *,
+    title: str,
+    dataset_name: str | None,
+    dataset_id: str | None,
+    generated_at: datetime | str | None,
+    summary: dict,
+    redact: bool = False,
+) -> str:
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    ts = _format_generated_at(generated_at)
+
+    total_docs = int(summary.get("total_documents") or 0)
+    total_bytes = int(summary.get("total_size_bytes") or 0)
+    p50 = _percentile_int(summary, "length_percentiles", "p50")
+    p90 = _percentile_int(summary, "length_percentiles", "p90")
+    chunk_p50 = _percentile_int(summary, "chunk_count_percentiles", "p50")
+    avg_chunk_p50 = _percentile_int(summary, "avg_chunk_chars_percentiles", "p50")
+    chunk_len_p50 = _percentile_int(summary, "chunk_length_percentiles", "p50")
+    chunk_tok_p50 = _percentile_int(summary, "chunk_token_percentiles", "p50")
+    avg_chunk_tok_p50 = _percentile_int(summary, "avg_chunk_tokens_percentiles", "p50")
+    cov_p50 = _percentile_int(summary, "chunk_coverage_percentiles", "p50")
+    waste_p50 = _percentile_int(summary, "chunk_overlap_waste_percentiles", "p50")
+
+    pdf = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
+    pdf_scanned = int(pdf.get("scanned") or 0)
+    pdf_text = int(pdf.get("not_scanned") or 0)
+    pdf_unknown = int(pdf.get("unknown") or 0)
+
+    by_type = _as_items(summary.get("by_file_type"), top=12)
+    by_status = _as_items(summary.get("by_status"), top=12)
+    lang = _as_items(summary.get("language_mix"), top=12)
+    dirs = [] if redact else _as_items(summary.get("by_directory"), top=12)
+    qual = _as_items(summary.get("by_quality_bucket"), top=12)
+    pii = _as_items(summary.get("pii_hits_total"), top=12)
+    secrets = _as_items(summary.get("secrets_hits_total"), top=12)
+
+    finding_rows = _collect_labeled_counts(summary.get("findings"))
+
+    cards = [
+        ("文档总数", _fmt_int(total_docs)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("P50 长度（chars）", _fmt_int(p50)),
+        ("P90 长度（chars）", _fmt_int(p90)),
+        ("PDF 扫描/文本/未知", f"{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}"),
+        ("P50 chunks/doc", _fmt_int(chunk_p50)),
+        ("P50 avg chunk（chars）", _fmt_int(avg_chunk_p50)),
+        ("P50 chunk len（chars）", _fmt_int(chunk_len_p50)),
+        ("P50 avg chunk（tokens）", _fmt_int(avg_chunk_tok_p50)),
+        ("P50 chunk len（tokens）", _fmt_int(chunk_tok_p50)),
+        ("P50 coverage（%）", f"{_fmt_int(cov_p50)}%"),
+        ("P50 overlap waste（%）", f"{_fmt_int(waste_p50)}%"),
+    ]
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(56,189,248,.16)",
+            key_width=260,
+            value_width=90,
+            include_emoji_fonts=True,
+            include_status_colors=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts),
+        "",
+        _render_grid(cards),
+        "",
+        _render_section_block("格式分布（Top）", _render_bar_table(by_type, total=total_docs)),
+        "",
+        _render_two_column_section(
+            "状态分布",
+            _render_bar_table(by_status, total=total_docs),
+            "问题清单（可操作）",
+            _render_bar_table(finding_rows, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "长度分布（chars）",
+            _render_histogram(summary.get("length_histogram")),
+            "文件大小分布",
+            _render_histogram(summary.get("file_size_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "页数分布",
+            _render_histogram(summary.get("page_number_histogram")),
+            "解析质量分布",
+            _render_histogram(summary.get("parse_quality_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "语言分布",
+            _render_bar_table(lang, total=max(1, total_docs)),
+            "Chunk 数分布（每文档）",
+            _render_histogram(summary.get("chunk_count_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "目录分布（Top-level）",
+            _render_bar_table(dirs, total=max(1, total_docs)),
+            "质量桶分布",
+            _render_bar_table(qual, total=max(1, total_docs)),
+        ),
+        "",
+        _render_section_block(
+            "Chunk 长度分布（chars，chunk-level）",
+            _render_histogram(summary.get("chunk_length_histogram")),
+        ),
+        "",
+        _render_section_block(
+            "平均 Chunk 长度分布（chars/chunk，每文档）",
+            _render_histogram(summary.get("avg_chunk_chars_histogram")),
+        ),
+        "",
+        _render_section_block(
+            "Chunk 长度分布（tokens，chunk-level）",
+            _render_histogram(summary.get("chunk_token_histogram")),
+        ),
+        "",
+        _render_section_block(
+            "平均 Chunk 长度分布（tokens/chunk，每文档）",
+            _render_histogram(summary.get("avg_chunk_tokens_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "Chunk coverage 分布（%）",
+            _render_histogram(summary.get("chunk_coverage_histogram")),
+            "Overlap waste 分布（%）",
+            _render_histogram(summary.get("chunk_overlap_waste_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "PII 命中（次数）",
+            _render_bar_table(pii, total=max(1, sum(v for _, v in pii) if pii else 1)),
+            "Secrets/Token 命中（次数）",
+            _render_bar_table(secrets, total=max(1, sum(v for _, v in secrets) if secrets else 1)),
+        ),
+        "",
+        '    <div class="footer">',
+        "      <div>说明：报告仅展示客观统计（不做主观评分）。PII/Secrets 为抽样/治理阶段统计，需人工复核。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+def render_dataset_report_html(
+    *,
+    title: str,
+    dataset_name: str | None,
+    dataset_id: str | None,
+    generated_at: datetime | str | None,
+    report: dict,
+    redact: bool = False,
+) -> str:
+    """
+    Render a dataset report bundle as a single-file HTML.
+
+    This intentionally stays simple (offline-friendly) and includes the raw JSON
+    payload for auditing/sharing.
+    """
+    import json
+
+    if redact:
+        report = _scrub_report_for_redaction(report)
+    report_dict = report if isinstance(report, dict) else {}
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    ts = _format_generated_at(generated_at)
+
+    prof = _as_dict(report_dict.get("profile"))
+    total_docs = _int_from(prof, "total_documents")
+    total_bytes = _int_from(prof, "total_size_bytes")
+    by_status = _as_items(prof.get("by_status"), top=12)
+    by_type = _as_items(prof.get("by_file_type"), top=12)
+    finding_rows = _collect_labeled_counts(prof.get("findings"), skip_nonpositive=True)
+
+    prov = _as_dict(prof.get("parsing_provenance"))
+    prov_docs = _int_from(prov, "docs_with_provenance")
+    prov_by_backend = _as_items(prov.get("by_resolved_backend"), top=12)
+    prov_meta_table = _render_metric_value_table(
+        [
+            ("docs_with_provenance", prov_docs),
+            ("fallback_docs", _int_from(prov, "fallback_docs")),
+            ("p50_elapsed_ms", _percentile_int(prov, "elapsed_ms_percentiles", "p50")),
+            ("p90_elapsed_ms", _percentile_int(prov, "elapsed_ms_percentiles", "p90")),
+        ]
+    )
+    chunk_targets_table = _render_chunk_targets_table(prof.get("chunk_targets"))
+    recall_risk_table = _render_recall_risk_table(prof.get("recall_risk_hints"))
+
+    compd = _as_dict(report_dict.get("compliance"))
+    quarantined = _int_from(compd, "quarantined_documents")
+    failed = _int_from(compd, "failed_documents")
+
+    version_items = _collect_version_items(report_dict.get("pipeline_versions"))
+    connector_runs_table = _render_connector_runs_table(report_dict.get("connectors"))
+
+    cqmd = _as_dict(report_dict.get("chunk_quality_metrics"))
+    gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
+    coverage_low = _int_from(cqmd, "coverage_low_documents")
+    overlap_high = _int_from(cqmd, "overlap_waste_high_documents")
+    tokens_missing = _int_from(cqmd, "token_stats_missing_documents")
+
+    kgd = _as_dict(report_dict.get("kg_stats"))
+    kg_events = _int_from(kgd, "events")
+    kg_entities = _int_from(kgd, "entities")
+    kg_links = _int_from(kgd, "links")
+    kg_events_with_chunk = _int_from(kgd, "events_with_chunk_id")
+    kg_events_with_page = _int_from(kgd, "events_with_page_ref")
+    kg_links_with_prov = _int_from(kgd, "links_with_provenance")
+    kg_links_with_page = _int_from(kgd, "links_with_page_ref")
+    kg_docs_extracted = _int_from(kgd, "documents_with_kg_extracted_at")
+    kg_docs_with_events = _int_from(kgd, "documents_with_kg_events")
+    kg_event_count_from_docs = _int_from(kgd, "event_count_from_documents")
+    kg_skipped_chunks = _int_from(kgd, "skipped_chunks_total")
+    kg_skipped_short = _int_from(kgd, "skipped_short_chunks_total")
+    kg_failed_chunks = _int_from(kgd, "failed_chunks_total")
+    kg_retry_chunks = _int_from(kgd, "retry_chunks_total")
+    kg_updated_at = _text_from(kgd, "updated_at")
+    kg_type_items = _collect_kg_type_items(kgd.get("entity_types"))
+    kg_top_docs_table = _render_kg_top_docs_table(kgd, redact=redact, include_failures=True)
+
+    rrd = _as_dict(report_dict.get("latest_regression_run"))
+    rr_summary = _as_dict(rrd.get("summary"))
+    rr_meta_table = _render_regression_meta_table(rrd, include_extended_fields=True)
+    rr_summary_table = _render_regression_summary_table(rr_summary)
+    rr_slices_section = _render_rr_slices_section(
+        rr_summary,
+        redact=redact,
+        title="Retrieval Slices",
+        rows=(("file_type", "language"), ("hit_type", "quality"), ("pipeline_hash", "directory")),
+    )
+
+    retrieval_audit_section = _render_retrieval_audit_section(report_dict)
+    raw_report = _report_with_safe_retrieval_audit(report_dict)
+    raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
+    raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
+
+    cards = [
+        ("文档总数", _fmt_int(total_docs)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("隔离（Quarantine）", _fmt_int(quarantined)),
+        ("失败（Failed）", _fmt_int(failed)),
+        ("Pipeline Filter", escape(str(report.get("pipeline_hash") or "all"))),
+    ]
+    kg_metrics = [
+        ("events", kg_events),
+        ("entities", kg_entities),
+        ("links", kg_links),
+        ("events_with_chunk_id", kg_events_with_chunk),
+        ("events_with_page_ref", kg_events_with_page),
+        ("links_with_provenance", kg_links_with_prov),
+        ("links_with_page_ref", kg_links_with_page),
+        ("documents_with_kg_extracted_at", kg_docs_extracted),
+        ("documents_with_kg_events", kg_docs_with_events),
+        ("event_count_from_documents", kg_event_count_from_docs),
+        ("skipped_chunks_total", kg_skipped_chunks),
+        ("skipped_short_chunks_total", kg_skipped_short),
+        ("failed_chunks_total", kg_failed_chunks),
+        ("retry_chunks_total", kg_retry_chunks),
+        ("updated_at", kg_updated_at),
+    ]
+    chunk_risk_rows = [
+        ("coverage_low", coverage_low),
+        ("overlap_waste_high", overlap_high),
+        ("token_stats_missing", tokens_missing),
+    ]
+    prov_section_body = _render_bar_table(prov_by_backend, total=max(1, prov_docs))
+    prov_section_body += '\n        <div style="margin-top:10px">'
+    prov_section_body += prov_meta_table
+    prov_section_body += "</div>"
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(56,189,248,.16)",
+            key_width=320,
+            value_width=160,
+            include_pre=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts),
+        "",
+        _render_grid(cards),
+        "",
+        _render_two_column_section(
+            "状态分布",
+            _render_bar_table(by_status, total=max(1, total_docs)),
+            "格式分布（Top）",
+            _render_bar_table(by_type, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "问题清单（可操作）",
+            _render_bar_table(finding_rows, total=max(1, total_docs)),
+            "Parsing / Routing（Docs）",
+            prov_section_body,
+        ),
+        "",
+        _render_two_column_section(
+            "Chunk Quality Gate（文档数）",
+            _render_bar_table(gate_grades, total=max(1, total_docs)),
+            "Chunk 风险计数（best-effort）",
+            _render_bar_table(chunk_risk_rows, total=max(1, total_docs)),
+        ),
+        "",
+        _render_section_block("Chunk Targets（分布目标检查）", chunk_targets_table),
+        "",
+        _render_section_block("召回风险摘要（Recall Risk Hints）", recall_risk_table),
+        "",
+        _render_two_column_section(
+            "Knowledge Graph（KG）",
+            _render_field_value_table(kg_metrics, field_label="Metric"),
+            "实体类型（Top）",
+            _render_bar_table(kg_type_items, total=max(1, sum(v for _, v in kg_type_items) if kg_type_items else 1)),
+        ),
+        "",
+        _render_section_block("KG Drilldown（Top Documents）", kg_top_docs_table),
+        "",
+        _render_two_column_section("评估（Regression Run）", rr_meta_table, "评估 Summary", rr_summary_table),
+        "",
+        retrieval_audit_section,
+        "",
+        rr_slices_section,
+        "",
+        _render_section_block("Pipeline 版本分布", _render_bar_table(version_items, total=max(1, total_docs))),
+        "",
+        _render_section_block("最近 Connector Runs", connector_runs_table),
+        "",
+        _render_section_block("Raw JSON（用于审计/分享）", f"<pre>{escape(raw_json)}</pre>"),
+        "",
+        '    <div class="footer">',
+        "      <div>说明：报告聚合现有画像/治理/入库指标，以可分享的 HTML + JSON 输出为目标。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+def render_rag_audit_html(
+    *,
+    title: str,
+    dataset_name: str | None,
+    dataset_id: str | None,
+    generated_at: datetime | str | None,
+    report: dict,
+    redact: bool = False,
+) -> str:
+    """
+    Render a one-page RAG audit HTML bundle.
+
+    Goal:
+    - Merge profile + governance + chunk + KG + eval into a single offline-friendly report.
+    - Keep it objective: show numbers and distributions; avoid subjective scoring.
+    """
+    import json
+
+    if redact:
+        report = _scrub_report_for_redaction(report)
+    report_dict = report if isinstance(report, dict) else {}
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    ts = _format_generated_at(generated_at)
+
+    prof = _as_dict(report_dict.get("profile"))
+    total_docs = _int_from(prof, "total_documents")
+    total_bytes = _int_from(prof, "total_size_bytes")
+    by_status = _as_items(prof.get("by_status"), top=12)
+    by_type = _as_items(prof.get("by_file_type"), top=12)
+    p50 = _percentile_int(prof, "length_percentiles", "p50")
+    p90 = _percentile_int(prof, "length_percentiles", "p90")
+    chunk_tok_p50 = _percentile_int(prof, "chunk_token_percentiles", "p50")
+    cov_p50 = _percentile_int(prof, "chunk_coverage_percentiles", "p50")
+
+    compd = _as_dict(report_dict.get("compliance"))
+    quarantined = _int_from(compd, "quarantined_documents")
+    failed = _int_from(compd, "failed_documents")
+
+    govd = _as_dict(report_dict.get("governance_metrics"))
+    drop_reasons = _as_items(govd.get("drop_reasons_total"), top=12)
+    rule_packs = _as_items(govd.get("rule_packs_docs"), top=12)
+    governance_audit_section = _render_governance_audit_section(report_dict.get("governance_audit"))
+
+    cqmd = _as_dict(report_dict.get("chunk_quality_metrics"))
+    gate_grades = _as_items(cqmd.get("gate_grade_docs"), top=12)
+    coverage_low = _int_from(cqmd, "coverage_low_documents")
+    overlap_high = _int_from(cqmd, "overlap_waste_high_documents")
+    tokens_missing = _int_from(cqmd, "token_stats_missing_documents")
+
+    precheck_section = _render_precheck_section(report_dict.get("precheck_summary"), redact=redact)
+
+    kgd = _as_dict(report_dict.get("kg_stats"))
+    kg_events = _int_from(kgd, "events")
+    kg_entities = _int_from(kgd, "entities")
+    kg_links = _int_from(kgd, "links")
+    kg_events_with_chunk = _int_from(kgd, "events_with_chunk_id")
+    kg_events_with_page = _int_from(kgd, "events_with_page_ref")
+    kg_links_with_prov = _int_from(kgd, "links_with_provenance")
+    kg_links_with_page = _int_from(kgd, "links_with_page_ref")
+    kg_docs_extracted = _int_from(kgd, "documents_with_kg_extracted_at")
+    kg_docs_with_events = _int_from(kgd, "documents_with_kg_events")
+    kg_event_count_from_docs = _int_from(kgd, "event_count_from_documents")
+    kg_skipped_chunks = _int_from(kgd, "skipped_chunks_total")
+    kg_skipped_short = _int_from(kgd, "skipped_short_chunks_total")
+    kg_failed_chunks = _int_from(kgd, "failed_chunks_total")
+    kg_retry_chunks = _int_from(kgd, "retry_chunks_total")
+    kg_updated_at = _text_from(kgd, "updated_at")
+    kg_types = _collect_kg_type_items(kgd.get("entity_types"))
+    kg_top_docs_table = _render_kg_top_docs_table(kgd, redact=redact, include_failures=False)
+
+    rrd = _as_dict(report_dict.get("latest_regression_run"))
+    rr_status = _text_from(rrd, "status")
+    rr_created_at = _text_from(rrd, "created_at")
+    rr_finished_at = _text_from(rrd, "finished_at")
+    rr_summary = _as_dict(rrd.get("summary"))
+    rr_summary_table = _render_regression_summary_table(rr_summary)
+    rr_slices_section = _render_rr_slices_section(
+        rr_summary,
+        redact=redact,
+        title="Retrieval Slices（file_type / language / directory）",
+        rows=(("file_type", "language"), ("directory",)),
+    )
+
+    retrieval_audit_section = _render_retrieval_audit_section(report_dict)
+    raw_report = _report_with_safe_retrieval_audit(report_dict)
+    raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
+    raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
+
+    cards = [
+        ("文档总数", _fmt_int(total_docs)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("隔离（Quarantine）", _fmt_int(quarantined)),
+        ("失败（Failed）", _fmt_int(failed)),
+        ("P50 长度（chars）", _fmt_int(p50)),
+        ("P90 长度（chars）", _fmt_int(p90)),
+        ("P50 chunk len（tokens）", _fmt_int(chunk_tok_p50)),
+        ("P50 coverage（%）", f"{_fmt_int(cov_p50)}%"),
+    ]
+    governance_metrics = [
+        ("docs_with_governance", _int_from(govd, "docs_with_governance")),
+        ("rules_applied_total", _int_from(govd, "rules_applied_total")),
+        ("dropped_documents_total", _int_from(govd, "dropped_documents_total")),
+    ]
+    kg_metrics = [
+        ("events", kg_events),
+        ("entities", kg_entities),
+        ("links", kg_links),
+        ("events_with_chunk_id", kg_events_with_chunk),
+        ("events_with_page_ref", kg_events_with_page),
+        ("links_with_provenance", kg_links_with_prov),
+        ("links_with_page_ref", kg_links_with_page),
+        ("documents_with_kg_extracted_at", kg_docs_extracted),
+        ("documents_with_kg_events", kg_docs_with_events),
+        ("event_count_from_documents", kg_event_count_from_docs),
+        ("skipped_chunks_total", kg_skipped_chunks),
+        ("skipped_short_chunks_total", kg_skipped_short),
+        ("failed_chunks_total", kg_failed_chunks),
+        ("retry_chunks_total", kg_retry_chunks),
+        ("updated_at", kg_updated_at),
+    ]
+    rr_rows = [("status", rr_status), ("created_at", rr_created_at), ("finished_at", rr_finished_at)]
+    chunk_risk_rows = [
+        ("coverage_low", coverage_low),
+        ("overlap_waste_high", overlap_high),
+        ("token_stats_missing", tokens_missing),
+    ]
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(34,197,94,.12)",
+            key_width=320,
+            value_width=160,
+            include_pre=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts),
+        "",
+        _render_grid(cards),
+        "",
+        _render_two_column_section(
+            "状态分布",
+            _render_bar_table(by_status, total=max(1, total_docs)),
+            "格式分布（Top）",
+            _render_bar_table(by_type, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "长度分布（chars）",
+            _render_histogram(prof.get("length_histogram")),
+            "文件大小分布",
+            _render_histogram(prof.get("file_size_histogram")),
+        ),
+        "",
+        precheck_section,
+        "",
+        _render_two_column_section(
+            "Chunk Quality Gate（文档数）",
+            _render_bar_table(gate_grades, total=max(1, total_docs)),
+            "Chunk 风险计数（best-effort）",
+            _render_bar_table(chunk_risk_rows, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "Governance Metrics",
+            _render_metric_value_table(governance_metrics),
+            "Drop Reasons（Top）",
+            _render_bar_table(drop_reasons, total=max(1, sum(v for _, v in drop_reasons) if drop_reasons else 1)),
+        ),
+        "",
+        _render_section_block("Rule Packs（Docs）", _render_bar_table(rule_packs, total=max(1, total_docs))),
+        "",
+        governance_audit_section,
+        "",
+        _render_two_column_section(
+            "Knowledge Graph（KG）",
+            _render_field_value_table(kg_metrics, field_label="Metric"),
+            "实体类型（Top）",
+            _render_bar_table(kg_types, total=max(1, sum(v for _, v in kg_types) if kg_types else 1)),
+        ),
+        "",
+        _render_section_block("KG Drilldown（Top Documents）", kg_top_docs_table),
+        "",
+        _render_two_column_section(
+            "评估（Latest Regression Run）",
+            _render_field_value_table(rr_rows),
+            "评估 Summary",
+            rr_summary_table,
+        ),
+        "",
+        retrieval_audit_section,
+        "",
+        rr_slices_section,
+        "",
+        _render_section_block("Raw JSON（用于审计/分享）", f"<pre>{escape(raw_json)}</pre>"),
+        "",
+        '    <div class="footer">',
+        "      <div>说明：本报告聚合 profile/governance/chunk/KG/eval 的客观指标，用于审计与回归对比。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+def render_precheck_html(
+    *,
+    title: str,
+    dataset_name: str | None,
+    dataset_id: str | None,
+    root_path: str | None,
+    generated_at: datetime | str | None,
+    summary: dict,
+    samples: dict | None = None,
+    redact: bool = False,
+) -> str:
+    name = _display_identity(redact=redact, value=dataset_name)
+    dsid = _display_identity(redact=redact, value=dataset_id)
+    rp = _display_identity(redact=redact, value=root_path)
+    ts = _format_generated_at(generated_at)
+
+    total_files = _int_from(summary, "total_files")
+    total_bytes = _int_from(summary, "total_size_bytes")
+    p50 = _percentile_int(summary, "length_percentiles", "p50")
+    p90 = _percentile_int(summary, "length_percentiles", "p90")
+    tok_p50 = _percentile_int(summary, "token_percentiles", "p50")
+    tok_p90 = _percentile_int(summary, "token_percentiles", "p90")
+
+    pdf = _as_dict(summary.get("pdf_scan"))
+    pdf_scanned = _int_from(pdf, "scanned")
+    pdf_text = _int_from(pdf, "not_scanned")
+    pdf_unknown = _int_from(pdf, "unknown")
+
+    by_type = _as_items(summary.get("by_file_type"), top=12)
+    lang = _as_items(summary.get("language_mix"), top=4)
+    pii = _as_items(summary.get("pii_hits_total"), top=12)
+    secrets = _as_items(summary.get("secrets_hits_total"), top=12)
+    primary_tags = _as_items(summary.get("primary_tag_counts"), top=12)
+    processing_paths = _as_items(summary.get("processing_path_counts"), top=12)
+    tips_html = _render_precheck_tips_html(
+        summary=summary,
+        pdf_scanned=pdf_scanned,
+        p90=p90,
+        tok_p90=tok_p90,
+        pii=pii,
+        secrets=secrets,
+    )
+    finding_rows = _collect_labeled_counts(summary.get("findings"))
+    pdf_det = _as_dict(summary.get("pdf_detection"))
+    samples_section = _render_precheck_samples_section(samples)
+
+    cards = [
+        ("文件总数", _fmt_int(total_files)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("P50 文本长度（chars）", _fmt_int(p50)),
+        ("P90 文本长度（chars）", _fmt_int(p90)),
+        ("PDF 扫描/文本/未知", f"{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}"),
+        ("P50 文本长度（tokens）", _fmt_int(tok_p50)),
+        ("P90 文本长度（tokens）", _fmt_int(tok_p90)),
+    ]
+    pdf_detection_rows = [
+        ("sample_pages", str(pdf_det["sample_pages"])),
+        ("scan_max_chars_per_page", str(pdf_det["scan_max_chars_per_page"])),
+        ("text_min_chars_per_page", str(pdf_det["text_min_chars_per_page"])),
+        ("scan_ratio_threshold", str(pdf_det["scan_ratio_threshold"])),
+    ]
+    pdf_detection_table = _render_field_value_table(pdf_detection_rows, field_label="Key")
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(34,197,94,.12)",
+            key_width=260,
+            value_width=90,
+            include_notes=True,
+            include_emoji_fonts=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts, root_path=rp),
+        "",
+        _render_grid(cards),
+        "",
+        _render_section_block("格式分布（Top）", _render_bar_table(by_type, total=total_files)),
+        "",
+        _render_two_column_section(
+            "长度分布（chars）",
+            _render_histogram(summary.get("length_histogram")),
+            "长度分布（tokens）",
+            _render_histogram(summary.get("token_histogram")),
+        ),
+        "",
+        _render_section_block("语言分布（抽样）", _render_bar_table(lang, total=max(1, total_files))),
+        "",
+        _render_section_block("文件大小分布", _render_histogram(summary.get("file_size_histogram"))),
+        "",
+        _render_section_block(
+            "目录结构（Top 风险聚集区）",
+            _render_precheck_dir_table(summary.get("directory_stats"), redact=redact, max_rows=20),
+        ),
+        "",
+        _render_two_column_section(
+            "主标签分布",
+            _render_bar_table(primary_tags, total=max(1, total_files)),
+            "处理路径建议",
+            _render_bar_table(processing_paths, total=max(1, total_files)),
+        ),
+        "",
+        _render_two_column_section(
+            "PII 命中（次数）",
+            _render_bar_table(pii, total=max(1, sum(v for _, v in pii) if pii else 1)),
+            "Secrets/Token 命中（次数）",
+            _render_bar_table(secrets, total=max(1, sum(v for _, v in secrets) if secrets else 1)),
+        ),
+        "",
+        _render_section_block("问题清单（可操作）", _render_bar_table(finding_rows, total=max(1, total_files))),
+        "",
+        _render_section_block("入库建议（best-effort）", tips_html),
+        "",
+        _render_section_block("PDF 判定参数（透明阈值）", pdf_detection_table),
+        "",
+        samples_section,
+        "",
+        '    <div class="footer">',
+        "      <div>说明：预检扫描以“入库前摸底”为目标，输出客观统计与待复核清单；不做主观评分。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"

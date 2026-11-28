@@ -316,7 +316,7 @@ def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.
             "success": False,
             "reason": "missing_local_llm_api_key_api_base_or_model",
             "api_key_source": api_key_source,
-            "model": model or None,
+            "model": (model),
             "api_base_configured": bool(api_base),
         }
         evidence.check("llm_provider_health_recorded", True, provider_health=evidence.provider_health)
@@ -334,7 +334,9 @@ def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.
     try:
         data = response.json()
     except Exception:
-        data = {"success": False, "message": response.text[:400]}
+        data = {"success": False, "message": response.text}
+    if not isinstance(data, dict):
+        fail(f"LLM provider probe returned {type(data).__name__}, expected an object")
 
     success = response.status_code == 200 and bool(data.get("success"))
     evidence.provider_health = {
@@ -345,7 +347,7 @@ def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.
         "model": model,
         "api_base": api_base,
         "api_key_source": api_key_source,
-        "message": str(data.get("message") or "")[:400],
+        "message": str(data.get("message") or "").replace(api_key, "[redacted]")[:400],
     }
     evidence.check("llm_provider_health_recorded", True, provider_health=evidence.provider_health)
 
@@ -461,6 +463,7 @@ def upload_documents(
             "elapsed_ms": round(elapsed_ms, 2),
             "metadata": payload.get("doc_metadata") or payload.get("metadata") or {},
         }
+        evidence.uploads.append(upload_row)
         if per_upload_timeout_sec > 0:
             # Keep the readiness chain deterministic on local/dev stacks where
             # background parsing + KG extraction can otherwise exhaust DB pool
@@ -468,7 +471,6 @@ def upload_documents(
             terminal = wait_for_document_terminal(api, doc_id, timeout_sec=per_upload_timeout_sec)
             upload_row["terminal_status"] = terminal.get("status")
             upload_row["terminal_wait_ms"] = terminal.get("_detail_elapsed_ms")
-        evidence.uploads.append(upload_row)
     evidence.check("uploaded_at_least_10_documents", len(doc_ids) >= 10, count=len(doc_ids))
     return doc_ids
 
@@ -557,9 +559,10 @@ def run_chunk_previews(api: Api, dataset_id: str, corpus_files: list[Path], evid
                 )
             response_status = int(response.status_code)
             response_text = response.text[:800]
-            payload = response.json() if response.status_code == 200 else {}
-            chunks = payload.get("chunks") if isinstance(payload, dict) else None
-            count = len(chunks or [])
+            parsed = response.json() if response_status == 200 else None
+            payload = parsed if isinstance(parsed, dict) else {}
+            chunks = payload.get("chunks")
+            count = len(chunks) if isinstance(chunks, list) else 0
             attempts.append(
                 {
                     "attempt": attempt,
@@ -1181,13 +1184,11 @@ def main() -> int:
         downloaded = download_corpus(corpus_dir, evidence)
         generated = generate_office_files(corpus_dir, evidence)
         files = downloaded + generated
-        api = Api(args.base_url, args.tenant_id, args.user_id, timeout=float(args.timeout))
+        api = Api(args.base_url, args.tenant_id, args.user_id, timeout=args.timeout)
         ensure_runtime_settings(api, evidence)
-        probe_llm_provider(api, evidence, timeout_sec=float(args.llm_probe_timeout))
+        probe_llm_provider(api, evidence, timeout_sec=args.llm_probe_timeout)
         dataset_id = create_dataset(api, evidence)
-        per_upload_timeout = (
-            float(args.processing_timeout) if args.per_upload_timeout is None else float(args.per_upload_timeout)
-        )
+        per_upload_timeout = args.processing_timeout if args.per_upload_timeout is None else args.per_upload_timeout
         doc_ids = upload_documents(
             api,
             dataset_id,
@@ -1195,7 +1196,7 @@ def main() -> int:
             evidence,
             per_upload_timeout_sec=per_upload_timeout,
         )
-        wait_for_documents(api, doc_ids, evidence, timeout_sec=float(args.processing_timeout))
+        wait_for_documents(api, doc_ids, evidence, timeout_sec=args.processing_timeout)
         run_chunk_previews(api, dataset_id, files, evidence)
         ensure_kg(api, dataset_id, doc_ids, evidence)
         warm_retrieval_path(api, dataset_id, evidence)

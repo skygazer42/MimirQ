@@ -1,194 +1,49 @@
 'use client'
 
-import type { RefObject } from 'react'
-import { BarChart3, Download, FileUp, Loader2, RefreshCw, Search, ShieldCheck, TestTube2, X } from 'lucide-react'
-
-import type { EvidenceItem, EvidenceSuite } from '@/types'
+import { BarChart3, Search, ShieldCheck, X } from '@/components/icons'
+import type { EvidenceItem } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Panel } from '@/components/ui/panel'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { Link } from '@/i18n/navigation'
 
-type SuiteCounts = {
-  total: number
-  draft: number
-  reviewed: number
-  approved: number
-  archived: number
-}
+const ITEM_STATUS_LABELS = { draft: '草稿', reviewed: '已复核', approved: '已通过', archived: '已归档' }
 
 type ItemDetailPanelProps = {
   selectedItem: EvidenceItem | null
-  selectedSuite: EvidenceSuite | null
-  suiteCounts: SuiteCounts | null
-  importingQAFaq: boolean
-  qaFaqInputRef: RefObject<HTMLInputElement | null>
+  itemAction: 'review' | 'approve' | 'archive' | null
   statusBadgeVariant: (status: EvidenceItem['status']) => 'outline' | 'secondary' | 'soft' | 'destructive'
-  onImportQAFaqFile: (file: File) => void
-  onOpenHardcases: () => void
-  onOpenDashboard: () => void
-  onExportSuite: () => void
-  onExportLtrTraining: () => void
-  onSyncSuite: () => void
   onReviewItem: (itemId: string) => void
   onApproveItem: (itemId: string) => void
   onOpenWhyMissed: () => void
-  onArchiveItem: (itemId: string) => void
+  onArchiveItem: (itemId: string) => Promise<void>
 }
 
 export function ItemDetailPanel({
   selectedItem,
-  selectedSuite,
-  suiteCounts,
-  importingQAFaq,
-  qaFaqInputRef,
+  itemAction,
   statusBadgeVariant,
-  onImportQAFaqFile,
-  onOpenHardcases,
-  onOpenDashboard,
-  onExportSuite,
-  onExportLtrTraining,
-  onSyncSuite,
   onReviewItem,
   onApproveItem,
   onOpenWhyMissed,
   onArchiveItem,
 }: Readonly<ItemDetailPanelProps>) {
   return (
-    <Panel className="p-4 xl:col-span-5">
-      <div className="flex flex-col gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground">Detail</div>
-          <div className="mt-1 text-xs text-muted-foreground text-pretty">
-            {selectedItem ? (
-              <>
-                Item：<span className="font-mono">{String(selectedItem.id).slice(0, 8)}</span>
-              </>
-            ) : (
-              '请选择一个 Item'
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={qaFaqInputRef}
-            type="file"
-            accept=".csv,.jsonl,text/csv,application/x-ndjson"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onImportQAFaqFile(file)
-            }}
-          />
-          <Button variant="outline" size="sm" className="gap-2" onClick={onOpenHardcases} disabled={!selectedSuite?.id}>
-            <TestTube2 className="size-4" aria-hidden="true" />
-            Hardcases
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={onOpenDashboard} disabled={!selectedSuite?.id}>
-            <BarChart3 className="size-4" aria-hidden="true" />
-            Dashboard
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={onExportSuite} disabled={!selectedSuite?.id}>
-            <Download className="size-4" aria-hidden="true" />
-            导出 Suite
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={onExportLtrTraining}
-            disabled={!selectedSuite?.id}
-            title="Export LTR training rows + hard negatives (ZIP)"
-          >
-            <Download className="size-4" aria-hidden="true" />
-            导出 LTR
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => qaFaqInputRef.current?.click()}
-            disabled={!selectedSuite?.id || importingQAFaq}
-          >
-            {importingQAFaq ? (
-              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-            ) : (
-              <FileUp className="size-4" aria-hidden="true" />
-            )}
-            导入 QA/FAQ
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" className="gap-2" disabled={!selectedSuite?.id}>
-                <RefreshCw className="size-4" aria-hidden="true" />
-                Sync 回归
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>同步到回归用例库？</AlertDialogTitle>
-                <AlertDialogDescription className="text-pretty">
-                  将该 Suite 中 <span className="font-mono">approved</span> 状态的 Items upsert 到回归用例库（question + reference_sources）。
-                  如果已有绑定的 case，会更新它。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={onSyncSuite} disabled={!selectedSuite?.id}>
-                  同步
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </div>
-
-      {suiteCounts ? (
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <Badge variant="outline" className="font-mono tabular-nums">
-            total {suiteCounts.total}
-          </Badge>
-          <Badge variant="outline" className="font-mono tabular-nums">
-            draft {suiteCounts.draft}
-          </Badge>
-          <Badge variant="secondary" className="font-mono tabular-nums">
-            reviewed {suiteCounts.reviewed}
-          </Badge>
-          <Badge variant="soft" className="font-mono tabular-nums">
-            approved {suiteCounts.approved}
-          </Badge>
-          <Badge variant="outline" className="font-mono tabular-nums">
-            archived {suiteCounts.archived}
-          </Badge>
-        </div>
-      ) : null}
-
-      <Separator className="my-4" />
-
+    <Panel variant="seamless" padding="none" className="border-0 bg-transparent">
       {selectedItem ? (
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground text-pretty">{selectedItem.query}</div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
-                <Badge variant={statusBadgeVariant(selectedItem.status)} className="uppercase">
-                  {selectedItem.status}
+              <div className="text-sm font-medium text-foreground text-pretty">{selectedItem.query}</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant={statusBadgeVariant(selectedItem.status)} className="font-normal">
+                  {ITEM_STATUS_LABELS[selectedItem.status]}
                 </Badge>
                 {selectedItem.regression_case_id ? (
                   <Badge variant="outline" className="max-w-[220px] truncate">
-                    case {String(selectedItem.regression_case_id).slice(0, 8)}
+                    回归用例 {selectedItem.regression_case_id.slice(0, 8)}
                   </Badge>
                 ) : null}
               </div>
@@ -196,48 +51,57 @@ export function ItemDetailPanel({
 
             <div className="flex flex-wrap items-center gap-2">
               {selectedItem.status === 'draft' ? (
-                <Button size="sm" variant="outline" className="gap-2" onClick={() => onReviewItem(String(selectedItem.id))}>
+                <LoadingButton
+                  loading={itemAction === 'review'}
+                  disabled={itemAction !== null}
+                  size="sm"
+                  variant="default"
+                  className="gap-2"
+                  onClick={() => onReviewItem(selectedItem.id)}
+                >
                   <Search className="size-4" aria-hidden="true" />
-                  Review
-                </Button>
+                  标记已复核
+                </LoadingButton>
               ) : null}
               {selectedItem.status === 'reviewed' ? (
-                <Button size="sm" className="gap-2" onClick={() => onApproveItem(String(selectedItem.id))}>
+                <LoadingButton
+                  loading={itemAction === 'approve'}
+                  disabled={itemAction !== null}
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => onApproveItem(selectedItem.id)}
+                >
                   <ShieldCheck className="size-4" aria-hidden="true" />
-                  Approve
-                </Button>
+                  通过复核
+                </LoadingButton>
               ) : null}
               <Button size="sm" variant="outline" className="gap-2" onClick={onOpenWhyMissed}>
                 <BarChart3 className="size-4" aria-hidden="true" />
-                Why missed?
+                排查漏召
               </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="destructive" className="gap-2" disabled={selectedItem.status === 'archived'}>
-                    <X className="size-4" aria-hidden="true" />
-                    归档
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>归档该 Item？</AlertDialogTitle>
-                    <AlertDialogDescription className="text-pretty">
-                      归档后不会从数据库删除，但默认列表会隐藏。该操作可用于标记“已废弃/不再维护”的证据。
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => onArchiveItem(String(selectedItem.id))}>归档</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <ConfirmDialog
+                title="归档该条目？"
+                description="归档后条目会保留，可通过“已归档”筛选查看。"
+                confirmLabel="归档"
+                onConfirm={() => onArchiveItem(selectedItem.id)}
+              >
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-destructive hover:text-destructive"
+                  disabled={selectedItem.status === 'archived' || itemAction !== null}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                  归档
+                </Button>
+              </ConfirmDialog>
             </div>
           </div>
 
           {selectedItem.expected_answer ? (
             <div>
-              <div className="mb-1 text-xs font-medium text-muted-foreground">Expected Answer (optional)</div>
-              <Panel className="p-3">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">参考答案</div>
+              <Panel variant="seamless" padding="none" className="border-0 bg-transparent py-2">
                 <div className="text-sm text-pretty whitespace-pre-wrap">{selectedItem.expected_answer}</div>
               </Panel>
             </div>
@@ -245,10 +109,10 @@ export function ItemDetailPanel({
 
           {selectedItem.tags?.length ? (
             <div>
-              <div className="mb-1 text-xs font-medium text-muted-foreground">Tags</div>
+              <div className="mb-1 text-xs font-medium text-muted-foreground">标签</div>
               <div className="flex flex-wrap gap-2">
                 {selectedItem.tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="font-mono text-[11px]">
+                  <Badge key={tag} variant="outline" className="text-xs font-normal">
                     {tag}
                   </Badge>
                 ))}
@@ -256,56 +120,65 @@ export function ItemDetailPanel({
             </div>
           ) : null}
 
-          {selectedItem.source_metadata && Object.keys(selectedItem.source_metadata).length ? (
-            <div>
-              <div className="mb-1 text-xs font-medium text-muted-foreground">Source Metadata</div>
-              <Panel className="p-3">
-                <ScrollArea className="h-[180px] pr-2">
-                  <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words">
-                    {JSON.stringify(selectedItem.source_metadata, null, 2)}
-                  </pre>
-                </ScrollArea>
-              </Panel>
-            </div>
-          ) : null}
+          <section aria-label="引用来源">
+            <h3 className="mb-1 text-xs font-medium text-muted-foreground">引用来源</h3>
+            {selectedItem.reference_sources?.length ? (
+              selectedItem.reference_sources.map((reference, index) => (
+                <article key={index} className="space-y-2 border-b border-border/60 py-3">
+                  <div className="flex flex-col items-start justify-between gap-2 sm:flex-row">
+                    <h4 className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
+                      {reference.label || `引用 ${index + 1}（未提供来源名称）`}
+                    </h4>
+                    <p className="text-xs tabular-nums text-muted-foreground">
+                      {typeof reference.page_number === 'number' ? `第 ${reference.page_number} 页` : null}
+                      {typeof reference.chunk_index === 'number' ? ` · 切片 ${reference.chunk_index}` : null}
+                    </p>
+                  </div>
+                  {reference.quote ? (
+                    <blockquote className="whitespace-pre-wrap break-words text-sm leading-7">
+                      {reference.quote}
+                    </blockquote>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">未保存引用原文。</p>
+                  )}
+                  <Link
+                    className="inline-block text-xs underline underline-offset-4"
+                    href={`/knowledge/${reference.document_id}/health`}
+                  >
+                    查看来源文档
+                  </Link>
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">文档与切片标识</summary>
+                    <p className="mt-2 break-all font-mono leading-6">
+                      文档：{reference.document_id}
+                      <br />
+                      切片：{reference.chunk_id}
+                    </p>
+                  </details>
+                </article>
+              ))
+            ) : (
+              <p className="py-2 text-sm text-muted-foreground">尚未保存引用来源。</p>
+            )}
+          </section>
 
-          <div>
-            <div className="mb-1 text-xs font-medium text-muted-foreground">Reference Sources</div>
-            <Panel className="p-3">
-              <div className="space-y-2">
-                {(selectedItem.reference_sources || []).length ? (
-                  (selectedItem.reference_sources || []).map((reference) => (
-                    <div key={`${String(reference.document_id)}:${String(reference.chunk_id)}`} className="rounded-md border border-border/60 p-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-xs font-mono text-foreground">
-                            {String(reference.document_id).slice(0, 8)}:{String(reference.chunk_id).slice(0, 8)}
-                          </div>
-                          {reference.label ? (
-                            <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">{reference.label}</div>
-                          ) : null}
-                        </div>
-                        <div className="flex-shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-                          {typeof reference.page_number === 'number' ? `P.${reference.page_number}` : null}
-                          {typeof reference.chunk_index === 'number' ? ` · #${reference.chunk_index}` : null}
-                        </div>
-                      </div>
-                      {reference.quote ? (
-                        <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{reference.quote}</div>
-                      ) : null}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-muted-foreground text-pretty">暂无 reference_sources。</div>
-                )}
-              </div>
-            </Panel>
-          </div>
+          {selectedItem.source_metadata && Object.keys(selectedItem.source_metadata).length ? (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">原始来源信息（JSON）</summary>
+              <pre
+                className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono"
+                tabIndex={0}
+                aria-label="原始来源信息（JSON）"
+              >
+                {JSON.stringify(selectedItem.source_metadata, null, 2)}
+              </pre>
+            </details>
+          ) : null}
 
           {selectedItem.notes ? (
             <div>
-              <div className="mb-1 text-xs font-medium text-muted-foreground">Notes</div>
-              <Panel className="p-3">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">复核备注</div>
+              <Panel variant="seamless" padding="none" className="border-0 bg-transparent py-2">
                 <div className="text-sm text-pretty whitespace-pre-wrap">{selectedItem.notes}</div>
               </Panel>
             </div>
@@ -313,7 +186,7 @@ export function ItemDetailPanel({
         </div>
       ) : (
         <div className="text-sm text-muted-foreground text-pretty">
-          选择一个 Item 查看详情。你可以在 draft 状态下修改内容，然后提交 review → approve → sync。
+          选择一个条目查看问题、答案与引用，再标记已复核。
         </div>
       )}
     </Panel>

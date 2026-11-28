@@ -1,4 +1,4 @@
-import { GraphNode, GraphLink } from './graph-parser'
+import type { GraphNode, GraphLink } from './graph-types'
 
 type GraphEndpoint = string | number | { id?: string | number | null } | null | undefined
 type GraphLinkLike = Omit<GraphLink, 'source' | 'target'> & {
@@ -26,80 +26,54 @@ function getGraphLinkId(link: GraphLinkLike, index: number): string {
   return `link-${index}`
 }
 
-/**
- * Finds the shortest path between two nodes using Breadth-First Search (BFS).
- * Returns a set of Node IDs and Link IDs that make up the path.
- */
-export const findShortestPath = (
-  nodes: GraphNode[],
-  links: GraphLinkLike[],
+type Neighbor = { nodeId: string; linkId: string }
+type PathStep = { nodeId: string; previous?: { step: PathStep; linkId: string } }
+
+export function findShortestPath(
+  nodes: readonly GraphNode[],
+  links: readonly GraphLinkLike[],
   startNodeId: string,
-  endNodeId: string
-): { nodeIds: string[]; linkIds: string[] } | null => {
+  endNodeId: string,
+): { nodeIds: string[]; linkIds: string[] } | null {
   if (startNodeId === endNodeId) return { nodeIds: [startNodeId], linkIds: [] }
 
-  // Build Adjacency List
-  const adj: { [key: string]: { neighbor: string; linkId: string }[] } = {}
-  
-  nodes.forEach(node => {
-    adj[node.id] = []
-  })
+  const adjacency = new Map<string, Neighbor[]>(nodes.map(({ id }) => [id, []]))
+  function addNeighbor(nodeId: string, neighbor: Neighbor) {
+    const neighbors = adjacency.get(nodeId)
+    if (neighbors === undefined) adjacency.set(nodeId, [neighbor])
+    else neighbors.push(neighbor)
+  }
 
-  links.forEach((link, index) => {
-    // Handle both object ref (d3-force after init) and string ref (raw data)
+  for (const [index, link] of links.entries()) {
     const sourceId = getGraphEndpointId(link.source)
     const targetId = getGraphEndpointId(link.target)
-    if (!sourceId || !targetId) return
-    
-    // Assuming undirected graph for path finding convenience, or directed if preferred.
-    // Let's treat it as Undirected for easier navigation in knowledge graphs.
-    if (!adj[sourceId]) adj[sourceId] = []
-    if (!adj[targetId]) adj[targetId] = []
-
-    // Store index or a unique ID if available. Using index as ID fallback.
+    if (sourceId === '' || targetId === '') continue
     const linkId = getGraphLinkId(link, index)
-    // Ensure we attach this ID to the link object in the main component if not present
-    
-    adj[sourceId].push({ neighbor: targetId, linkId })
-    adj[targetId].push({ neighbor: sourceId, linkId })
-  })
+    addNeighbor(sourceId, { nodeId: targetId, linkId })
+    addNeighbor(targetId, { nodeId: sourceId, linkId })
+  }
 
-  // BFS
-  const queue: string[] = [startNodeId]
-  const visited = new Set<string>([startNodeId])
-  const parent: { [key: string]: { id: string; linkId: string } } = {}
-
-  while (queue.length > 0) {
-    const curr = queue.shift()
-    if (!curr) continue
-
-    if (curr === endNodeId) {
-      // Path found, reconstruct it
-      const pathNodeIds: string[] = []
-      const pathLinkIds: string[] = []
-      let temp = endNodeId
-      
-      while (temp !== startNodeId) {
-        pathNodeIds.unshift(temp)
-        const p = parent[temp]
-        pathLinkIds.unshift(p.linkId)
-        temp = p.id
+  const queue: PathStep[] = [{ nodeId: startNodeId }]
+  const visited = new Set([startNodeId])
+  for (const step of queue) {
+    if (step.nodeId === endNodeId) {
+      const nodeIds = [endNodeId]
+      const linkIds: string[] = []
+      let current = step
+      while (current.previous !== undefined) {
+        linkIds.push(current.previous.linkId)
+        current = current.previous.step
+        nodeIds.push(current.nodeId)
       }
-      pathNodeIds.unshift(startNodeId)
-      
-      return { nodeIds: pathNodeIds, linkIds: pathLinkIds }
+      return { nodeIds: nodeIds.reverse(), linkIds: linkIds.reverse() }
     }
 
-    if (adj[curr]) {
-      for (const edge of adj[curr]) {
-        if (!visited.has(edge.neighbor)) {
-          visited.add(edge.neighbor)
-          parent[edge.neighbor] = { id: curr, linkId: edge.linkId }
-          queue.push(edge.neighbor)
-        }
-      }
+    for (const { nodeId, linkId } of adjacency.get(step.nodeId) ?? []) {
+      if (visited.has(nodeId)) continue
+      visited.add(nodeId)
+      queue.push({ nodeId, previous: { step, linkId } })
     }
   }
 
-  return null // No path found
+  return null
 }

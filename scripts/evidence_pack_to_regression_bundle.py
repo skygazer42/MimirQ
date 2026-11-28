@@ -10,7 +10,6 @@ This is intended as an operator workflow helper:
 import argparse
 import json
 import sys
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +40,7 @@ def _coerce_tags(raw: Any) -> list[str]:
     return out
 
 
-def _iter_dicts(raw: Any) -> Iterable[dict[str, Any]]:
+def _iter_dicts(raw: Any) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
@@ -73,9 +72,7 @@ def _truncate_quote(value: Any) -> str | None:
 def _normalize_reference_sources(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for src in raw or []:
-        if not isinstance(src, dict):
-            continue
+    for src in raw:
         doc_id = src.get("document_id")
         chunk_id = src.get("chunk_id")
         if not doc_id or not chunk_id:
@@ -106,7 +103,7 @@ def _build_reference_sources_from_citations(pack: dict[str, Any]) -> list[dict[s
     if not selected:
         return []
 
-    citations = list(_iter_dicts(pack.get("citations")))
+    citations = _iter_dicts(pack.get("citations"))
     refs: list[dict[str, Any]] = []
     for c in citations:
         cid = str(c.get("chunk_id") or "").strip()
@@ -134,7 +131,7 @@ def _resolve_bundle_tags(tags: list[str] | None) -> list[str]:
 
 
 def _resolve_reference_sources(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    refs = _normalize_reference_sources(list(_iter_dicts(pack.get("reference_sources"))))
+    refs = _normalize_reference_sources(_iter_dicts(pack.get("reference_sources")))
     if refs:
         return refs
     return _build_reference_sources_from_citations(pack)
@@ -258,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[evidence_pack_to_regression_bundle] ERROR: {str(exc)[:200]}", file=sys.stderr)
         return 2
 
-    indent = 2 if bool(args.pretty) else None
+    indent = 2 if args.pretty else None
     out = json.dumps(bundle, ensure_ascii=False, indent=indent) + "\n"
     if args.out_path:
         Path(args.out_path).write_text(out, encoding="utf-8")

@@ -1,7 +1,11 @@
 import { AxiosHeaders } from 'axios'
 import { describe, expect, it } from 'vitest'
 
-import { applyPreferredLanguageAxiosHeader, resolveBrowserPreferredLanguage, withPreferredLanguageHeader } from './preferred-language'
+import {
+  applyPreferredLanguageAxiosHeader,
+  resolveBrowserPreferredLanguage,
+  withPreferredLanguageHeader,
+} from './preferred-language'
 
 describe('preferred language headers', () => {
   it('uses the first valid browser language', () => {

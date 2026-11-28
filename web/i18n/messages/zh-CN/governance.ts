@@ -1,23 +1,23 @@
 const governanceMessages = {
-DataGovernancePage: {
+  DataGovernancePage: {
     loading: {
-      message: '正在加载数据治理面板...',
-      srMessage: 'Loading data governance panel',
+      message: '正在加载数据治理面板…',
+      srMessage: '正在加载数据治理面板',
     },
   },
-GovernanceProfilesRoutePage: {
+  GovernanceProfilesRoutePage: {
     loading: {
-      message: '正在加载治理 Profiles...',
-      srMessage: 'Loading governance profiles page',
+      message: '正在加载治理配置…',
+      srMessage: '正在加载治理配置页面',
     },
   },
-GovernanceCommonLinesRoutePage: {
+  GovernanceCommonLinesRoutePage: {
     loading: {
-      message: '正在加载重复内容治理...',
-      srMessage: 'Loading common lines learning page',
+      message: '正在加载重复内容治理…',
+      srMessage: '正在加载重复内容治理页面',
     },
   },
-DataAnnotator: {
+  DataAnnotator: {
     header: {
       title: '数据标注',
     },
@@ -57,7 +57,7 @@ DataAnnotator: {
       activePrompt: '请在右侧选中文本...',
     },
     auto: {
-      action: 'AI 自动打标',
+      action: '自动打标',
       running: '正在自动打标...',
       providerTitle: '打标方式',
       providers: {
@@ -66,16 +66,12 @@ DataAnnotator: {
           description: '关键词、动作项、风险线索，零模型成本',
         },
         llm: {
-          label: 'AI 语义',
+          label: '语义模型',
           description: '摘要、主题、分类与重点短句',
         },
         compliance: {
           label: '敏感合规',
           description: 'PII、密钥和实体线索优先',
-        },
-        hybrid: {
-          label: '混合增强',
-          description: '本地规则 + AI 语义 + 敏感检测',
         },
       },
       empty: '当前文档没有可标注内容',
@@ -98,19 +94,19 @@ DataAnnotator: {
       deleteAnnotation: '删除 {label} 标注 {start}-{end}',
     },
   },
-DataClassifier: {
+  DataClassifier: {
     header: {
       title: '分类归档',
     },
     actions: {
-      autoClassify: 'AI 分类',
+      autoClassify: '自动分类',
       analyzing: '分析中...',
     },
     auto: {
       empty: '请先选择或输入文档内容',
-      success: '后端已返回 {count} 个分类标签',
-      noTags: '后端未返回可用分类标签',
-      failed: '后端自动分类失败',
+      success: '已更新分类与标签',
+      noTags: '未识别到可用标签',
+      failed: '自动分类失败，请重试',
     },
     sections: {
       category: '文档分类',
@@ -168,7 +164,7 @@ DataClassifier: {
     ],
     tags: {
       inputPlaceholder: '输入新标签...',
-      aiSuggested: 'AI 推荐标签',
+      aiSuggested: '推荐标签',
       showMore: '显示更多...',
     },
     summary: {
@@ -182,13 +178,13 @@ DataClassifier: {
       addTagWithValue: '添加标签 {tag}',
     },
   },
-QualityChecker: {
+  QualityChecker: {
     header: {
       title: '质量检测',
     },
     actions: {
-      backendScanOn: '后端检测：开',
-      backendScanOff: '后端检测：关',
+      backendScanOn: '检测已开启',
+      backendScanOff: '检测已关闭',
       scan: '重新扫描',
       scanning: '扫描中 {progress}%',
     },
@@ -270,14 +266,14 @@ QualityChecker: {
     },
     backendIssues: {
       countSuffix: '（{count}）',
-      detected: '后端检测：{message}',
-      suggestedPatch: '后端建议：可优化治理配置（{count} 项）',
-      failed: '后端检测失败（可忽略）',
+      detected: '检测结果：{message}',
+      suggestedPatch: '{count} 项治理建议',
+      failed: '检测未完成',
     },
   },
-DataCleaner: {
+  DataCleaner: {
     header: {
-      title: '智能清洗配置',
+      title: '文档清洗设置',
     },
     inputFormat: {
       label: '输入格式',
@@ -296,7 +292,7 @@ DataCleaner: {
     },
     actions: {
       reset: '重置内容',
-      apply: '执行智能清洗',
+      apply: '运行清洗',
       applying: '清洗中...',
     },
     llm: {
@@ -326,7 +322,7 @@ DataCleaner: {
       filtered: '清洗后文档被过滤：{reason}',
       qualityFilterTriggered: '质量过滤触发',
       llmCleanFailedKeepPreview: 'LLM 清洗失败，已保留规则清洗结果',
-      backendCleanFailed: '后端清洗失败',
+      backendCleanFailed: '清洗失败',
     },
     diff: {
       title: '内容差异对比',
@@ -341,7 +337,7 @@ DataCleaner: {
         referencesRemovedLines: 'references_removed_lines',
       },
       issuesTitle: '检测到的问题（Best-effort）',
-      applySuggestionHint: '已生成治理建议，可一键应用到当前配置（会覆盖对应字段）。',
+      applySuggestionHint: '应用将覆盖当前对应配置。',
       applySuggestion: '应用建议',
       noIssueHint: '暂无明显问题提示。',
       unifiedDiff: 'Unified Diff',
@@ -354,7 +350,7 @@ DataCleaner: {
       info: 'INFO',
     },
   },
-DataGovernancePanel: {
+  DataGovernancePanel: {
     header: {
       title: '数据治理',
       subtitle: '清洗、标注与结构修复',
@@ -368,7 +364,7 @@ DataGovernancePanel: {
         description: '检测文档质量与格式问题',
       },
       clean: {
-        label: '智能清洗',
+        label: '文档清洗',
         description: '修复格式错误与乱码',
       },
       annotate: {
@@ -422,10 +418,10 @@ DataGovernancePanel: {
     emptyUpload: {
       openUploadDialog: '打开文件上传对话框',
       uploadingTitle: '正在解析文档...',
-      idleTitle: '拖拽文档至全息工作台',
-      uploadingDescription: 'AI 正在分析文档结构并提取内容，请稍候...',
-      idleDescription: '支持 PDF, Word, Excel, TXT, MD, ZIP 等格式。即刻开启智能治理流程。',
-      dropCta: '拖入文件或点击选择，系统会自动解析目录、章节和清洗线索。',
+      idleTitle: '上传文档',
+      uploadingDescription: '正在解析文档结构并提取内容…',
+      idleDescription: '支持 PDF、Word、Excel、TXT、MD、ZIP 格式。',
+      dropCta: '拖入文件或点击选择',
       scanRingLabel: 'Governance Intake',
       structureTitle: '文档结构',
       structureEmptyTitle: '等待生成目录',
@@ -444,7 +440,7 @@ DataGovernancePanel: {
       selectLocalFiles: '选择本地文件',
       cancelParsing: '取消解析',
       stages: {
-        parse: '智能解析',
+        parse: '文档解析',
         quality: '质量检测',
         clean: '自动清洗',
       },
@@ -523,7 +519,7 @@ DataGovernancePanel: {
       deleteFile: '删除文件：{filename}',
       toggleChunkFile: '选择待切块文档：{filename}',
     },
-  }
+  },
 } as const
 
 export default governanceMessages

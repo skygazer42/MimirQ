@@ -2,7 +2,7 @@ import asyncio
 import uuid
 
 import starlette.status as _starlette_status
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 if not hasattr(_starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
@@ -10,9 +10,10 @@ if not hasattr(_starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
 if not hasattr(_starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     _starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = _starlette_status.HTTP_422_UNPROCESSABLE_ENTITY
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
+from app.services.identity.rbac import TenantPermissions
+from app.services.runtime import readiness_cache as health_readiness
 
 
 class _DummyDB:
@@ -25,8 +26,8 @@ def _override_get_db():  # noqa: ANN202
 
 def _build_app() -> tuple[FastAPI, object, object, object]:
     import app.main as main_module
-    from app.api.v1 import health as health_module
-    from app.api.v1 import meta as meta_module
+    from app.api.v1.system import health as health_module
+    from app.api.v1.system import meta as meta_module
 
     app = FastAPI()
     app.get("/health")(main_module.health_check)
@@ -36,8 +37,29 @@ def _build_app() -> tuple[FastAPI, object, object, object]:
 
 
 def _reset_caches(health_module: object) -> None:
-    health_module._ready_cache.update({"ts": 0.0, "payload": None, "status": 200, "key": None})  # type: ignore[attr-defined]
+    health_readiness.invalidate_ready_cache()
     health_module._redis_client_slot.invalidate()  # type: ignore[attr-defined]
+
+
+def _assert_observability_gate(app, module, path, monkeypatch):
+    client = TestClient(app)
+    assert client.get(path).status_code == 401
+
+    tenant_id = uuid.uuid4()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = lambda: tenant_id
+    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
+
+    def deny(_db, tenant, account_id, permission, *, detail):
+        assert tenant == tenant_id
+        assert account_id == "test-account"
+        assert permission == TenantPermissions.OBSERVABILITY_READ
+        raise HTTPException(status_code=403, detail=detail)
+
+    monkeypatch.setattr(module, "ensure_tenant_permission", deny)
+    assert client.get(path).status_code == 403
+    monkeypatch.setattr(module, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
+    return client
 
 
 def test_public_version_metadata_matches_package_version() -> None:
@@ -76,7 +98,7 @@ def test_public_health_endpoints_expose_only_minimal_status_fields(monkeypatch):
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -122,7 +144,7 @@ def test_public_ready_endpoint_preserves_probe_status_without_detail_leak(monkey
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -141,14 +163,12 @@ def test_public_ready_endpoint_preserves_probe_status_without_detail_leak(monkey
     assert response.json() == {"ok": False, "status": "unready"}
 
 
-def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatch):  # noqa: ANN001
+def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatch, tmp_path):  # noqa: ANN001
     app, _main_module, health_module, _meta_module = _build_app()
     _reset_caches(health_module)
 
-    unauthenticated = TestClient(app).get("/api/v1/health/details")
-    assert unauthenticated.status_code == 401
-
-    monkeypatch.setattr(health_module, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
+    client = _assert_observability_gate(app, health_module, "/api/v1/health/details", monkeypatch)
+    monkeypatch.setattr(health_module.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(
         health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
     )
@@ -170,7 +190,7 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -181,15 +201,10 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
         raising=True,
     )
     monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
-    monkeypatch.setattr(health_module, "_get_redis_client", lambda: object(), raising=True)
     monkeypatch.setattr(health_module, "_ready_cache_key", lambda: ("test",), raising=True)
-    monkeypatch.setattr(health_module, "_READY_CACHE_TTL_SEC", 0.0, raising=False)
+    monkeypatch.setattr(health_readiness, "_READY_CACHE_TTL_SEC", 0.0)
 
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[get_tenant_id] = lambda: uuid.uuid4()
-    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
-
-    response = TestClient(app).get("/api/v1/health/details")
+    response = client.get("/api/v1/health/details")
 
     assert response.status_code == 200
     assert response.json()["database"] == {"status": "ok"}
@@ -223,7 +238,7 @@ def test_public_ready_endpoint_honors_runtime_warmup_requirement_without_detail_
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -250,15 +265,8 @@ def test_public_meta_is_trimmed_and_details_are_admin_gated(monkeypatch):  # noq
     assert set(public.json().keys()) == {"name", "api_version", "build", "features"}
     assert set(public.json()["features"].keys()) == {"auth_mode"}
 
-    unauthenticated = TestClient(app).get("/api/v1/meta/details")
-    assert unauthenticated.status_code == 401
-
-    monkeypatch.setattr(meta_module, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[get_tenant_id] = lambda: uuid.uuid4()
-    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
-
-    detailed = TestClient(app).get("/api/v1/meta/details")
+    client = _assert_observability_gate(app, meta_module, "/api/v1/meta/details", monkeypatch)
+    detailed = client.get("/api/v1/meta/details")
 
     assert detailed.status_code == 200
     assert "features" in detailed.json()
@@ -282,7 +290,7 @@ def test_health_and_meta_openapi_contracts_are_explicitly_typed() -> None:
 
 
 def test_ready_object_storage_probe_prefers_current_document_store(monkeypatch):  # noqa: ANN001
-    from app.api.v1 import health as health_module
+    from app.api.v1.system import health as health_module
     from app.storage.object import runtime as object_runtime
 
     calls: list[str] = []
@@ -297,7 +305,7 @@ def test_ready_object_storage_probe_prefers_current_document_store(monkeypatch):
     monkeypatch.setattr(health_module.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
     monkeypatch.setattr(object_runtime, "get_document_object_store", lambda: _Store(), raising=True)
 
-    payload = health_module.minio_service.health_check()
+    payload = health_module._object_storage_health()
 
     assert calls == ["generic"]
     assert payload["status"] == "connected"
@@ -305,7 +313,7 @@ def test_ready_object_storage_probe_prefers_current_document_store(monkeypatch):
 
 
 def test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store(monkeypatch):  # noqa: ANN001
-    from app.api.v1 import health as health_module
+    from app.api.v1.system import health as health_module
 
     calls: list[tuple[object | None, object | None]] = []
 
@@ -321,7 +329,7 @@ def test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store(
         def health_check(self):  # noqa: ANN202
             return {"enabled": True, "status": "connected", "provider": "minio"}
 
-    monkeypatch.setattr(health_module, "minio_service", _Probe(), raising=True)
+    monkeypatch.setattr(health_module, "_object_storage_health", _Probe().health_check, raising=True)
     monkeypatch.setattr(
         health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
     )
@@ -349,13 +357,13 @@ def test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store(
     )
     monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
 
-    def _check_minio(_settings, *, minio_health_check=None, enabled_override=None, **_kwargs):  # noqa: ANN001
-        calls.append((minio_health_check, enabled_override))
-        payload = minio_health_check() if callable(minio_health_check) else {"enabled": False, "status": "disabled"}
+    def _check_object_storage(*, is_enabled, health_check):
+        calls.append((health_check, is_enabled()))
+        payload = health_check()
         return payload, True
 
-    monkeypatch.setattr(health_module, "check_minio", _check_minio, raising=True)
-    health_module.invalidate_ready_cache()
+    monkeypatch.setattr(health_module, "check_object_storage", _check_object_storage, raising=True)
+    health_readiness.invalidate_ready_cache()
 
     response = TestClient(_build_app()[0]).get("/api/v1/health/ready")
 

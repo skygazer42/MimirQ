@@ -1,0 +1,26 @@
+.categoryBadge {
+  --category-ink: var(--icon-neutral);
+  max-width: 100%;
+  border: 1px solid hsl(var(--category-ink) / 0.14);
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: color-mix(in srgb, hsl(var(--category-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--category-ink));
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.categoryBadge[data-tone='source'] {
+  --category-ink: var(--icon-source);
+}
+.categoryBadge[data-tone='knowledge'] {
+  --category-ink: var(--icon-knowledge);
+}
+.categoryBadge[data-tone='process'] {
+  --category-ink: var(--icon-process);
+}
+.categoryBadge[data-tone='analysis'] {
+  --category-ink: var(--icon-analysis);
+}
+.categoryBadge[data-tone='governance'] {
+  --category-ink: var(--icon-governance);
+}

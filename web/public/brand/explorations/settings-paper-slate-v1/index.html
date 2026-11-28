@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1395, initial-scale=1">
+  <title>Ragvia · 处理偏好</title>
+  <style>
+    @font-face{font-family:'Paper Serif';src:url('../settings-styles-v1/fonts/serif.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:block}
+    @font-face{font-family:'Manrope';src:url('../settings-styles-v1/fonts/manrope.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:block}
+    :root{--canvas:#f3f0e8;--rail:#e7e2d8;--index:#eeeae2;--paper:#f8f5ee;--ink:#282c2a;--muted:#5b6058;--line:#d7d0c3;--rust:#963e2b;--selected:#e9dfd2}
+    *{box-sizing:border-box}
+    html,body{width:1395px;height:1004px;margin:0;overflow:hidden}
+    body{font-family:'Paper Serif',serif;font-size:14px;font-weight:450;line-height:1.65;color:var(--ink);background:var(--canvas);-webkit-font-smoothing:antialiased}
+    img{display:block}
+    .latin{font-family:'Manrope','Paper Serif',sans-serif;font-weight:500}
+    .icon{width:18px;height:18px;object-fit:contain;flex:none;opacity:.74}
+    .workspace{display:grid;grid-template-columns:64px 236px 1095px;grid-template-rows:minmax(0,1fr);height:1004px}
+    .rail{display:flex;flex-direction:column;align-items:center;background:var(--rail);border-right:1px solid var(--line)}
+    .brand{width:34px;height:34px;object-fit:contain;margin:26px 0 35px}
+    .rail-item{display:flex;align-items:center;justify-content:center;width:64px;height:54px;border-left:2px solid transparent;padding-right:2px}
+    .rail-item.current{background:#dfd6ca;border-left-color:var(--rust)}
+    .rail-item.current .icon{opacity:1}
+    .rail-bottom{margin-top:auto;margin-bottom:24px}
+    .index{display:flex;flex-direction:column;min-height:0;background:var(--index);border-right:1px solid var(--line)}
+    .index-title{font-size:20px;font-weight:650;line-height:30px;margin:28px 26px}
+    .nav-group{margin-bottom:24px}
+    .nav-group-title{font-size:12px;color:#62675f;margin:0 26px 8px}
+    .index-item{display:flex;align-items:center;height:39px;margin:0 12px;padding:0 14px;border-left:2px solid transparent;font-size:14px;color:#555b52}
+    .index-item.current{background:var(--selected);border-left-color:var(--rust);color:var(--rust);font-weight:650;border-radius:0 4px 4px 0}
+    .index-footer{display:flex;align-items:center;gap:8px;margin:auto 26px 29px;font-size:13px;color:var(--muted)}
+    .index-footer .icon{width:15px;height:15px}
+    .main{min-width:0}
+    .toolbar{display:flex;align-items:center;justify-content:space-between;height:80px;padding:0 40px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+    .breadcrumbs{display:flex;align-items:center;gap:13px}
+    .breadcrumbs .icon{width:13px;height:13px;opacity:.5}
+    .breadcrumbs strong{color:var(--ink);font-weight:600}
+    .account{display:flex;align-items:center;gap:8px}
+    .account-dot{width:5px;height:5px;background:#827869;border-radius:50%}
+    .page-head{margin:33px 40px 29px}
+    h1{font-size:26px;font-weight:650;line-height:38px;letter-spacing:.4px;margin:0 0 7px}
+    .scope{font-size:13px;line-height:23px;color:var(--muted);margin:0}
+    .editor{display:grid;grid-template-columns:342px 1fr;column-gap:34px;margin:0 40px}
+    .configuration{padding-right:31px;border-right:1px solid var(--line);min-width:0}
+    .column-heading{display:flex;align-items:flex-start;justify-content:space-between;height:37px;border-bottom:1px solid var(--line);font-size:13px;font-weight:500;color:var(--muted)}
+    .configuration-row{padding:21px 0 23px;border-bottom:1px solid var(--line)}
+    .field-label{font-size:15px;font-weight:600;line-height:24px;letter-spacing:.2px}
+    .field-trigger{display:flex;align-items:center;gap:11px;min-height:57px;margin-top:12px;padding:11px 13px;border:1px solid #d1c9bc;border-radius:4px}
+    .field-trigger.active{border-color:#a89179;background:var(--paper)}
+    .field-value{flex:1;min-width:0;font-size:15px;font-weight:600;line-height:25px}
+    .field-trigger .chevron{width:14px;height:14px;opacity:.65}
+    .field-note{font-size:13px;line-height:23px;color:var(--muted);margin:11px 0 0}
+    .advanced{padding:20px 0 21px;border-bottom:1px solid var(--line)}
+    .advanced-label{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:550}
+    .advanced-label .icon{width:13px;height:13px}
+    .advanced p{font-size:13px;color:var(--muted);margin:6px 0 0 22px;line-height:23px}
+    .navigation{margin-top:31px}
+    .navigation h2{font-size:20px;line-height:29px;font-weight:650;letter-spacing:.3px;margin:0 0 6px}
+    .navigation>p{font-size:13px;color:var(--muted);line-height:23px;margin:0}
+    .navigation-setting{display:flex;align-items:flex-start;gap:11px;margin-top:19px;padding-top:18px;border-top:1px solid var(--line)}
+    .navigation-setting .icon{margin-top:4px}
+    .navigation-copy{flex:1}
+    .navigation-copy strong{font-size:14px;font-weight:600}
+    .navigation-copy p{font-size:13px;line-height:22px;color:var(--muted);margin:5px 0 0}
+    .switch{flex:none;position:relative;width:35px;height:20px;margin-top:3px;background:#d5d0c5;border:1px solid #c8c0b1;border-radius:12px}
+    .switch:before{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#faf7f0;box-shadow:0 1px 2px #51453516}
+    .inspector{min-width:0}
+    .inspector .column-heading{font-size:15px;font-weight:600;color:var(--ink)}
+    .inspector .column-heading .icon{width:14px;height:14px;margin-top:4px;opacity:.6}
+    .parser-list{margin-top:17px;padding:5px;background:var(--paper);border:1px solid #ccc3b4;border-radius:4px;box-shadow:0 5px 14px #5145350c}
+    .parser-option{display:flex;align-items:center;gap:13px;min-height:83px;padding:16px 14px}
+    .parser-option+.parser-option{border-top:1px solid #e7e0d5}
+    .parser-option.selected{background:var(--selected);border-radius:2px}
+    .parser-option>.icon{width:19px;height:19px}
+    .option-copy{flex:1;min-width:0}
+    .option-name{display:flex;align-items:baseline;gap:10px;margin:0;font-size:15px;font-weight:600;line-height:25px}
+    .option-description{font-size:13px;font-weight:450;line-height:23px;color:var(--muted);margin:3px 0 0}
+    .recommended{font-size:12px;font-weight:500;color:var(--rust)}
+    .option-state{font-size:12px;white-space:nowrap;color:#696a61}
+    .unavailable .option-name{color:#62675f;font-weight:500}
+    .unavailable>.icon{opacity:.48}
+    .selection-indicator{width:19px;height:19px;flex:none;color:var(--rust);position:relative}
+    .selection-indicator:before{content:'';position:absolute;left:5px;top:4px;width:5px;height:10px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(38deg)}
+  </style>
+</head>
+<body>
+  <div class="workspace">
+    <aside class="rail" aria-label="应用导航">
+      <img class="brand" src="../../ragvia/mark.svg" alt="Ragvia">
+      <div class="rail-item" title="对话"><img class="icon" src="../../../icons/ragvia/conversation.svg" alt="对话"></div>
+      <div class="rail-item" title="数据集"><img class="icon" src="../../../icons/ragvia/dataset.svg" alt="数据集"></div>
+      <div class="rail-item" title="知识库"><img class="icon" src="../../../icons/ragvia/bookmark.svg" alt="知识库"></div>
+      <div class="rail-item" title="入库管理"><img class="icon" src="../../../icons/ragvia/archive.svg" alt="入库管理"></div>
+      <div class="rail-item" title="文档解析"><img class="icon" src="../../../icons/ragvia/document.svg" alt="文档解析"></div>
+      <div class="rail-item" title="数据治理"><img class="icon" src="../../../icons/ragvia/shield-check.svg" alt="数据治理"></div>
+      <div class="rail-item" title="切块预览"><img class="icon" src="../../../icons/ragvia/chunking.svg" alt="切块预览"></div>
+      <div class="rail-bottom"><div class="rail-item current"><img class="icon" src="../../../icons/ragvia/settings.svg" alt="设置"></div></div>
+    </aside>
+    <nav class="index" aria-label="系统设置目录">
+      <h2 class="index-title">系统设置</h2>
+      <div class="nav-group">
+        <div class="nav-group-title">通用</div>
+        <div class="index-item">系统状态</div><div class="index-item">模型接入</div><div class="index-item">功能开关</div><div class="index-item current" aria-current="page">处理偏好</div><div class="index-item">导航显示</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-title">内容与检索</div><div class="index-item">解析服务</div><div class="index-item">检索与生成</div>
+      </div>
+      <div class="nav-group"><div class="nav-group-title">外部集成</div><div class="index-item"><span class="latin">Dify</span>&nbsp;接入</div></div>
+      <div class="nav-group">
+        <div class="nav-group-title">治理与运行</div><div class="index-item">数据治理</div><div class="index-item">行业规则</div><div class="index-item">监控与审计</div><div class="index-item">运行控制</div>
+      </div>
+      <div class="index-footer"><img class="icon" src="../../../icons/ragvia/arrow-left.svg" alt="">返回工作区</div>
+    </nav>
+    <main class="main">
+      <header class="toolbar">
+        <div class="breadcrumbs"><span>系统设置</span><img class="icon" src="../../../icons/ragvia/chevron-right.svg" alt=""><span>通用</span><img class="icon" src="../../../icons/ragvia/chevron-right.svg" alt=""><strong>处理偏好</strong></div>
+        <div class="account"><span class="account-dot"></span>开发模式</div>
+      </header>
+      <div class="page-head"><h1>处理偏好</h1><p class="scope">保存在当前浏览器，用于新上传和预览。</p></div>
+      <div class="editor">
+        <section class="configuration" aria-label="当前配置">
+          <div class="column-heading">当前配置</div>
+          <div class="configuration-row">
+            <div class="field-label">解析方式</div>
+            <div class="field-trigger active" aria-expanded="true"><img class="icon" src="../../../icons/ragvia/automation.svg" alt=""><span class="field-value">自动选择</span><img class="icon chevron" src="../../../icons/ragvia/chevron-right.svg" alt=""></div>
+          </div>
+          <div class="configuration-row">
+            <div class="field-label">切块策略</div>
+            <div class="field-trigger"><img class="icon" src="../../../icons/ragvia/chunking.svg" alt=""><span class="field-value"><span class="latin">LangChain</span> 递归切分</span><img class="icon chevron" src="../../../icons/ragvia/chevron-down.svg" alt=""></div>
+            <p class="field-note">按段落、句号等分隔符递归切分，保留语义完整性。</p>
+          </div>
+          <div class="advanced"><div class="advanced-label"><img class="icon" src="../../../icons/ragvia/chevron-right.svg" alt="">管线高级选项</div><p>合并切块、重叠与内容预处理</p></div>
+          <section class="navigation">
+            <h2>导航显示</h2><p>选择普通成员可以看到的功能入口。</p>
+            <div class="navigation-setting"><img class="icon" src="../../../icons/ragvia/braces.svg" alt=""><div class="navigation-copy"><strong>治理配置</strong><p>管理清洗规则包与治理脚本</p></div><span class="switch" role="img" aria-label="已关闭"></span></div>
+          </section>
+        </section>
+        <section class="inspector" aria-label="解析方式选项">
+          <div class="column-heading"><span>解析方式</span><img class="icon" src="../../../icons/ragvia/chevron-up.svg" alt=""></div>
+          <div class="parser-list" role="listbox" aria-label="解析方式">
+            <div class="parser-option selected" role="option" aria-selected="true"><img class="icon" src="../../../icons/ragvia/automation.svg" alt=""><div class="option-copy"><p class="option-name">自动选择<span class="recommended">推荐</span></p><p class="option-description">按优先级自动选择已启用的解析器</p></div><span class="selection-indicator" role="img" aria-label="已选中"></span></div>
+            <div class="parser-option" role="option" aria-selected="false"><img class="icon" src="../../../icons/ragvia/document.svg" alt=""><div class="option-copy"><p class="option-name">基础解析</p><p class="option-description"><span class="latin">PyMuPDF</span> · 速度快、依赖少，适合纯文本 <span class="latin">PDF</span></p></div></div>
+            <div class="parser-option unavailable" role="option" aria-selected="false" aria-disabled="true"><img class="icon" src="../../../icons/ragvia/scan-line.svg" alt=""><div class="option-copy"><p class="option-name"><span><span class="latin">Docling</span> 结构化</span></p><p class="option-description">结构感知解析，可提取 <span class="latin">PDF</span> 结构与表格</p></div><span class="option-state">未启用</span></div>
+            <div class="parser-option unavailable" role="option" aria-selected="false" aria-disabled="true"><img class="icon" src="../../../icons/ragvia/blocks.svg" alt=""><div class="option-copy"><p class="option-name"><span><span class="latin">Marker</span>（启发式）</span></p><p class="option-description">将 <span class="latin">PDF</span> 转为 <span class="latin">Markdown</span>，可保留图片引用</p></div><span class="option-state">未启用</span></div>
+            <div class="parser-option unavailable" role="option" aria-selected="false" aria-disabled="true"><img class="icon" src="../../../icons/ragvia/layout-grid.svg" alt=""><div class="option-copy"><p class="option-name"><span><span class="latin">ETL4LLM</span> 版面解析</span></p><p class="option-description">识别版面、表格与图片，需要自建服务</p></div><span class="option-state">未启用</span></div>
+            <div class="parser-option unavailable" role="option" aria-selected="false" aria-disabled="true"><img class="icon" src="../../../icons/ragvia/scan-line.svg" alt=""><div class="option-copy"><p class="option-name"><span><span class="latin">PaddleOCR-VL</span>（外部）</span></p><p class="option-description">扫描件 <span class="latin">PDF</span> 的 <span class="latin">OCR</span> 与版面解析</p></div><span class="option-state">未启用</span></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

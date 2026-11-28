@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 问答历史",
+  "brief": "比较右侧内容区的字体、配色与构图，左侧应用导航保持一致。当前实际历史为空；三版使用同一组问答内容演示有记录时的效果，仅供设计选择。",
+  "round": "01",
+  "nativeViewport": "1395x1004",
+  "candidates": [
+    {
+      "id": "ink",
+      "name": "A · 雾墨",
+      "concept": "像清晰的收件箱一样找到问题，再完整读完回答与引用。",
+      "typography": "Noto Sans SC + Manrope；21px 工作区标题、15–16px 阅读正文、13px 元信息。",
+      "palette": ["#F5F6F7", "#242B33", "#A34B31", "#E7E9EC"],
+      "traits": ["左侧时间分组列表", "右侧连续问答阅读", "雾灰底与墨色动作"],
+      "source": "ink.html"
+    },
+    {
+      "id": "paper",
+      "name": "B · 书页",
+      "concept": "把一次有价值的问答当作一页可回看的知识档案。",
+      "typography": "Noto Serif SC 标题与阅读正文；Noto Sans SC 控件、Manrope 数字；16px 阅读正文。",
+      "palette": ["#F7F3E9", "#3F352D", "#8B6046", "#DDD1BF"],
+      "traits": ["顶部 2×4 历史索引", "下方通栏阅读与来源边注", "暖纸色与衬线排版"],
+      "source": "paper.html"
+    },
+    {
+      "id": "slate",
+      "name": "C · 青石",
+      "concept": "快速扫过历史记录，在侧边核对回答与文档来源。",
+      "typography": "DengXian 等线中文 + Bahnschrift 英文及数字；22px 工作区标题、14px 列表、15px 阅读文字。",
+      "palette": ["#EEF3F0", "#263A34", "#24584E", "#DCE8E1"],
+      "traits": ["对齐的记录表格", "416px 边缘预览面板", "灰绿底与紧凑直角控件"],
+      "source": "slate.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 布局对照",
+      "baseline": true,
+      "kind": "image",
+      "source": "E:/MimirQ/artifacts/rebrand/history-styles-v1/baseline.png",
+      "concept": "目前真实页面为空记录状态，供对照导航与原有空间分配。",
+      "typography": "当前共享 Noto Sans SC + Manrope。",
+      "palette": ["#F5F6F7", "#242B33", "#EEF0F2"],
+      "traits": ["保留真实应用导航", "历史列表与空详情"]
+    }
+  ]
+}

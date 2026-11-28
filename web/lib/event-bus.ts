@@ -2,43 +2,33 @@ type AppEventMap = {
   'chat:send': string
   'chat:submit': string
   'chat:focus-message': { messageId: string; documentId?: string | null; chunkId?: string | null }
-  'command-menu:set-open': { open: boolean; query?: string }
-  'command-menu:toggle': undefined
-  'ingestion:retry-all-failed': undefined
-  'ingestion:cancel-all-active': undefined
-  'ingestion:open-precheck': undefined
-  'ingestion:download-report': undefined
 }
 
-type EventHandler<EventMap extends Record<string, unknown>, K extends keyof EventMap> = (payload: EventMap[K]) => void
+type EventHandler<K extends keyof AppEventMap> = (payload: AppEventMap[K]) => void
 
-class EventBus<EventMap extends Record<string, unknown>> {
-  private readonly handlers = new Map<keyof EventMap, Set<unknown>>()
-
-  on<K extends keyof EventMap>(event: K, handler: EventHandler<EventMap, K>) {
-    const listeners = this.handlers.get(event) ?? new Set<unknown>()
-    listeners.add(handler)
-    this.handlers.set(event, listeners)
-    return () => this.off(event, handler)
+class EventBus {
+  private readonly handlers: { [K in keyof AppEventMap]: Set<EventHandler<K>> } = {
+    'chat:send': new Set(),
+    'chat:submit': new Set(),
+    'chat:focus-message': new Set(),
   }
 
-  off<K extends keyof EventMap>(event: K, handler: EventHandler<EventMap, K>) {
-    const listeners = this.handlers.get(event)
-    if (!listeners) return
-    listeners.delete(handler)
-    if (listeners.size === 0) {
-      this.handlers.delete(event)
+  on<K extends keyof AppEventMap>(event: K, handler: EventHandler<K>) {
+    const listeners = this.handlers[event]
+    listeners.add(handler)
+    return () => {
+      listeners.delete(handler)
     }
   }
 
-  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): number {
-    const listeners = this.handlers.get(event)
-    if (!listeners) return 0
-    listeners.forEach((handler) => {
-      ;(handler as EventHandler<EventMap, K>)(payload)
-    })
-    return listeners.size
+  emit<K extends keyof AppEventMap>(event: K, payload: AppEventMap[K]): number {
+    let delivered = 0
+    for (const handler of this.handlers[event]) {
+      handler(payload)
+      delivered += 1
+    }
+    return delivered
   }
 }
 
-export const globalEventBus = new EventBus<AppEventMap>()
+export const globalEventBus = new EventBus()

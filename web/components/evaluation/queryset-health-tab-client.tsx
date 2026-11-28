@@ -1,176 +1,85 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { useMemo, useState } from 'react'
+import { skipToken, useQuery } from '@tanstack/react-query'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
-import {
-  RefreshCw,
-  GitCompare,
-  Target,
-  TrendingUp,
-  ChartLine,
-  Timer,
-  SearchX,
-  ShieldAlert,
-  Scale,
-} from 'lucide-react'
+import { GitCompare, Scale, ChartLine, ShieldAlert } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
+import { PageLoading } from '@/components/ui/page-loading'
 import { Panel } from '@/components/ui/panel'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import evaluationStyles from './evaluation-panels.module.css'
 import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
-import type { JsonObject } from '@/types'
-
-type QuerysetHealthRunItem = JsonObject & {
-  generated_at?: string
-  metrics?: JsonObject
-  risk?: JsonObject
-  degradation_flags?: unknown[]
-  status?: string
-}
-
-type QuerysetTrendRow = {
-  t: number
-  time: string
-  dateLabel: string
-  hit_at_k: number | null
-  mrr: number | null
-  ndcg_at_k: number | null
-  p95_latency_ms: number | null
-  miss_rate: number | null
-  weak_hit_rate: number | null
-}
 
 const QUERYSET_DELTA_METRICS = [
   {
-    key: 'hit_at_k_delta',
+    key: 'hit_at_k',
     label: '命中率（Hit@K）',
     kind: 'percent',
     lowerIsBetter: false,
   },
-  { key: 'mrr_delta', label: 'MRR', kind: 'number', lowerIsBetter: false },
+  { key: 'mrr', label: 'MRR', kind: 'number', lowerIsBetter: false },
   {
-    key: 'ndcg_at_k_delta',
+    key: 'ndcg_at_k',
     label: 'NDCG@K',
     kind: 'number',
     lowerIsBetter: false,
   },
   {
-    key: 'p95_latency_ms_delta',
+    key: 'p95_latency_ms',
     label: 'P95 延迟',
     kind: 'ms',
     lowerIsBetter: true,
   },
   {
-    key: 'miss_rate_delta',
+    key: 'miss_rate',
     label: '漏检率',
     kind: 'percent',
     lowerIsBetter: true,
   },
   {
-    key: 'weak_hit_rate_delta',
+    key: 'weak_hit_rate',
     label: '弱命中率',
     kind: 'percent',
     lowerIsBetter: true,
   },
 ] as const
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function querysetRunItem(value: unknown): QuerysetHealthRunItem {
-  return isJsonObject(value) ? value : {}
-}
-function formatTs(tsMs: number) {
-  try {
-    return new Date(tsMs).toLocaleString([], {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return String(tsMs)
-  }
-}
+const SNAPSHOT_COMPARISON_FIELDS = ['profile_hash', 'fixture_hash', 'policy_hash', 'retrieval_mode'] as const
 
 function formatDateTick(tsMs: number) {
-  try {
-    return new Date(tsMs)
-      .toLocaleDateString([], { month: '2-digit', day: '2-digit' })
-      .replace('/', '-')
-  } catch {
-    return String(tsMs)
+  return new Date(tsMs).toLocaleDateString([], { month: '2-digit', day: '2-digit' }).replace('/', '-')
+}
+
+function formatPercent(value: number | null | undefined) {
+  return value == null ? '—' : `${(value * 100).toFixed(1)}%`
+}
+
+function formatNumber(value: number | null | undefined, digits: number) {
+  return value == null ? '—' : value.toFixed(digits)
+}
+
+function formatMilliseconds(value: number | null | undefined) {
+  return value == null ? '—' : `${Math.round(value)}ms`
+}
+
+function formatSignedDelta(value: number, kind: (typeof QUERYSET_DELTA_METRICS)[number]['kind']) {
+  const sign = value > 0 ? '+' : ''
+  if (kind === 'percent') return `${sign}${(value * 100).toFixed(1)}%`
+  if (kind === 'ms') return `${sign}${value.toFixed(1)}ms`
+  return `${sign}${value.toFixed(3)}`
+}
+
+function deltaState(value: number | null, lowerIsBetter: boolean) {
+  if (value === null || value === 0) {
+    return { label: value === null ? '缺少读数' : '持平', className: 'bg-muted text-muted-foreground' }
   }
-}
-
-function buildQuerysetTrendSkeleton() {
-  const dayMs = 24 * 60 * 60 * 1000
-  const end = new Date()
-  end.setHours(0, 0, 0, 0)
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const t = end.getTime() - (6 - index) * dayMs
-    return {
-      t,
-      time: formatTs(t),
-      dateLabel: formatDateTick(t),
-      hit_at_k: null,
-      mrr: null,
-      ndcg_at_k: null,
-      p95_latency_ms: null,
-      miss_rate: null,
-      weak_hit_rate: null,
-    }
-  })
-}
-
-function fmtPercent(v?: unknown, digits = 1) {
-  if (v == null || !Number.isFinite(Number(v))) return '—'
-  return `${(Number(v) * 100).toFixed(digits)}%`
-}
-
-function fmtNum(v?: unknown, digits = 3) {
-  if (v == null || !Number.isFinite(Number(v))) return '—'
-  return Number(v).toFixed(digits)
-}
-
-function fmtMs(v?: unknown) {
-  if (v == null || !Number.isFinite(Number(v))) return '—'
-  return `${Math.round(Number(v))}ms`
-}
-
-function formatSignedDelta(
-  value: unknown,
-  kind: (typeof QUERYSET_DELTA_METRICS)[number]['kind']
-) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return '—'
-  const sign = numeric > 0 ? '+' : ''
-  if (kind === 'percent') return `${sign}${(numeric * 100).toFixed(1)}%`
-  if (kind === 'ms') return `${sign}${numeric.toFixed(1)}ms`
-  return `${sign}${numeric.toFixed(3)}`
-}
-
-function deltaState(value: unknown, lowerIsBetter: boolean) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric) || Math.abs(numeric) < 1e-9) {
-    return { label: '持平', className: 'bg-muted text-muted-foreground' }
-  }
-  const improved = lowerIsBetter ? numeric < 0 : numeric > 0
+  const improved = lowerIsBetter ? value < 0 : value > 0
   if (improved) {
     return { label: '改善', className: 'bg-success/10 text-success' }
   }
@@ -180,394 +89,294 @@ function deltaState(value: unknown, lowerIsBetter: boolean) {
 function QuerysetChartEmptyState() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="rounded-2xl bg-background/70 px-4 py-3 text-center shadow-none ring-1 ring-info/15">
-        <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-info/[0.04] text-info/70">
+      <div className="px-4 py-3 text-center">
+        <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center text-muted-foreground">
           <ChartLine className="h-4 w-4" aria-hidden="true" />
         </div>
-        <div className="text-[12px] font-semibold text-foreground">暂无数据</div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">
-          当前筛选条件下暂无趋势数据
-        </div>
+        <div className="text-[14px] font-medium text-foreground">暂无趋势数据</div>
       </div>
     </div>
   )
 }
 
-export function QuerysetHealthTab({
-  embedded = false,
-}: Readonly<{ embedded?: boolean }>) {
-  const [baselineTs, setBaselineTs] = useState<string>('')
-  const [currentTs, setCurrentTs] = useState<string>('')
+export function QuerysetHealthTab() {
+  const [baselineTs, setBaselineTs] = useState<string>()
+  const [currentTs, setCurrentTs] = useState<string>()
   const [showAllRuns, setShowAllRuns] = useState(false)
+  const runsParams = { limit: 90 }
   const runsQuery = useQuery({
-    queryKey: queryKeys.evaluations.querysetHealthRuns({ limit: 90 }),
-    queryFn: () => observabilityApi.getQuerysetHealthRuns({ limit: 90 }),
+    queryKey: queryKeys.evaluations.querysetHealthRuns(runsParams),
+    queryFn: ({ signal }) => observabilityApi.getQuerysetHealthRuns(runsParams, { signal }),
   })
-  const diffQuery = useQuery({
-    queryKey: queryKeys.evaluations.querysetHealthDiff({
-      baseline_generated_at: baselineTs,
-      current_generated_at: currentTs,
-      max_hard_case_ids: 20,
-    }),
-    enabled: Boolean(baselineTs && currentTs && baselineTs !== currentTs),
-    queryFn: () =>
-      observabilityApi.getQuerysetHealthDiff({
-        baseline_generated_at: baselineTs,
-        current_generated_at: currentTs,
-        max_hard_case_ids: 20,
-      }),
-  })
-
-  const runs = runsQuery.data ?? null
-  const diff = diffQuery.data ?? null
-  const loadingRuns = runsQuery.isLoading || runsQuery.isFetching
-  const loadingDiff = diffQuery.isLoading || diffQuery.isFetching
-
-  useEffect(() => {
-    if (!runsQuery.error) return
-    toast.error(
-      formatApiError(
-        runsQuery.error,
-        '加载检索集健康度历史失败（需要 owner/admin 权限）'
-      )
-    )
-  }, [runsQuery.error])
-
-  useEffect(() => {
-    if (!diffQuery.error) return
-    toast.error(formatApiError(diffQuery.error, '加载检索集健康度差异失败'))
-  }, [diffQuery.error])
-
-  useEffect(() => {
-    const items = runsQuery.data?.items || []
-    const latest = String(items?.[0]?.generated_at || '')
-    const prev = String(items?.[1]?.generated_at || '')
-    if (latest) setCurrentTs((p) => p || latest)
-    if (latest || prev) setBaselineTs((p) => p || prev || latest)
-  }, [runsQuery.data])
-
-  const runItems = (runs?.items || []).map(querysetRunItem)
-  const latest = runItems[0]
-  const latestMetrics = isJsonObject(latest?.metrics) ? latest.metrics : {}
-  const latestRisk = isJsonObject(latest?.risk) ? latest.risk : {}
-  const latestFlags = Array.isArray(latest?.degradation_flags)
-    ? latest?.degradation_flags
-    : []
-
-  const chartData = useMemo<QuerysetTrendRow[]>(() => {
-    const ts = runs?.timeseries?.ts_ms || []
-    const hit = runs?.timeseries?.hit_at_k || []
-    const mrr = runs?.timeseries?.mrr || []
-    const ndcg = runs?.timeseries?.ndcg_at_k || []
-    const p95 = runs?.timeseries?.p95_latency_ms || []
-    const miss = runs?.timeseries?.miss_rate || []
-    const weak = runs?.timeseries?.weak_hit_rate || []
-    const out: QuerysetTrendRow[] = []
-    for (let i = 0; i < ts.length; i++) {
-      const t = Number(ts[i] || 0)
-      out.push({
-        t,
-        time: formatTs(t),
-        dateLabel: formatDateTick(t),
-        hit_at_k: hit[i] == null ? null : Number(hit[i] || 0),
-        mrr: mrr[i] == null ? null : Number(mrr[i] || 0),
-        ndcg_at_k: ndcg[i] == null ? null : Number(ndcg[i] || 0),
-        p95_latency_ms: p95[i] == null ? null : Number(p95[i] || 0),
-        miss_rate: miss[i] == null ? null : Number(miss[i] || 0),
-        weak_hit_rate: weak[i] == null ? null : Number(weak[i] || 0),
-      })
+  const runs = runsQuery.data
+  const timestamps = runs?.items.flatMap(({ generated_at }) => {
+    if (typeof generated_at !== 'string' || generated_at.length === 0 || generated_at !== generated_at.trim()) {
+      return []
     }
-    return out
-  }, [runs?.timeseries])
-  const chartDisplayData = chartData.length
-    ? chartData
-    : buildQuerysetTrendSkeleton()
+    return [generated_at]
+  })
+  const runTimestamps = [...new Set(timestamps)]
+  const baselineGeneratedAt = baselineTs ?? runTimestamps[1] ?? runTimestamps[0]
+  const currentGeneratedAt = currentTs ?? runTimestamps[0]
+  const baselineAvailable = baselineGeneratedAt !== undefined && runTimestamps.includes(baselineGeneratedAt)
+  const currentAvailable = currentGeneratedAt !== undefined && runTimestamps.includes(currentGeneratedAt)
+  const baselineIndex = runs?.items.findIndex((run) => run.generated_at === baselineGeneratedAt) ?? -1
+  const currentIndex = runs?.items.findIndex((run) => run.generated_at === currentGeneratedAt) ?? -1
+  const baselineRun = runs?.items[baselineIndex]
+  const currentRun = runs?.items[currentIndex]
+  const hasSnapshotPair =
+    baselineAvailable &&
+    currentAvailable &&
+    baselineIndex !== currentIndex &&
+    baselineRun !== undefined &&
+    currentRun !== undefined
+  const comparableSnapshots =
+    hasSnapshotPair &&
+    SNAPSHOT_COMPARISON_FIELDS.every((field) => {
+      const value = baselineRun[field]
+      return typeof value === 'string' && value.trim() !== '' && value === currentRun[field]
+    }) &&
+    typeof baselineRun.top_k === 'number' &&
+    baselineRun.top_k > 0 &&
+    baselineRun.top_k === currentRun.top_k
+  const diffParams = comparableSnapshots
+    ? { baseline_generated_at: baselineGeneratedAt, current_generated_at: currentGeneratedAt, max_hard_case_ids: 20 }
+    : undefined
+  const diffQuery = useQuery({
+    queryKey: queryKeys.evaluations.querysetHealthDiff(diffParams),
+    queryFn: diffParams ? ({ signal }) => observabilityApi.getQuerysetHealthDiff(diffParams, { signal }) : skipToken,
+  })
 
-  const diffMetricDeltas = useMemo(() => {
-    const d = isJsonObject(diff?.diff) ? diff.diff : {}
-    const deltas = d.metric_deltas
-    return isJsonObject(deltas) ? deltas : {}
-  }, [diff?.diff])
-  const hasQualityChartData = chartData.some(
-    (row) => row.hit_at_k != null || row.mrr != null || row.ndcg_at_k != null
-  )
+  const timeseries = runs?.timeseries
+  const chartData = useMemo(() => {
+    if (!timeseries) return []
+    return timeseries.ts_ms.map((timestamp, index) => ({
+      dateLabel: formatDateTick(timestamp),
+      hit_at_k: timeseries.hit_at_k[index],
+      mrr: timeseries.mrr[index],
+      ndcg_at_k: timeseries.ndcg_at_k[index],
+      p95_latency_ms: timeseries.p95_latency_ms[index],
+      miss_rate: timeseries.miss_rate[index],
+      weak_hit_rate: timeseries.weak_hit_rate[index],
+    }))
+  }, [timeseries])
+
+  const runsError = runsQuery.isError ? (
+    <WorkspaceNotice retry={() => void runsQuery.refetch()} pending={runsQuery.isFetching}>
+      {formatApiError(runsQuery.error, '加载检索集健康度历史失败')}
+    </WorkspaceNotice>
+  ) : null
+  if (!runs) {
+    return <div className={evaluationStyles.health}>{runsError ?? <PageLoading message="正在读取健康度历史…" />}</div>
+  }
+
+  const runItems = runs.items
+  const latest = runItems[0]
+  // The API lists snapshots newest first and reports the same window's trend oldest first.
+  const latestMetrics = chartData.at(-1)
+  const degradationFlags = latest?.degradation_flags
+  const latestFlags =
+    Array.isArray(degradationFlags) && degradationFlags.every((flag: unknown) => typeof flag === 'string')
+      ? degradationFlags
+      : undefined
+  const diffMetricDeltas = diffQuery.data?.diff.metric_deltas
+  const baselineMetrics = chartData.at(-1 - baselineIndex)
+  const currentMetrics = chartData.at(-1 - currentIndex)
+  const hasQualityChartData = chartData.some((row) => row.hit_at_k != null || row.mrr != null || row.ndcg_at_k != null)
   const hasRiskChartData = chartData.some(
-    (row) =>
-      row.p95_latency_ms != null ||
-      row.miss_rate != null ||
-      row.weak_hit_rate != null
+    (row) => row.p95_latency_ms != null || row.miss_rate != null || row.weak_hit_rate != null,
   )
   return (
-    <div className={cn('space-y-2.5', embedded ? '' : 'p-5')}>
-      {embedded ? (
-        null
-      ) : (
-        <div className="flex items-start justify-between gap-2.5">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              检索集健康度
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              检索基准集健康度：趋势 + 差异 + 退化标记
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => runsQuery.refetch()}
-            disabled={loadingRuns}
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4',
-                loadingRuns && 'animate-spin motion-reduce:animate-none'
-              )}
+    <div className={evaluationStyles.health}>
+      {runsQuery.isError || diffQuery.isError ? (
+        <WorkspaceNoticeStack ariaLabel="检索集健康度提示">
+          {runsQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="检索集健康度历史更新失败"
+              error={runsQuery.error}
+              fallbackMessage="加载检索集健康度历史失败"
+              retry={() => void runsQuery.refetch()}
+              pending={runsQuery.isFetching}
             />
-            刷新
-          </Button>
-        </div>
-      )}
+          ) : null}
+          {diffQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="检索集健康度差异读取失败"
+              error={diffQuery.error}
+              fallbackMessage="加载检索集健康度差异失败"
+              retry={() => void diffQuery.refetch()}
+              pending={diffQuery.isFetching}
+            />
+          ) : null}
+        </WorkspaceNoticeStack>
+      ) : null}
 
-      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
+      <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-foreground">
-              最新快照
-            </div>
-            {latest?.generated_at ? (
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
-                生成时间={String(latest.generated_at)}
-              </div>
+            <div className="text-sm font-semibold text-foreground">最新快照</div>
+            {typeof latest?.generated_at === 'string' ? (
+              <div className="mt-0.5 text-[13px] text-muted-foreground">生成时间={latest.generated_at}</div>
             ) : null}
           </div>
           <div className="text-xs text-muted-foreground">
-            文件路径: <span className="font-mono">{runs?.path || '—'}</span>
+            {runs.path && (
+              <details>
+                <summary>数据源</summary>
+                <span className="break-all">{runs.path}</span>
+              </details>
+            )}
           </div>
         </div>
 
         <div className="mt-2">
-          <StatsGrid dense className="gap-2 xl:grid-cols-6">
-            <StatCard
-              dense
-              icon={Target}
-              label="命中率 Hit@K"
-              value={fmtPercent(latestMetrics.hit_at_k, 1)}
-              color="sky"
-            />
-            <StatCard
-              dense
-              icon={TrendingUp}
-              label="MRR"
-              value={fmtNum(latestMetrics.mrr, 3)}
-              color="teal"
-            />
-            <StatCard
-              dense
-              icon={ChartLine}
-              label="NDCG@K"
-              value={fmtNum(latestMetrics.ndcg_at_k, 3)}
-              color="teal"
-            />
-            <StatCard
-              dense
-              icon={Timer}
-              label="P95 延迟"
-              value={fmtMs(latestMetrics.p95_latency_ms)}
-              color="amber"
-            />
-            <StatCard
-              dense
-              icon={SearchX}
-              label="漏检率"
-              value={fmtPercent(latestRisk.miss_rate, 1)}
-              color="rose"
-            />
-            <StatCard
-              dense
-              icon={ShieldAlert}
-              label="弱命中率"
-              value={fmtPercent(latestRisk.weak_hit_rate, 1)}
-              color="rose"
-            />
-          </StatsGrid>
+          <dl className={evaluationStyles.healthMetrics}>
+            {[
+              ['命中率 Hit@K', formatPercent(latestMetrics?.hit_at_k)],
+              ['MRR', formatNumber(latestMetrics?.mrr, 3)],
+              ['NDCG@K', formatNumber(latestMetrics?.ndcg_at_k, 3)],
+              ['P95 延迟', formatMilliseconds(latestMetrics?.p95_latency_ms)],
+              ['漏检率', formatPercent(latestMetrics?.miss_rate)],
+              ['弱命中率', formatPercent(latestMetrics?.weak_hit_rate)],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt>
+                  <span className={evaluationStyles.metricIcon} aria-hidden="true">
+                    <ChartLine />
+                  </span>
+                  {label}
+                </dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
 
-          {latestFlags.length ? (
+          {latestFlags && latestFlags.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {latestFlags.slice(0, 12).map((f) => (
+              {latestFlags.map((flag) => (
                 <span
-                  key={String(f)}
-                  className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20"
+                  key={flag}
+                  className="text-[13px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20"
                 >
-                  {String(f)}
+                  {flag}
                 </span>
               ))}
             </div>
-          ) : (
-            <div className="mt-2 text-xs text-muted-foreground">无退化标记</div>
-          )}
+          ) : null}
+          {!latest && <div className="mt-2 text-[13px] text-muted-foreground">暂无快照</div>}
+          {latestFlags?.length === 0 && <div className="mt-2 text-[13px] text-muted-foreground">无退化标记</div>}
         </div>
       </Panel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <Panel
-          padding="sm"
-          className="rounded-2xl min-h-[205px] border-info/15 bg-background/72 shadow-none"
-        >
+      <div className={evaluationStyles.healthCharts}>
+        <Panel padding="sm" variant="seamless" className={evaluationStyles.healthChart}>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-foreground">
-              质量趋势
-            </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>Hit@K / MRR / NDCG</span>
-              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[11px]">
-                近 7 天
-              </span>
-            </div>
+            <div className="text-sm font-semibold text-foreground">质量趋势</div>
+            <span className="text-xs text-muted-foreground">Hit@K / MRR / NDCG</span>
           </div>
           <div className="relative h-[145px]">
-            <SafeResponsiveChart className="h-full" minHeight={145}>
-              <LineChart data={chartDisplayData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} domain={[0, 1]} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="hit_at_k"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="mrr"
-                  stroke="hsl(var(--info))"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="ndcg_at_k"
-                  stroke="hsl(var(--success))"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </SafeResponsiveChart>
-            {hasQualityChartData ? null : <QuerysetChartEmptyState />}
+            {hasQualityChartData ? (
+              <SafeResponsiveChart className="h-full" minHeight={145}>
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="dateLabel" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} domain={[0, 1]} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="hit_at_k" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="mrr" stroke="hsl(var(--info))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="ndcg_at_k" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
+                </LineChart>
+              </SafeResponsiveChart>
+            ) : (
+              <QuerysetChartEmptyState />
+            )}
           </div>
         </Panel>
 
-        <Panel
-          padding="sm"
-          className="rounded-2xl min-h-[205px] border-info/15 bg-background/72 shadow-none"
-        >
+        <Panel padding="sm" variant="seamless" className={evaluationStyles.healthChart}>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-foreground">
-              延迟与风险趋势
-            </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>P95 / 漏检 / 弱命中</span>
-              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[11px]">
-                近 7 天
-              </span>
-            </div>
+            <div className="text-sm font-semibold text-foreground">延迟与风险趋势</div>
+            <span className="text-xs text-muted-foreground">P95 / 漏检 / 弱命中</span>
           </div>
           <div className="relative h-[145px]">
-            <SafeResponsiveChart className="h-full" minHeight={145}>
-              <LineChart data={chartDisplayData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="p95_latency_ms"
-                  stroke="hsl(var(--warning))"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="miss_rate"
-                  stroke="hsl(var(--destructive))"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="weak_hit_rate"
-                  stroke="hsl(var(--info))"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </SafeResponsiveChart>
-            {hasRiskChartData ? null : <QuerysetChartEmptyState />}
+            {hasRiskChartData ? (
+              <SafeResponsiveChart className="h-full" minHeight={145}>
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="dateLabel" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="p95_latency_ms"
+                    stroke="hsl(var(--warning))"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="miss_rate"
+                    stroke="hsl(var(--destructive))"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line type="monotone" dataKey="weak_hit_rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false} />
+                </LineChart>
+              </SafeResponsiveChart>
+            ) : (
+              <QuerysetChartEmptyState />
+            )}
           </div>
         </Panel>
       </div>
 
-      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
+      <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
           <div>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <GitCompare className="h-4 w-4 text-muted-foreground" />
-                <div className="text-sm font-semibold text-foreground">
-                  差异对比
-                </div>
+                <div className="text-sm font-semibold text-foreground">差异对比</div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {loadingDiff ? '计算中…' : diff?.diff ? '已加载' : '—'}
-              </div>
+              <div className="text-xs text-muted-foreground">{diffQuery.isFetching ? '计算中…' : null}</div>
             </div>
 
             <div className="mt-2 grid grid-cols-1 gap-2.5 lg:grid-cols-2">
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">
-                  基线快照
-                </div>
+                <div className="text-xs font-medium text-muted-foreground">基线快照</div>
                 <Select
-                  value={baselineTs}
+                  value={baselineAvailable ? baselineGeneratedAt : ''}
                   onValueChange={setBaselineTs}
-                  disabled={!runs?.items?.length}
+                  disabled={runTimestamps.length === 0}
                 >
-                  <SelectTrigger className="h-9 rounded-xl">
+                  <SelectTrigger aria-label="基线快照">
                     <SelectValue placeholder="选择基线快照" />
                   </SelectTrigger>
                   <SelectContent>
-                    {runItems.map((it) => (
-                      <SelectItem
-                        key={String(it.generated_at)}
-                        value={String(it.generated_at)}
-                      >
-                        {String(it.generated_at)}
+                    {runTimestamps.map((timestamp) => (
+                      <SelectItem key={timestamp} value={timestamp}>
+                        {timestamp}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">
-                  当前快照
-                </div>
+                <div className="text-xs font-medium text-muted-foreground">当前快照</div>
                 <Select
-                  value={currentTs}
+                  value={currentAvailable ? currentGeneratedAt : ''}
                   onValueChange={setCurrentTs}
-                  disabled={!runs?.items?.length}
+                  disabled={runTimestamps.length === 0}
                 >
-                  <SelectTrigger className="h-9 rounded-xl">
+                  <SelectTrigger aria-label="当前快照">
                     <SelectValue placeholder="选择当前快照" />
                   </SelectTrigger>
                   <SelectContent>
-                    {runItems.map((it) => (
-                      <SelectItem
-                        key={String(it.generated_at)}
-                        value={String(it.generated_at)}
-                      >
-                        {String(it.generated_at)}
+                    {runTimestamps.map((timestamp) => (
+                      <SelectItem key={timestamp} value={timestamp}>
+                        {timestamp}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -575,29 +384,30 @@ export function QuerysetHealthTab({
               </div>
             </div>
 
-            {diffMetricDeltas && Object.keys(diffMetricDeltas).length ? (
+            {hasSnapshotPair && !comparableSnapshots && (
+              <p role="status" className="mt-2 text-sm text-muted-foreground">
+                快照缺少可核对的信息，或评测配置、策略、样本集不同，无法比较。
+              </p>
+            )}
+            {diffMetricDeltas && (
               <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
                 {QUERYSET_DELTA_METRICS.map((metric) => {
-                  const value = diffMetricDeltas[metric.key]
+                  const value =
+                    baselineMetrics?.[metric.key] == null || currentMetrics?.[metric.key] == null
+                      ? null
+                      : diffMetricDeltas[`${metric.key}_delta`]
                   const state = deltaState(value, metric.lowerIsBetter)
                   return (
                     <div
                       key={metric.key}
                       className="flex items-center justify-between gap-3 rounded-lg border border-info/15 bg-info/[0.025] px-3 py-2"
                     >
-                      <span className="font-medium text-muted-foreground">
-                        {metric.label}
-                      </span>
+                      <span className="font-medium text-muted-foreground">{metric.label}</span>
                       <span className="flex items-center gap-2">
                         <span className="font-mono tabular-nums text-foreground/90">
-                          {formatSignedDelta(value, metric.kind)}
+                          {value === null ? '—' : formatSignedDelta(value, metric.kind)}
                         </span>
-                        <span
-                          className={cn(
-                            'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                            state.className
-                          )}
-                        >
+                        <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', state.className)}>
                           {state.label}
                         </span>
                       </span>
@@ -605,18 +415,16 @@ export function QuerysetHealthTab({
                   )
                 })}
               </div>
-            ) : null}
+            )}
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-info/15 bg-info/[0.025] px-4 py-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-info/[0.08] text-info ring-1 ring-info/20">
-              <Scale className="h-5 w-5" aria-hidden="true" />
+          <div className="flex items-start gap-3 py-3">
+            <span className="inline-flex shrink-0 pt-0.5 text-muted-foreground">
+              <Scale className="size-4" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">
-                如何解读差异
-              </div>
-              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+              <div className="text-sm font-semibold text-foreground">如何解读差异</div>
+              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">
                 命中率、MRR、NDCG 为正表示提升；P95 延迟、漏检率、弱命中率为负表示改善。
                 仅对相同评测配置的快照进行可比对。
               </div>
@@ -625,21 +433,17 @@ export function QuerysetHealthTab({
         </div>
       </Panel>
 
-      <Panel padding="sm" className="rounded-2xl border-info/15 bg-background/72 shadow-none">
+      <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-foreground">
-              最近运行
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              展示最近 {runs?.items?.length ?? 0} 条（按时间倒序）
-            </div>
+            <div className="text-sm font-semibold text-foreground">最近运行</div>
+            <div className="text-xs text-muted-foreground mt-0.5">最近 {runItems.length} 条（按时间倒序）</div>
           </div>
           {runItems.length > 30 ? (
             <Button
               variant="outline"
               size="sm"
-              className="h-7 rounded-lg border-border px-2 text-[11px]"
+              className="px-2 text-[13px]"
               aria-expanded={showAllRuns}
               onClick={() => setShowAllRuns((showAll) => !showAll)}
             >
@@ -669,60 +473,39 @@ export function QuerysetHealthTab({
                       <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl bg-info/[0.04] text-info/70">
                         <ShieldAlert className="h-4 w-4" aria-hidden="true" />
                       </div>
-                      <div className="text-sm font-medium text-muted-foreground">
-                        暂无运行记录
-                      </div>
-                      <div className="mt-0.5 text-xs">
-                        运行评测后结果将在此显示
-                      </div>
+                      <div className="text-sm font-medium text-muted-foreground">暂无运行记录</div>
+                      <div className="mt-0.5 text-xs">运行评测后结果将在此显示</div>
                     </div>
                   </td>
                 </tr>
               ) : (
-                (showAllRuns ? runItems : runItems.slice(0, 30)).map((it) => {
-                  const m = isJsonObject(it.metrics) ? it.metrics : {}
-                  const r = isJsonObject(it.risk) ? it.risk : {}
-                  const st = String(it?.status || 'unknown')
-                  const isDegraded = st === 'degraded'
-                  const stLabel =
-                    st === 'degraded'
-                      ? '退化'
-                      : st === 'healthy'
-                        ? '健康'
-                        : st === 'unknown'
-                          ? '未知'
-                          : st
+                (showAllRuns ? runItems : runItems.slice(0, 30)).map((run, index) => {
+                  const metrics = chartData.at(-1 - index)
+                  const timestamp = typeof run.generated_at === 'string' ? run.generated_at : '—'
+                  const status = run.status
+                  let statusLabel = '未知'
+                  if (status === 'degraded') {
+                    statusLabel = '退化'
+                  } else if (status === 'healthy') {
+                    statusLabel = '健康'
+                  } else if (typeof status === 'string' && status !== 'unknown') {
+                    statusLabel = status
+                  }
                   return (
-                    <tr
-                      key={String(it.generated_at)}
-                      className="border-b border-border/40"
-                    >
-                      <td className="py-1.5 pr-4 font-mono text-xs text-muted-foreground">
-                        {String(it.generated_at || '')}
+                    <tr key={`${timestamp}:${index}`} className="border-b border-border/40">
+                      <td className="py-1.5 pr-4 font-mono text-xs text-muted-foreground">{timestamp}</td>
+                      <td className="py-1.5 pr-4 text-xs">
+                        <span className={evaluationStyles.runStatus} data-status={status}>
+                          {statusLabel}
+                        </span>
                       </td>
-                      <td
-                        className={cn(
-                          'py-1.5 pr-4 text-xs',
-                          isDegraded ? 'text-destructive' : 'text-success'
-                        )}
-                      >
-                        {stLabel}
-                      </td>
+                      <td className="py-1.5 pr-4 text-right tabular-nums">{formatPercent(metrics?.hit_at_k)}</td>
+                      <td className="py-1.5 pr-4 text-right tabular-nums">{formatNumber(metrics?.mrr, 3)}</td>
+                      <td className="py-1.5 pr-4 text-right tabular-nums">{formatNumber(metrics?.ndcg_at_k, 3)}</td>
                       <td className="py-1.5 pr-4 text-right tabular-nums">
-                        {fmtPercent(m.hit_at_k, 1)}
+                        {formatNumber(metrics?.p95_latency_ms, 1)}
                       </td>
-                      <td className="py-1.5 pr-4 text-right tabular-nums">
-                        {fmtNum(m.mrr, 3)}
-                      </td>
-                      <td className="py-1.5 pr-4 text-right tabular-nums">
-                        {fmtNum(m.ndcg_at_k, 3)}
-                      </td>
-                      <td className="py-1.5 pr-4 text-right tabular-nums">
-                        {fmtNum(m.p95_latency_ms, 1)}
-                      </td>
-                      <td className="py-1.5 pr-4 text-right tabular-nums">
-                        {fmtPercent(r.miss_rate, 1)}
-                      </td>
+                      <td className="py-1.5 pr-4 text-right tabular-nums">{formatPercent(metrics?.miss_rate)}</td>
                     </tr>
                   )
                 })

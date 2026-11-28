@@ -1,17 +1,13 @@
-from app.parsing.factory import ParserFactory
+import pytest
+
+from app.infrastructure.model_policy import RetiredModelProviderError
+from app.rag.ingestion.parsing.factory import ParserFactory
 
 
-def test_colpali_pdf_backend_is_routable(tmp_path):
+@pytest.mark.parametrize("backend", ["colpali", "col-pali", "colqwen", "col-qwen"])
+def test_colpali_pdf_backend_is_retired(tmp_path, backend):
     pdf_path = tmp_path / "visual.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
 
-    documents, resolved_backend = ParserFactory().parse(
-        pdf_path,
-        parser_backend="colpali",
-        allow_fallback=False,
-    )
-
-    assert resolved_backend == "colpali"
-    assert len(documents) == 1
-    assert documents[0].metadata["parser_backend"] == "colpali"
-    assert documents[0].page_content == "[visual-document](visual.pdf)\n"
+    with pytest.raises(RetiredModelProviderError, match="has been retired"):
+        ParserFactory().parse(pdf_path, parser_backend=backend, allow_fallback=False)

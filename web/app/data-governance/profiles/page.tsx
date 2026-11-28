@@ -7,23 +7,21 @@ import { NavigationVisibilityGate } from '@/components/auth/navigation-visibilit
 import { AppFrame } from '@/components/app-frame'
 import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { PageLoading } from '@/components/ui/page-loading'
+import styles from '@/components/governance-profiles/profiles.module.css'
 
 const GovernanceProfilesPage = dynamic(
-  () =>
-    import('@/components/governance-profiles/governance-profiles-page').then(
-      (mod) => mod.GovernanceProfilesPage
-    ),
+  () => import('@/components/governance-profiles/governance-profiles-page').then((mod) => mod.GovernanceProfilesPage),
   {
     ssr: false,
     loading: () => <GovernanceProfilesRouteLoading />,
-  }
+  },
 )
 
 export default function GovernanceProfilesRoutePage() {
   return (
     <NavigationVisibilityGate moduleKey="governanceProfiles" pageName="治理配置">
       <AppFrame>
-        <div className={KNOWLEDGE_OPS_BACKGROUND_CLASS}>
+        <div className={`${KNOWLEDGE_OPS_BACKGROUND_CLASS} ${styles.route}`}>
           <GovernanceProfilesPage />
         </div>
       </AppFrame>

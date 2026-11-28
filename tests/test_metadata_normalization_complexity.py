@@ -1,5 +1,5 @@
-from app.rag.core.hashing import stable_hash
-from app.rag.core.metadata import (
+from app.infrastructure.hashing import stable_hash
+from app.types.document_metadata import (
     ensure_hierarchy_overlay_metadata,
     infer_chunk_structure,
     normalize_section_metadata,

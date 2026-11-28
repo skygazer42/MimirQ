@@ -1,17 +1,10 @@
-export interface ParserBackendOption {
+import { isRetiredParserBackend, normalizeParserBackendName } from './parser-compat'
+
+export type ParserBackendOption = {
   value: string
   label: string
   description: string
-  icon:
-    | 'auto'
-    | 'basic'
-    | 'layout'
-    | 'mineru'
-    | 'deepdoc'
-    | 'deepseekocr'
-    | 'markitdown'
-    | 'docling'
-    | 'magicpdf'
+  icon: 'auto' | 'basic' | 'layout' | 'mineru' | 'deepdoc' | 'deepseekocr' | 'markitdown' | 'docling' | 'magicpdf'
   badge?: string
 }
 
@@ -107,9 +100,8 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
   {
     value: 'magicpdf',
     label: 'MagicPDF',
-    description: 'magic-pdf · 本地高级解析（依赖较重）',
+    description: 'magic-pdf · 高级 PDF 解析，优先使用已配置的服务',
     icon: 'magicpdf',
-    badge: '本地',
   },
 ]
 
@@ -175,40 +167,31 @@ export const PARSER_BACKEND_REGISTRY_OPTIONS: ParserBackendOption[] = [
   ...ADDITIONAL_PARSER_BACKEND_REGISTRY_OPTIONS,
 ]
 
-function normalizeParserValue(value?: string) {
-  const raw = (value || '').toLowerCase().trim()
-  const normalized = raw.replaceAll("_", '-')
-  if (normalized === 'magic-pdf') return 'magicpdf'
-  if (normalized === 'marker-pdf') return 'marker'
-  if (normalized === 'paddle-vl') return 'paddle_vl'
-  if (normalized === 'paddleocr-vl') return 'paddle_vl'
-  if (normalized === 'paddleocrvl') return 'paddle_vl'
-  if (normalized === 'olm-ocr') return 'olmocr'
-  if (normalized === 'olmocr-pdf') return 'olmocr'
-  if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
-  if (normalized === 'qianfan-ocr') return 'qianfan_ocr'
-  if (normalized === 'qianfanocr') return 'qianfan_ocr'
-  if (normalized === 'textin-xparse') return 'textin'
-  if (normalized === 'textinxparse') return 'textin'
-  if (normalized === 'etl-4llm') return 'etl4llm'
-  if (normalized === 'bisheng-unstructured') return 'etl4llm'
-  if (normalized === 'bishengunstructured') return 'etl4llm'
-  if (normalized === 'bisheng') return 'etl4llm'
-  return normalized
-}
-
-export function getParserOption(value?: string) {
-  return (
-    PARSER_BACKEND_OPTIONS.find(
-      (option) => option.value === normalizeParserValue(value)
-    ) || PARSER_BACKEND_OPTIONS[0]
-  )
+export function getParserOption(value?: string): ParserBackendOption {
+  const backend = normalizeParserBackendName(value)
+  if (isRetiredParserBackend(backend)) {
+    return {
+      value: backend,
+      label: `${backend}（已移除）`,
+      description: '请选择其他解析器。',
+      icon: 'basic',
+    }
+  }
+  const option = PARSER_BACKEND_REGISTRY_OPTIONS.find((item) => item.value === backend)
+  if (option !== undefined) return option
+  return {
+    value: backend,
+    label: backend,
+    description: '当前解析器不在选项列表中。',
+    icon: 'basic',
+  }
 }
 
 export function getParserLabel(value?: string) {
-  const normalized = normalizeParserValue(value)
-  const direct = PARSER_BACKEND_REGISTRY_OPTIONS.find((option) => option.value === normalized)?.label
-  if (direct) return direct
+  const label = value?.trim()
+  if (label === undefined || label.length === 0) return 'Auto'
 
-  return (value || '').toString().trim() || 'Auto'
+  const backend = normalizeParserBackendName(label)
+  const option = PARSER_BACKEND_REGISTRY_OPTIONS.find((option) => option.value === backend)
+  return option?.label ?? label
 }

@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # 文件上传
 
-MimirQ 通过 `multipart/form-data` 接口上传文档，支持 PDF、Office、纯文本等格式。大文件场景可使用预签名 URL 直传对象存储。
+Ragvia 通过 `multipart/form-data` 接口上传文档，支持 PDF、Office、纯文本等格式。大文件场景可使用预签名 URL 直传对象存储。
 
 ## multipart/form-data 上传
 
@@ -61,7 +61,7 @@ resp = requests.post(
 ```mermaid
 sequenceDiagram
     participant Client
-    participant API as MimirQ API
+    participant API as Ragvia API
     participant S3 as 对象存储
     Client->>API: 1. 请求上传 URL
     API-->>Client: 2. 返回预签名 URL

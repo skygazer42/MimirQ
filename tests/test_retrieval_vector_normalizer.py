@@ -1,5 +1,4 @@
-
-from app.rag.retrieval.hybrid.vector_normalizer import normalize_vector_channel_results
+from app.rag.retrieval.recall.results import normalize_vector_channel_results
 
 
 def test_vector_normalizer_preserves_order_and_backfills_chunk_ids() -> None:

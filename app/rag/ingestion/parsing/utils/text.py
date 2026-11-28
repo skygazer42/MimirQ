@@ -1,0 +1,445 @@
+#
+#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+
+"""
+Text decoding helpers for parsers.
+
+We ingest user-uploaded files from many sources; in practice, plain text /
+markdown files are often not UTF-8 (or may include BOM). This module provides a
+small decoder that:
+- Handles BOM (UTF-8/UTF-16/UTF-32) when present
+- Tries UTF-8 first
+- Uses chardet as a hint (when available)
+- Falls back to common encodings (GB18030/GBK/BIG5/CP1252/Latin-1, etc.)
+- Always returns a string (worst-case with replacement)
+"""
+
+import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+from app.infrastructure.runtime.dependencies import optional_import, require_dependency
+
+logger = logging.getLogger(__name__)
+_TEXT_DECODE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical text decode fallback failure: %s"
+
+
+@dataclass(frozen=True)
+class DecodedText:
+    text: str
+    encoding: str
+    confidence: float
+    had_bom: bool
+
+
+_BOM_UTF8 = b"\xef\xbb\xbf"
+_BOM_UTF16_LE = b"\xff\xfe"
+_BOM_UTF16_BE = b"\xfe\xff"
+_BOM_UTF32_LE = b"\xff\xfe\x00\x00"
+_BOM_UTF32_BE = b"\x00\x00\xfe\xff"
+
+
+@lru_cache(maxsize=1)
+def _get_chardet():  # noqa: ANN202
+    # Cache to avoid repeated warnings during large ingests when chardet isn't installed.
+    return optional_import("chardet", feature="text_encoding_detection")
+
+
+def _normalize_encoding(name: str | None) -> str | None:
+    if name is None:
+        return None
+    raw = (name).strip()
+    if not raw:
+        return None
+    lowered = raw.lower().replace("_", "-")
+    # Common aliases from chardet / user-land.
+    if lowered in {"utf-8-sig", "utf8-sig"}:
+        return "utf-8"
+    if lowered in {"utf8"}:
+        return "utf-8"
+    if lowered in {"ascii"}:
+        return "utf-8"
+    if lowered in {"gb2312", "gbk"}:
+        # Superset, more forgiving for legacy simplified Chinese.
+        return "gb18030"
+    if lowered in {"big5"}:
+        return "big5"
+    if lowered in {"windows-1252"}:
+        return "cp1252"
+    if lowered in {"iso-8859-1", "iso8859-1"}:
+        return "latin1"
+    return lowered
+
+
+def _has_utf16_bom(blob: bytes) -> bool:
+    return blob.startswith(_BOM_UTF16_LE) or blob.startswith(_BOM_UTF16_BE)
+
+
+def _has_utf32_bom(blob: bytes) -> bool:
+    return blob.startswith(_BOM_UTF32_LE) or blob.startswith(_BOM_UTF32_BE)
+
+
+def _score_decoded_text(text: str) -> tuple[float, float, float]:
+    """
+    Heuristic scoring to pick the most likely "human readable" decode.
+
+    Returns a tuple suitable for max() comparison:
+    - (cjk_ratio_if_significant, printable_ratio, negative_nul_ratio)
+    """
+    if not text:
+        return (0.0, 0.0, 0.0)
+
+    total = len(text)
+    nul = text.count("\x00")
+
+    # Control characters (excluding common whitespace).
+    control = 0
+    cjk = 0
+    for ch in text:
+        code = ord(ch)
+        if code == 0:
+            continue
+        if code < 32 and ch not in "\n\r\t\f":
+            control += 1
+            continue
+        if code == 127:
+            control += 1
+            continue
+        if (0x4E00 <= code <= 0x9FFF) or (0x3400 <= code <= 0x4DBF):
+            cjk += 1
+
+    printable = max(0, total - control - nul)
+    printable_ratio = printable / total
+    nul_ratio = nul / total
+
+    cjk_ratio = cjk / total
+    # Only boost CJK if it is clearly present; avoids picking GB encodings for mostly Latin text.
+    effective_cjk_ratio = cjk_ratio if (cjk >= 20 and cjk_ratio >= 0.10) else 0.0
+
+    return (effective_cjk_ratio, printable_ratio, -nul_ratio)
+
+
+def _iter_candidate_encodings(*, detected: str | None, default_encoding: str, blob: bytes) -> Iterable[str]:
+    """
+    Yield candidate encodings in priority order, de-duplicated.
+    """
+    seen: set[str] = set()
+
+    def push(enc: str) -> None:
+        norm = _normalize_encoding(enc)
+        if not norm:
+            return
+        if norm in seen:
+            return
+        seen.add(norm)
+        yield_list.append(norm)
+
+    yield_list: list[str] = []
+
+    # Detected encoding (from chardet) first, even if low confidence; we'll still score alternatives.
+    if detected:
+        push(detected)
+
+    # If the file looks like UTF-16/32 without BOM (common on Windows exports), try these early.
+    nul_ratio = blob.count(b"\x00") / max(1, len(blob))
+    if nul_ratio >= 0.10:
+        push("utf-16")
+        push("utf-32")
+
+    # Common fallbacks for "garbled Chinese" cases.
+    push("gb18030")
+    push("gbk")
+    push("big5")
+
+    # Western single-byte fallbacks.
+    push("cp1252")
+    push("latin1")
+
+    # Last resort.
+    push(default_encoding)
+
+    return yield_list
+
+
+def _decode_bom_text(blob: bytes) -> DecodedText | None:
+    if _has_utf32_bom(blob):
+        try:
+            text = blob.decode("utf-32", errors="strict")
+            return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-32", confidence=1.0, had_bom=True)
+        except UnicodeDecodeError as exc:
+            logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
+
+    if _has_utf16_bom(blob):
+        try:
+            text = blob.decode("utf-16", errors="strict")
+            return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-16", confidence=1.0, had_bom=True)
+        except UnicodeDecodeError as exc:
+            logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
+    return None
+
+
+def _detect_encoding(blob: bytes) -> tuple[str | None, float]:
+    chardet = _get_chardet()
+    if chardet is None:
+        return None, 0.0
+    try:
+        detected = chardet.detect(blob[:65536])
+        raw_encoding = detected["encoding"]
+        detected_encoding = (raw_encoding.strip() or None) if raw_encoding is not None else None
+        detected_confidence = float(detected["confidence"])
+    except Exception:
+        logger.debug("Optional encoding detection failed", exc_info=True)
+        return None, 0.0
+    return detected_encoding, detected_confidence
+
+
+def _decode_best_candidate(
+    blob: bytes,
+    *,
+    detected_encoding: str | None,
+    default_encoding: str,
+) -> tuple[str | None, str | None]:
+    best_text: str | None = None
+    best_encoding: str | None = None
+    best_score: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    candidates = _iter_candidate_encodings(detected=detected_encoding, default_encoding=default_encoding, blob=blob)
+
+    for enc in candidates:
+        try:
+            decoded = blob.decode(enc, errors="strict")
+        except (UnicodeDecodeError, LookupError):
+            continue
+        score = _score_decoded_text(decoded)
+        if best_text is None or score > best_score:
+            best_text = decoded
+            best_encoding = enc
+            best_score = score
+    return best_text, best_encoding
+
+
+def _replacement_decoded_text(
+    blob: bytes,
+    *,
+    detected_encoding: str | None,
+    detected_confidence: float,
+    default_encoding: str,
+    had_bom: bool,
+) -> DecodedText:
+    fallback = _normalize_encoding(detected_encoding) or default_encoding
+    try:
+        return DecodedText(
+            text=blob.decode(fallback, errors="replace"),
+            encoding=str(fallback),
+            confidence=detected_confidence,
+            had_bom=had_bom,
+        )
+    except (LookupError, UnicodeError):
+        return DecodedText(
+            text=blob.decode(default_encoding, errors="replace"),
+            encoding=str(default_encoding),
+            confidence=0.0,
+            had_bom=had_bom,
+        )
+
+
+def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedText:
+    """
+    Read and decode a text file with best-effort encoding detection.
+
+    Notes:
+    - Always returns a string (decoding errors are replaced).
+    - `confidence` is 1.0 for successful UTF-8 decode, otherwise derived from chardet.
+    """
+    blob = Path(path).read_bytes()
+    had_bom = blob.startswith(_BOM_UTF8) or _has_utf16_bom(blob) or _has_utf32_bom(blob)
+
+    # 1) BOM-aware fast paths.
+    bom_decoded = _decode_bom_text(blob)
+    if bom_decoded is not None:
+        return bom_decoded
+
+    # 2) Fast path: UTF-8 (with BOM stripping).
+    try:
+        return DecodedText(
+            text=blob.decode("utf-8-sig", errors="strict"),
+            encoding="utf-8",
+            confidence=1.0,
+            had_bom=had_bom,
+        )
+    except UnicodeDecodeError as exc:
+        logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
+
+    # 3) Best-effort detection with chardet.
+    detected_encoding, detected_confidence = _detect_encoding(blob)
+
+    # 4) Try a small set of candidates and pick the best-scoring result.
+    best_text, best_encoding = _decode_best_candidate(
+        blob,
+        detected_encoding=detected_encoding,
+        default_encoding=default_encoding,
+    )
+
+    if best_text is None or best_encoding is None:
+        return _replacement_decoded_text(
+            blob,
+            detected_encoding=detected_encoding,
+            detected_confidence=detected_confidence,
+            default_encoding=default_encoding,
+            had_bom=had_bom,
+        )
+
+    confidence = detected_confidence if _normalize_encoding(detected_encoding) == best_encoding else 0.0
+    return DecodedText(text=best_text, encoding=best_encoding, confidence=confidence, had_bom=had_bom)
+
+
+_SOURCE_CODECS = [
+    "utf-8",
+    "gb2312",
+    "gbk",
+    "utf_16",
+    "ascii",
+    "big5",
+    "big5hkscs",
+    "cp037",
+    "cp273",
+    "cp424",
+    "cp437",
+    "cp500",
+    "cp720",
+    "cp737",
+    "cp775",
+    "cp850",
+    "cp852",
+    "cp855",
+    "cp856",
+    "cp857",
+    "cp858",
+    "cp860",
+    "cp861",
+    "cp862",
+    "cp863",
+    "cp864",
+    "cp865",
+    "cp866",
+    "cp869",
+    "cp874",
+    "cp875",
+    "cp932",
+    "cp949",
+    "cp950",
+    "cp1006",
+    "cp1026",
+    "cp1125",
+    "cp1140",
+    "cp1250",
+    "cp1251",
+    "cp1252",
+    "cp1253",
+    "cp1254",
+    "cp1255",
+    "cp1256",
+    "cp1257",
+    "cp1258",
+    "euc_jp",
+    "euc_jis_2004",
+    "euc_jisx0213",
+    "euc_kr",
+    "gb18030",
+    "hz",
+    "iso2022_jp",
+    "iso2022_jp_1",
+    "iso2022_jp_2",
+    "iso2022_jp_2004",
+    "iso2022_jp_3",
+    "iso2022_jp_ext",
+    "iso2022_kr",
+    "latin_1",
+    "iso8859_2",
+    "iso8859_3",
+    "iso8859_4",
+    "iso8859_5",
+    "iso8859_6",
+    "iso8859_7",
+    "iso8859_8",
+    "iso8859_9",
+    "iso8859_10",
+    "iso8859_11",
+    "iso8859_13",
+    "iso8859_14",
+    "iso8859_15",
+    "iso8859_16",
+    "johab",
+    "koi8_r",
+    "koi8_t",
+    "koi8_u",
+    "kz1048",
+    "mac_cyrillic",
+    "mac_greek",
+    "mac_iceland",
+    "mac_latin2",
+    "mac_roman",
+    "mac_turkish",
+    "ptcp154",
+    "shift_jis",
+    "shift_jis_2004",
+    "shift_jisx0213",
+    "utf_32",
+    "utf_32_be",
+    "utf_32_le",
+    "utf_16_be",
+    "utf_16_le",
+    "utf_7",
+    "windows-1250",
+    "windows-1251",
+    "windows-1252",
+    "windows-1253",
+    "windows-1254",
+    "windows-1255",
+    "windows-1256",
+    "windows-1257",
+    "windows-1258",
+    "latin-2",
+]
+
+
+def find_codec(blob: bytes) -> str:
+    chardet = require_dependency("chardet", feature="file_encoding_detection")
+    detected = chardet.detect(blob[:1024])
+    if detected["confidence"] > 0.5 and detected["encoding"] == "ascii":
+        return "utf-8"
+
+    for c in _SOURCE_CODECS:
+        try:
+            blob.decode(c)
+            return c
+        except (UnicodeDecodeError, LookupError) as exc:
+            logger.debug("Codec %s failed full decode: %s", c, exc)
+
+    return "utf-8"
+
+
+def read_text_source(fnm: str, binary: bytes | None = None) -> str:
+    if binary is None:
+        return read_text_file(Path(fnm)).text
+    if not binary:
+        return ""
+    bom_decoded = _decode_bom_text(binary)
+    if bom_decoded is not None:
+        return bom_decoded.text
+    encoding = find_codec(binary)
+    return binary.decode("utf-8-sig" if encoding == "utf-8" else encoding)

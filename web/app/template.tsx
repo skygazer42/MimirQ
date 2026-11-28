@@ -1,16 +1,21 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import type { ReactNode } from 'react'
 
-import { PageTransition } from "@/components/page-transition"
+import { PageTransition } from '@/components/page-transition'
 import { PipelineProviders } from '@/components/providers/pipeline-providers'
-import { needsPipelineProvidersForPathname } from '@/lib/pipeline-route-scope'
+import { routing } from '@/i18n/routing'
 
-export default function Template({ children }: Readonly<{ children: React.ReactNode }>) {
-  const pathname = usePathname() || ''
+const PIPELINE_ROUTE_SEGMENTS = ['datasets', 'knowledge', 'parsing', 'chunk-preview', 'settings', 'data-governance']
+
+export default function Template({ children }: Readonly<{ children: ReactNode }>) {
+  // The global error route prerenders this template outside the locale provider.
+  const [, firstSegment, secondSegment] = usePathname().split('/')
+  const routeSegment = routing.locales.some((locale) => locale === firstSegment) ? secondSegment : firstSegment
   const content = <PageTransition>{children}</PageTransition>
 
-  if (!needsPipelineProvidersForPathname(pathname)) {
+  if (!PIPELINE_ROUTE_SEGMENTS.includes(routeSegment)) {
     return content
   }
 

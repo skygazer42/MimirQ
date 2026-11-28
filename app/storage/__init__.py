@@ -1,15 +1,4 @@
-"""
-Storage module
-
-Provides vector storage and object storage functionality.
-
-Main components:
-- vector: Vector databases (Milvus, FAISS, Chroma)
-- object: Object storage (MinIO)
-
-Note: Hybrid retrieval has been moved to app.rag.retriever module.
-"""
-
+"""Object and vector storage backends."""
 
 from typing import Any
 
@@ -42,10 +31,3 @@ def __getattr__(name: str) -> Any:
 
         return get_object_store
     raise AttributeError(f"module 'app.storage' has no attribute {name!r}")
-
-
-
-
-
-
-

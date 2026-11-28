@@ -1,4 +1,3 @@
-
 import asyncio
 import datetime as dt
 import gzip
@@ -14,10 +13,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
-from app.core.database import Base
+from app.infrastructure.database.connection import Base
 from app.models.audit_log import AuditLog
-from app.models.tenant_group import TenantGroup
-from app.services.table_store import format_table_id
+from app.models.identity.workspaces import TenantGroup
+from app.services.tables.store_paths import format_table_id
 
 UTC = getattr(dt, "UTC", timezone.utc)
 if not hasattr(dt, "UTC"):
@@ -108,7 +107,7 @@ class _StaticDB:
 def test_export_audit_logs_gzip_sanitizes_nested_sensitive_details(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.audit as audit_api
+    import app.api.v1.system.audit as audit_api
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[AuditLog.__table__])
@@ -132,10 +131,9 @@ def test_export_audit_logs_gzip_sanitizes_nested_sensitive_details(
         )
         db.commit()
 
-        monkeypatch.setattr(audit_api, "_ensure_admin", lambda *_a, **_k: None, raising=True)
+        monkeypatch.setattr(audit_api, "_ensure_audit_read_permission", lambda *_a, **_k: None, raising=True)
 
         response = audit_api.export_audit_logs(
-            filters=audit_api.AuditLogFilterParams(),
             export=audit_api.AuditLogExportParams(limit=10, gzip=True),
             tenant_id=tenant_id,
             account_id="acct-1",
@@ -152,7 +150,7 @@ def test_export_audit_logs_gzip_sanitizes_nested_sensitive_details(
 def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.audit as audit_api
+    import app.api.v1.system.audit as audit_api
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[TenantGroup.__table__])
@@ -179,7 +177,7 @@ def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
         db.add_all([first_group, second_group])
         db.commit()
 
-        monkeypatch.setattr(audit_api, "_ensure_admin", lambda *_a, **_k: None, raising=True)
+        monkeypatch.setattr(audit_api, "_ensure_audit_read_permission", lambda *_a, **_k: None, raising=True)
         monkeypatch.setattr(audit_api, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
         with pytest.raises(audit_api.HTTPException) as exc_info:
@@ -217,7 +215,7 @@ def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
 def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_acl as connectors_acl
+    import app.services.connectors.document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -258,8 +256,8 @@ def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
 
     monkeypatch.setattr(
         connectors_acl,
-        "_leader_module",
-        SimpleNamespace(_apply_document_access_from_config=_apply_acl),
+        "_apply_document_access_from_config",
+        _apply_acl,
         raising=True,
     )
 
@@ -294,7 +292,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
     doc_kind: str,
     url_field: str,
 ) -> None:
-    import app.api.v1.connectors_acl as connectors_acl
+    import app.services.connectors.document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -338,7 +336,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
         ),
     ]
 
-    monkeypatch.setattr(connectors_acl, "_leader_module", SimpleNamespace(_now=lambda: now), raising=True)
+    monkeypatch.setattr(connectors_acl, "_now", lambda: now, raising=True)
     disabled = getattr(connectors_acl, func_name)(
         _FlakyDB(rows),
         tenant_id=tenant_id,
@@ -357,7 +355,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
 def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_issue_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_jira as connectors_jira
+    import app.services.connectors.execution.jira as connectors_jira
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -393,12 +391,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
         ),
     ]
 
-    monkeypatch.setattr(
-        connectors_jira,
-        "_leader_module",
-        SimpleNamespace(_now=lambda: now),
-        raising=False,
-    )
+    monkeypatch.setattr(connectors_jira, "_now", lambda: now, raising=True)
 
     reconciled, disabled = connectors_jira._soft_disable_jira_documents_missing_from_full_sync(
         _FlakyDB(rows),
@@ -418,7 +411,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
 def test_process_jira_project_issues_tracks_progress_and_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_jira as connectors_jira
+    import app.services.connectors.execution.jira as connectors_jira
 
     async def _fetch_page(*_args, **_kwargs):
         return 1, [{"key": "ABC-1"}]
@@ -428,16 +421,9 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
         kwargs["observed_issue_urls"].add("https://jira.example.com/browse/ABC-1")
 
     monkeypatch.setattr(connectors_jira, "_jira_project_fetch_issue_page", _fetch_page, raising=True)
-    monkeypatch.setattr(
-        connectors_jira,
-        "_leader_module",
-        SimpleNamespace(
-            get_http_client_pool=lambda: object(),
-            _jira_project_run_cancelled=lambda *_a, **_k: False,
-            _process_jira_project_issue=_process_issue,
-        ),
-        raising=False,
-    )
+    monkeypatch.setattr(connectors_jira, "get_http_client_pool", lambda: object(), raising=True)
+    monkeypatch.setattr(connectors_jira, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=True)
+    monkeypatch.setattr(connectors_jira, "_process_jira_project_issue", _process_issue, raising=True)
 
     progress, observed_issue_urls, listing_complete = asyncio.run(
         connectors_jira._process_jira_project_issues(
@@ -472,6 +458,7 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
                 "search_url": "https://jira.example.com/rest/api/3/search",
                 "headers": {"Authorization": "Bearer token"},
                 "jql": "project = ABC",
+                "source_acl": None,
                 "source_acl_mode": "disabled",
                 "source_acl_fallback_mode": "partial_members",
                 "enable_source_acl": False,
@@ -487,7 +474,7 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
 def test_extract_table_assets_filters_wrong_doc_and_caps_payloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     doc_id = uuid4()
     valid_table_id = format_table_id(document_id=doc_id, sheet_index=2)
@@ -536,7 +523,7 @@ def test_extract_table_assets_filters_wrong_doc_and_caps_payloads(
 def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     allowed_doc_id = uuid4()
@@ -564,14 +551,14 @@ def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
     audits: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(
         dataset_tables, "get_allowed_document_id_sets", lambda *_a, **_k: ({allowed_doc_id}, set()), raising=True
@@ -604,7 +591,7 @@ def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
 def test_get_dataset_table_masks_sample_rows_for_matching_table(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     document_id = uuid4()
@@ -629,14 +616,14 @@ def test_get_dataset_table_masks_sample_rows_for_matching_table(
     audits: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
     monkeypatch.setattr(
@@ -666,7 +653,7 @@ def test_get_dataset_table_masks_sample_rows_for_matching_table(
 def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     document_id = uuid4()
@@ -692,18 +679,18 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     )
     answer_inputs: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
+    monkeypatch.setattr(dataset_tables.settings, "TABLE_NL2SQL_ENABLED", True)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
     monkeypatch.setattr(
@@ -726,6 +713,7 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
             {
                 "schema_link": {"matched": True},
                 "planner": {"sql_fingerprint": "abc123"},
+                "sql_fingerprint": "abc123",
                 "join_provenance": [
                     {
                         "left_table": "a",
@@ -738,17 +726,18 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
         ),
         raising=True,
     )
-    monkeypatch.setattr(
-        dataset_tables,
-        "run_table_query",
-        lambda **_k: {
+
+    def _run_table_query(**kwargs):
+        assert kwargs["expected_sql_fingerprint"] == "abc123"
+        return {
             "sql": "SELECT secret FROM sheet_1",
             "columns": ["secret"],
             "rows": [["top-secret"]],
             "truncated": False,
-        },
-        raising=True,
-    )
+            "planner_execution_mismatch": {"mismatch": False},
+        }
+
+    monkeypatch.setattr(dataset_tables, "run_table_query", _run_table_query)
 
     def _answer_from_result(**kwargs) -> str:
         answer_inputs.append(kwargs)
@@ -774,7 +763,7 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
 def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     document_id = uuid4()
@@ -789,20 +778,20 @@ def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     )
 
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LOTUS_ENABLED", True, raising=False)
+    monkeypatch.setattr(dataset_tables.settings, "TABLE_NL2SQL_ENABLED", True)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(
-        dataset_tables, "lotus_available", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True
+        dataset_tables, "get_lotus_availability", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True
     )
-    monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
     monkeypatch.setattr(

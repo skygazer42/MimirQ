@@ -1,94 +1,63 @@
 'use client'
 
-import {
-  Activity,
-  ClipboardList,
-  CircleAlert,
-  Download,
-  FileStack,
-  History,
-  Info,
-  Minus,
-  PlayCircle,
-  Plus,
-  RefreshCcw,
-  Sparkles,
-  Target,
-  TrendingUp,
-  Waypoints,
-} from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-
+import { ChevronDown, Download, Loader2 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { PageHeader } from '@/components/ui/page-header'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+  DirectoryWorkspace,
+  OperationalWorkspace,
+  WorkspaceMetrics,
+  WorkspaceNotice,
+  WorkspaceNoticeStack,
+  WorkspaceTableScroll,
+  workspaceStyles as ws,
+} from '@/components/ui/operational-workspace'
 import { formatApiError } from '@/lib/api-errors'
 import {
   datasetApi,
   evaluationApi,
-  type KGHardcaseMode,
   type KGSearchDiagnosticsResponse,
   type KGSearchDiagnosticsRunDetail,
   type KGSearchDiagnosticsRunOut,
+  type KGSearchDiagnosticsRunList,
 } from '@/lib/api'
-import { coerceOneOf } from '@/lib/one-of'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
+import { downloadBlob } from '@/lib/download'
+import {
+  kgDiagnosticsFormSchema,
+  kgQualityRequestSchema,
+  type KGSearchRunMetrics,
+  type KGQualityReport,
+  type KGQualityRequest,
+} from '@/lib/kg-diagnostics-schema'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import type { JsonObject } from '@/types'
 
-const KG_EXTRACT_MODE_VALUES = ['auto', 'on', 'off'] as const
-const DIAGNOSTICS_SECTION_TITLE_CLASS =
-  'text-[14px] font-medium leading-5 text-foreground/85'
-const DIAGNOSTICS_SECTION_DESCRIPTION_CLASS =
-  'text-[12px] font-normal leading-5 text-muted-foreground'
-const DIAGNOSTICS_FIELD_LABEL_CLASS =
-  'text-[12px] font-normal leading-5 text-muted-foreground'
-const DIAGNOSTICS_FIELD_VALUE_CLASS =
-  'text-[14px] font-normal text-foreground/90'
-const DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS =
-  'flex min-w-0 flex-wrap items-center justify-end gap-1.5 rounded-full border border-border/44 bg-card/54 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]'
-const DIAGNOSTICS_HEADER_ACTION_BUTTON_CLASS =
-  'h-8 gap-1.5 rounded-full border-border/36 bg-background/58 px-3 text-[11.5px] font-medium text-foreground/82 shadow-none hover:border-primary/28 hover:bg-background/76 hover:text-foreground'
-const DIAGNOSTICS_ACTION_CARD_CLASS =
-  'rounded-[1.15rem] border border-border/36 bg-card/62 p-2.5 shadow-[0_16px_38px_-34px_hsl(var(--foreground)/0.35),inset_0_1px_0_hsl(var(--card)/0.7)]'
-const DIAGNOSTICS_PRIMARY_ACTION_BUTTON_CLASS =
-  'h-10 w-full gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground shadow-[0_16px_32px_-22px_hsl(var(--primary)/0.72)] transition-shadow hover:bg-primary/92 hover:shadow-[0_18px_38px_-24px_hsl(var(--primary)/0.72)]'
-const DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS =
-  'h-8 gap-1.5 rounded-full border-border/38 bg-background/50 px-2.5 text-[11.5px] font-medium text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
 const DIAGNOSTICS_METRIC_LABELS: Record<string, string> = {
   baseline_hit_rate: '基线命中率',
   baseline_mrr: 'Baseline MRR',
   baseline_recall: 'Baseline Recall',
   baseline_ndcg: 'Baseline NDCG@K',
   baseline_map: 'Baseline MAP@K',
+  baseline_valid_searches: '有效检索样本',
+  baseline_search_errors: '检索失败样本',
   hardcase_hit_rate: '难例命中率',
   hardcase_mrr: 'Hardcase MRR',
   hardcase_recall: 'Hardcase Recall',
   hardcase_ndcg: 'Hardcase NDCG@K',
   hardcase_map: 'Hardcase MAP@K',
+  hardcase_valid_searches: '有效难例检索',
+  hardcase_search_errors: '难例检索失败',
   hardcases_generated: '生成难例数',
   documents: '文档数',
   events: '事件数',
@@ -114,32 +83,7 @@ const DIAGNOSTICS_METRIC_LABELS: Record<string, string> = {
   documents_allowed: '有权限文档数',
 }
 
-type DiagnosticsView = 'run' | 'quality' | 'compare'
-type DiagnosticsDatasetOption = {
-  id?: string
-  name?: string | null
-}
-type DiagnosticsTone = 'muted' | 'neutral' | 'positive' | 'negative'
-type DiagnosticsAccent = 'neutral' | 'sky' | 'violet' | 'emerald' | 'amber'
-type DiagnosticsAccentClasses = {
-  surface: string
-  label: string
-  dot: string
-  value: string
-  caption: string
-}
-type DiagnosticsFailureCase = {
-  case_id: string
-  question: string
-  recall: number
-  mrr: number
-}
-type DiagnosticsFailureTab = 'failures' | 'distribution'
-type DiagnosticsRunCaseMetrics = ReturnType<typeof extractBaselineMetrics>
-type DiagnosticsRunCaseMapValue = {
-  question: string
-  metrics: DiagnosticsRunCaseMetrics
-}
+type DiagnosticsScope = { datasetId: string; active: boolean; controller: AbortController }
 type DiagnosticsRunDiffRow = {
   case_id: string
   question: string
@@ -151,47 +95,9 @@ type DiagnosticsRunDiffRow = {
   b_recall: number | null
   delta_recall: number | null
   delta_mrr: number | null
-}
-
-const DIAGNOSTICS_ACCENT_CLASSES: Record<
-  DiagnosticsAccent,
-  DiagnosticsAccentClasses
-> = {
-  neutral: {
-    surface: 'border-border/70 bg-background',
-    label: 'text-muted-foreground',
-    dot: 'bg-muted-foreground/40',
-    value: 'text-foreground',
-    caption: 'text-muted-foreground',
-  },
-  sky: {
-    surface: 'border-border/70 bg-background',
-    label: 'text-info',
-    dot: 'bg-info',
-    value: 'text-foreground',
-    caption: 'text-muted-foreground',
-  },
-  violet: {
-    surface: 'border-border/70 bg-background',
-    label: 'text-accent',
-    dot: 'bg-accent',
-    value: 'text-foreground',
-    caption: 'text-muted-foreground',
-  },
-  emerald: {
-    surface: 'border-border/70 bg-background',
-    label: 'text-success',
-    dot: 'bg-success',
-    value: 'text-foreground',
-    caption: 'text-muted-foreground',
-  },
-  amber: {
-    surface: 'border-border/70 bg-background',
-    label: 'text-warning',
-    dot: 'bg-warning',
-    value: 'text-foreground',
-    caption: 'text-muted-foreground',
-  },
+  presence: 'both' | 'only_a' | 'only_b'
+  a_error: string | null | undefined
+  b_error: string | null | undefined
 }
 
 const DIAGNOSTICS_DIFF_METRIC_KEYS = [
@@ -205,139 +111,47 @@ const DIAGNOSTICS_DIFF_METRIC_KEYS = [
   'hardcase_recall',
   'hardcase_ndcg',
   'hardcase_map',
-]
-
-function prettyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
-
-function isDiagnosticsRecord(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function diagnosticsField(source: unknown, key: string): unknown {
-  return isDiagnosticsRecord(source) ? source[key] : undefined
-}
-
-function diagnosticsRecordField(source: unknown, key: string): JsonObject | null {
-  const value = diagnosticsField(source, key)
-  return isDiagnosticsRecord(value) ? value : null
-}
+] as const
 
 function downloadJson(value: unknown, filename: string): void {
-  const content = JSON.stringify(value ?? {}, null, 2)
-  const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(filename, new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' }))
 }
 
-function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null
-  const n = Number(value)
-  return Number.isFinite(n) ? n : null
-}
+const metricNumber = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 })
 
 function formatMetricValue(value: unknown): string {
   if (value === null || value === undefined) return '-'
-  if (
-    typeof value === 'number' ||
-    typeof value === 'string' ||
-    typeof value === 'boolean'
-  ) {
-    return String(value)
-  }
-  return prettyJson(value)
+  if (typeof value === 'number') return metricNumber.format(value)
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (typeof value === 'string') return value
+  return JSON.stringify(value, null, 2)
 }
 
 function formatDiagnosticsMetricLabel(key: string): string {
   return DIAGNOSTICS_METRIC_LABELS[key] ?? key.replaceAll('_', ' ')
 }
 
-function extractBaselineMetrics(item: unknown): {
-  hit_at_k: boolean
-  mrr: number
-  recall: number
-  ndcg: number
-  map: number
-} | null {
-  const baseline = diagnosticsRecordField(item, 'baseline')
-  const metrics = diagnosticsRecordField(baseline, 'metrics')
-  const hit = Boolean(diagnosticsField(metrics, 'hit_at_k'))
-  const mrr = toNumber(diagnosticsField(metrics, 'mrr'))
-  const recall = toNumber(diagnosticsField(metrics, 'recall'))
-  const ndcg = toNumber(diagnosticsField(metrics, 'ndcg'))
-  const meanAveragePrecision = toNumber(diagnosticsField(metrics, 'map'))
-  if (mrr === null || recall === null) return null
-  return {
-    hit_at_k: hit,
-    mrr,
-    recall,
-    ndcg: ndcg ?? 0,
-    map: meanAveragePrecision ?? 0,
-  }
+type BaselineMetrics = Pick<KGSearchRunMetrics, 'hit_at_k' | 'mrr' | 'recall'>
+
+function extractBaselineMetrics(item: {
+  baseline: { error: string | null; metrics: BaselineMetrics }
+}): BaselineMetrics | null {
+  return item.baseline.error === null ? item.baseline.metrics : null
 }
 
-function caseKey(item: unknown): string | null {
-  const id = diagnosticsField(item, 'case_id')
-  const s = toTrimmedPrimitiveString(id)
-  return s || null
-}
-
-function diagnosticsInlineToneClass(tone: DiagnosticsTone): string {
-  if (tone === 'positive') return 'text-success'
-  if (tone === 'negative') return 'text-destructive'
-  if (tone === 'neutral') return 'text-foreground'
-  return 'text-muted-foreground'
-}
-
-function diagnosticsMetricValueClass(
-  tone: DiagnosticsTone,
-  fallback: string
-): string {
-  if (tone === 'positive') return 'text-success'
-  if (tone === 'negative') return 'text-destructive'
-  if (tone === 'muted') return 'text-muted-foreground'
-  return fallback
-}
-
-function diagnosticsTabClass(isActive: boolean): string {
-  return isActive
-    ? 'bg-info text-primary-foreground shadow-sm'
-    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-}
-
-function diagnosticsDeltaClass(delta: number): string {
-  if (delta > 0) return 'text-success'
-  if (delta < 0) return 'text-destructive'
-  return 'text-muted-foreground'
-}
-
-function diagnosticsRunSummary(run: KGSearchDiagnosticsRunDetail['run']) {
-  return isDiagnosticsRecord(run?.summary) ? run.summary : {}
-}
-
-function diagnosticsMetricDelta(aValue: number | null, bValue: number | null) {
-  if (aValue === null || bValue === null) return null
-  return Number((bValue - aValue).toFixed(4))
+function diagnosticsMetricDelta(aValue: number | null | undefined, bValue: number | null | undefined) {
+  if (aValue === null || aValue === undefined || bValue === null || bValue === undefined) return null
+  return bValue - aValue
 }
 
 function buildDiagnosticsSummaryDelta(
-  aSummary: JsonObject,
-  bSummary: JsonObject
+  aSummary: KGSearchDiagnosticsRunOut['summary'],
+  bSummary: KGSearchDiagnosticsRunOut['summary'],
 ) {
   const summaryDelta: JsonObject = {}
   for (const key of DIAGNOSTICS_DIFF_METRIC_KEYS) {
-    const aValue = toNumber(aSummary[key])
-    const bValue = toNumber(bSummary[key])
-    if (aValue === null && bValue === null) continue
+    const aValue = aSummary[key]
+    const bValue = bSummary[key]
     summaryDelta[key] = {
       a: aValue,
       b: bValue,
@@ -347,30 +161,15 @@ function buildDiagnosticsSummaryDelta(
   return summaryDelta
 }
 
-function buildDiagnosticsCaseMap(
-  items: JsonObject[] | undefined
-): Map<string, DiagnosticsRunCaseMapValue> {
-  const byCase = new Map<string, DiagnosticsRunCaseMapValue>()
-  for (const item of items || []) {
-    const key = caseKey(item)
-    if (!key) continue
-    byCase.set(key, {
-      question: toTrimmedPrimitiveString(diagnosticsField(item, 'question')),
-      metrics: extractBaselineMetrics(item),
-    })
-  }
-  return byCase
-}
-
 function buildDiagnosticsDiffRow(
   key: string,
-  byCaseA: Map<string, DiagnosticsRunCaseMapValue>,
-  byCaseB: Map<string, DiagnosticsRunCaseMapValue>
+  byCaseA: ReadonlyMap<string, KGSearchDiagnosticsRunDetail['items'][number]>,
+  byCaseB: ReadonlyMap<string, KGSearchDiagnosticsRunDetail['items'][number]>,
 ): DiagnosticsRunDiffRow {
   const runCaseA = byCaseA.get(key)
   const runCaseB = byCaseB.get(key)
-  const metricsA = runCaseA?.metrics
-  const metricsB = runCaseB?.metrics
+  const metricsA = runCaseA === undefined ? null : extractBaselineMetrics(runCaseA)
+  const metricsB = runCaseB === undefined ? null : extractBaselineMetrics(runCaseB)
   const aRecall = metricsA?.recall ?? null
   const bRecall = metricsB?.recall ?? null
   const aMrr = metricsA?.mrr ?? null
@@ -378,9 +177,12 @@ function buildDiagnosticsDiffRow(
 
   return {
     case_id: key,
-    question: runCaseA?.question || runCaseB?.question || '',
-    a_hit: metricsA ? Boolean(metricsA.hit_at_k) : null,
-    b_hit: metricsB ? Boolean(metricsB.hit_at_k) : null,
+    question: runCaseB === undefined ? runCaseA!.question : runCaseB.question,
+    presence: runCaseA === undefined ? 'only_b' : runCaseB === undefined ? 'only_a' : 'both',
+    a_error: runCaseA?.baseline.error,
+    b_error: runCaseB?.baseline.error,
+    a_hit: metricsA === null ? null : metricsA.hit_at_k,
+    b_hit: metricsB === null ? null : metricsB.hit_at_k,
     a_mrr: aMrr,
     b_mrr: bMrr,
     a_recall: aRecall,
@@ -392,53 +194,40 @@ function buildDiagnosticsDiffRow(
 
 function isChangedDiagnosticsDiffRow(row: DiagnosticsRunDiffRow): boolean {
   return (
-    row.delta_recall !== null ||
-    row.delta_mrr !== null ||
+    row.presence !== 'both' ||
+    row.a_error != null ||
+    row.b_error != null ||
+    (row.delta_recall !== null && row.delta_recall !== 0) ||
+    (row.delta_mrr !== null && row.delta_mrr !== 0) ||
     (row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit)
   )
 }
 
-function compareDiagnosticsDiffRows(
-  left: DiagnosticsRunDiffRow,
-  right: DiagnosticsRunDiffRow
-) {
-  return Math.abs(right.delta_recall ?? 0) - Math.abs(left.delta_recall ?? 0)
+function compareDiagnosticsDiffRows(left: DiagnosticsRunDiffRow, right: DiagnosticsRunDiffRow) {
+  if (left.delta_recall === null) return right.delta_recall === null ? 0 : 1
+  if (right.delta_recall === null) return -1
+  return Math.abs(right.delta_recall) - Math.abs(left.delta_recall)
 }
 
 function countDiagnosticsHitFlips(rows: DiagnosticsRunDiffRow[]) {
-  const flips = rows.filter(
-    (row) =>
-      row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit
-  )
-  const improved = flips.filter(
-    (row) => row.a_hit === false && row.b_hit === true
-  ).length
-  const regressed = flips.filter(
-    (row) => row.a_hit === true && row.b_hit === false
-  ).length
+  const flips = rows.filter((row) => row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit)
+  const improved = flips.filter((row) => row.a_hit === false && row.b_hit === true).length
+  const regressed = flips.filter((row) => row.a_hit === true && row.b_hit === false).length
   return { flips, improved, regressed }
 }
 
 function buildKgDiagnosticsDiff(
   detailA: KGSearchDiagnosticsRunDetail | null,
-  detailB: KGSearchDiagnosticsRunDetail | null
+  detailB: KGSearchDiagnosticsRunDetail | null,
 ) {
-  if (!detailA?.run || !detailB?.run) return null
+  if (detailA === null || detailB === null || detailA.run.id === detailB.run.id) return null
 
-  const summaryDelta = buildDiagnosticsSummaryDelta(
-    diagnosticsRunSummary(detailA.run),
-    diagnosticsRunSummary(detailB.run)
-  )
-  const byCaseA = buildDiagnosticsCaseMap(detailA.items)
-  const byCaseB = buildDiagnosticsCaseMap(detailB.items)
+  const summaryDelta = buildDiagnosticsSummaryDelta(detailA.run.summary, detailB.run.summary)
+  const byCaseA = new Map(detailA.items.map((item) => [item.case_id, item]))
+  const byCaseB = new Map(detailB.items.map((item) => [item.case_id, item]))
   const allKeys = new Set<string>([...byCaseA.keys(), ...byCaseB.keys()])
-  const rows = Array.from(allKeys, (key) =>
-    buildDiagnosticsDiffRow(key, byCaseA, byCaseB)
-  )
-  const changed = rows
-    .filter(isChangedDiagnosticsDiffRow)
-    .sort(compareDiagnosticsDiffRows)
-    .slice(0, 20)
+  const rows = Array.from(allKeys, (key) => buildDiagnosticsDiffRow(key, byCaseA, byCaseB))
+  const changed = rows.filter(isChangedDiagnosticsDiffRow).sort(compareDiagnosticsDiffRows)
   const { flips, improved, regressed } = countDiagnosticsHitFlips(rows)
 
   return {
@@ -450,1943 +239,968 @@ function buildKgDiagnosticsDiff(
   }
 }
 
-function resolveInitialDiagnosticsDatasetId(
-  current: string,
-  datasets: DiagnosticsDatasetOption[]
-): string {
-  if (current.trim()) return current
-  const firstDatasetId = String(datasets[0]?.id || '').trim()
-  return firstDatasetId || current
-}
+const selectClass =
+  'h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-9'
+const primaryActionClass = 'bg-accent px-3 text-accent-foreground hover:bg-accent/90'
 
-function diagnosticsRecordOrNull(value: unknown): JsonObject | null {
-  return isDiagnosticsRecord(value) ? value : null
-}
-
-function diagnosticsDatasetPlaceholder(
-  datasetsLoading: boolean,
-  t: (key: string) => string
-): string {
-  if (datasetsLoading) return '加载中...'
-  return t('runConfig.datasetPlaceholder')
-}
-
-function diagnosticsEnabledLabel(
-  enabled: boolean,
-  t: (key: string) => string
-): string {
-  if (enabled) return t('workspace.enabled')
-  return t('workspace.disabled')
-}
-
-function diagnosticsPersistTone(persistRun: boolean): DiagnosticsTone {
-  if (persistRun) return 'neutral'
-  return 'muted'
-}
-
-function diagnosticsPersistValue(persistRun: boolean): string {
-  if (persistRun) return '开启'
-  return '关闭'
-}
-
-function diagnosticsRunButtonLabel(
-  running: boolean,
-  t: (key: string) => string
-): string {
-  const label = t('page.actions.run')
-  if (running) return `${label}…`
-  return label
-}
-
-function DiagnosticsInlineStat({
+function NumberSetting({
   label,
   value,
-  tone = 'muted',
-}: Readonly<{
-  label: string
-  value: ReactNode
-  tone?: DiagnosticsTone
-}>) {
-  return (
-    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
-      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </span>
-      <span
-        className={cn(
-          'font-mono text-[11px] tabular-nums',
-          diagnosticsInlineToneClass(tone)
-        )}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function DiagnosticsInfoTooltip({
-  label,
-  children,
-  side = 'right',
-}: Readonly<{
-  label: string
-  children: ReactNode
-  side?: 'top' | 'right' | 'bottom' | 'left'
-}>) {
-  return (
-    <TooltipProvider delayDuration={120}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={label}
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-info/10 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40"
-          >
-            <Info className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent
-          side={side}
-          align="center"
-          className="max-w-[260px] text-[11px] leading-5"
-        >
-          {children}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
-
-function DiagnosticsHeaderPill({
-  label,
-  value,
-  icon,
-  children,
-  className,
-}: Readonly<{
-  label: string
-  value?: ReactNode
-  icon?: ReactNode
-  children?: ReactNode
-  className?: string
-}>) {
-  return (
-    <div
-      className={cn(
-        'inline-flex h-8 items-center gap-2.5 rounded-full border border-border/40 bg-background/58 px-3 shadow-none',
-        className
-      )}
-    >
-      {icon ? (
-        <span className="flex h-5 w-5 items-center justify-center text-muted-foreground">
-          {icon}
-        </span>
-      ) : null}
-      <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </span>
-      <div className="min-w-0 flex-1">
-        {children ?? (
-          <span className={cn('block truncate', DIAGNOSTICS_FIELD_VALUE_CLASS)}>
-            {value}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function DiagnosticsStepper({
-  value,
+  onChange,
   min,
   max,
-  onChange,
-}: Readonly<{
-  value: number
-  min: number
-  max: number
-  onChange: (value: number) => void
-}>) {
-  return (
-    <div className="flex h-9 items-center rounded-lg border border-border/70 bg-card/95 shadow-sm">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-full w-10 rounded-r-none text-muted-foreground"
-        aria-label="减少阈值"
-        onClick={() => onChange(Math.max(min, value - 1))}
-      >
-        <Minus className="h-4 w-4" aria-hidden="true" />
-      </Button>
-      <div className="flex flex-1 items-center justify-center border-x border-border/70 text-[15px] font-medium tabular-nums text-foreground/90">
-        {value}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-full w-10 rounded-l-none text-muted-foreground"
-        aria-label="增加阈值"
-        onClick={() => onChange(Math.min(max, value + 1))}
-      >
-        <Plus className="h-4 w-4" aria-hidden="true" />
-      </Button>
-    </div>
-  )
-}
-
-function DiagnosticsSection({
-  label,
-  description,
-  children,
-  className,
-}: Readonly<{
-  label: string
-  description?: string
-  children: ReactNode
-  className?: string
-}>) {
-  return (
-    <section
-      className={cn(
-        'space-y-2.5 rounded-lg border border-border/70 bg-card px-3.5 py-3',
-        className
-      )}
-    >
-      <div className="space-y-1">
-        <div className={DIAGNOSTICS_SECTION_TITLE_CLASS}>{label}</div>
-        {description ? (
-          <p className={DIAGNOSTICS_SECTION_DESCRIPTION_CLASS}>{description}</p>
-        ) : null}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function DiagnosticsMetricTile({
-  label,
-  value,
-  caption,
-  tone = 'neutral',
-  accent = 'neutral',
-  icon,
-}: Readonly<{
-  label: string
-  value: ReactNode
-  caption?: ReactNode
-  tone?: DiagnosticsTone
-  accent?: DiagnosticsAccent
-  icon?: ReactNode
-}>) {
-  const accentClasses = DIAGNOSTICS_ACCENT_CLASSES[accent]
-  const valueClass = diagnosticsMetricValueClass(tone, accentClasses.value)
-  const isPending = value === '-'
-
-  return (
-    <div
-      className={cn(
-        'flex min-h-[86px] flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
-        accentClasses.surface
-      )}
-    >
-      <div
-        className={cn(
-          'flex items-center justify-center gap-1.5 text-[11.5px] font-semibold ',
-          accentClasses.label
-        )}
-      >
-        {icon ? (
-          <span className="flex h-3.5 w-3.5 items-center justify-center">
-            {icon}
-          </span>
-        ) : (
-          <span
-            className={cn('h-1.5 w-1.5 rounded-full', accentClasses.dot)}
-            aria-hidden="true"
-          />
-        )}
-        <span>{label}</span>
-      </div>
-      <div
-        className={cn(
-          'mt-2 text-[15px] font-semibold tabular-nums',
-          valueClass
-        )}
-      >
-        {isPending ? (
-          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
-            待评测
-          </span>
-        ) : (
-          value
-        )}
-      </div>
-      {caption ? (
-        <div
-          className={cn('mt-1 text-[10.5px] leading-4', accentClasses.caption)}
-        >
-          {isPending ? '运行后显示' : caption}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function DiagnosticsToggleCard({
-  title,
-  description,
-  badge,
-  checked,
-  onCheckedChange,
-  tone,
-  stateLabel,
-}: Readonly<{
-  title: string
-  description?: string
-  badge: string
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
-  tone: 'sky' | 'emerald'
-  stateLabel: string
-}>) {
-  const toneClasses =
-    tone === 'sky'
-      ? {
-          surface: 'border-border/70 bg-background',
-          badge: 'text-info',
-          dot: 'bg-info',
-        }
-      : {
-          surface: 'border-border/70 bg-background',
-          badge: 'text-success',
-          dot: 'bg-success',
-        }
-
-  return (
-    <div
-      className={cn(
-        'block cursor-pointer select-none rounded-lg border px-3 py-1.5 transition-colors',
-        toneClasses.surface
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div
-                className={cn(
-                  'flex items-center gap-1.5 text-[10.5px] font-normal ',
-                  toneClasses.badge
-                )}
-              >
-                <span
-                  className={cn('h-1.5 w-1.5 rounded-full', toneClasses.dot)}
-                />
-                <span>{badge}</span>
-              </div>
-              <div className="mt-0.5 text-[13px] font-medium leading-4 text-foreground/90">
-                {title}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="inline-flex items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
-                {stateLabel}
-              </span>
-              <Switch aria-label={title} checked={checked} onCheckedChange={onCheckedChange} />
-            </div>
-          </div>
-          {description ? (
-            <p className="mt-0.5 truncate text-[11px] font-normal leading-5 text-muted-foreground">
-              {description}
-            </p>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function DiagnosticsEmptyState({
-  title,
-  description,
-  icon,
-  className,
-}: Readonly<{
-  title: string
-  description: string
-  icon?: ReactNode
-  className?: string
-}>) {
-  return (
-    <div
-      className={cn(
-        'rounded-lg border border-dashed border-border/70 bg-background px-4 py-4 text-center',
-        className
-      )}
-    >
-      {icon ? (
-        <div className="mb-2 flex justify-center text-info">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-info/20 bg-info/5 shadow-sm">
-            <div className="scale-75">{icon}</div>
-          </div>
-        </div>
-      ) : null}
-      <div className="text-[13px] font-medium text-foreground">{title}</div>
-      <p className="mx-auto mt-1.5 max-w-xl text-[11px] leading-5 text-muted-foreground">
-        {description}
-      </p>
-    </div>
-  )
-}
-
-function DiagnosticsRunHeroPanel({
-  summary,
-  emptyTitle,
-  emptyDescription,
-}: Readonly<{
-  summary: JsonObject | null
-  emptyTitle: string
-  emptyDescription: string
-}>) {
-  if (summary) {
-    return (
-      <div className="min-h-[118px] rounded-xl border border-border/70 bg-background px-4 py-3.5 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-medium tracking-[0.12em] text-info">
-              最新结果
-            </div>
-            <h3 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
-              本轮评测已完成
-            </h3>
-            <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-              优先查看上方核心指标，再结合下方失败样本和运行记录判断这次检索质量是否稳定。
-            </p>
-          </div>
-          <div className="hidden h-14 w-14 items-center justify-center rounded-[18px] border border-info/20 bg-info/10 text-info shadow-sm md:flex">
-            <ClipboardList className="h-6 w-6" aria-hidden="true" />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const resultPreviewItems = [
-    {
-      title: '核心指标',
-      description: 'Hit Rate、MRR、Recall、NDCG、MAP 会集中显示在顶部指标卡。',
-      icon: <Target className="h-4 w-4" aria-hidden="true" />,
-    },
-    {
-      title: '失败样本',
-      description: '未命中问题、召回位置和错误分布会进入下方分析区。',
-      icon: <CircleAlert className="h-4 w-4" aria-hidden="true" />,
-    },
-    {
-      title: '原始结果',
-      description: '保存后的 run 记录与 JSON 明细可直接查看或导出。',
-      icon: <FileStack className="h-4 w-4" aria-hidden="true" />,
-    },
-  ]
-
-  return (
-    <div className="grid min-h-[152px] gap-3 rounded-xl border border-border/70 bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)/0.92))] px-4 py-3.5 shadow-sm lg:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]">
-      <div className="flex items-center gap-3">
-        <div className="relative flex h-[72px] w-[80px] shrink-0 items-center justify-center text-info">
-          <div className="absolute inset-4 rounded-[24px] bg-info/10 blur-xl" aria-hidden="true" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-[18px] border border-info/20 bg-info/5 shadow-sm">
-            <ClipboardList className="h-7 w-7" aria-hidden="true" />
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="inline-flex rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10.5px] font-medium text-info">
-            运行后会自动填充
-          </div>
-          <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
-            {emptyTitle}
-          </h3>
-          <p className="mt-1 max-w-[420px] text-[11.5px] leading-5 text-muted-foreground">
-            {emptyDescription}
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-[18px] border border-border/70 bg-card/86 p-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
-        <div className="flex items-center justify-between gap-3 px-1 pb-2">
-          <div>
-            <div className="text-[11.5px] font-semibold text-foreground">
-              结果工作台
-            </div>
-            <p className="mt-0.5 text-[10.5px] text-muted-foreground">
-              一次评测完成后，关键证据会按下面三个区域落位。
-            </p>
-          </div>
-          <div className="hidden rounded-full border border-border/70 bg-background px-2.5 py-1 text-[10.5px] font-medium text-muted-foreground sm:block">
-            KG Eval
-          </div>
-        </div>
-
-        <div className="grid gap-2 md:grid-cols-3">
-          {resultPreviewItems.map((item) => (
-            <div
-              key={item.title}
-              className="flex items-start gap-2.5 rounded-[14px] border border-border/60 bg-background/82 px-3 py-2.5"
-            >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-info/20 bg-info/10 text-info">
-                {item.icon}
-              </div>
-              <div className="min-w-0">
-                <div className="text-[11.5px] font-semibold text-foreground">
-                  {item.title}
-                </div>
-                <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-muted-foreground">
-                  {item.description}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function DiagnosticsFailuresPanel({
-  failedCases,
-  activeTab,
-  onTabChange,
-}: Readonly<{
-  failedCases: DiagnosticsFailureCase[]
-  activeTab: DiagnosticsFailureTab
-  onTabChange: (value: DiagnosticsFailureTab) => void
-}>) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-background shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-[12.5px] font-semibold text-foreground">
-          <span>失败样本 / 错误分析</span>
-          <DiagnosticsInfoTooltip label="查看失败样本与错误分析说明">
-            展示本轮未命中的评测样本，以及后续错误分布汇总；优先排查这些样本通常最有效。
-          </DiagnosticsInfoTooltip>
-        </div>
-        <div className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-border/40 bg-card/58 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
-          <button
-            type="button"
-            className={cn(
-              'inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-medium transition-colors',
-              diagnosticsTabClass(activeTab === 'failures')
-            )}
-            onClick={() => onTabChange('failures')}
-          >
-            失败样本
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-medium transition-colors',
-              diagnosticsTabClass(activeTab === 'distribution')
-            )}
-            onClick={() => onTabChange('distribution')}
-          >
-            错误分布
-          </button>
-        </div>
-      </div>
-
-      <div className="px-4 py-3">
-        <DiagnosticsFailuresPanelBody
-          activeTab={activeTab}
-          failedCases={failedCases}
-        />
-      </div>
-    </div>
-  )
-}
-
-function DiagnosticsFailureCaseList({
-  failedCases,
-}: Readonly<{
-  failedCases: DiagnosticsFailureCase[]
-}>) {
-  return (
-    <div className="space-y-2">
-      {failedCases.map((item) => (
-        <div
-          key={`${item.case_id}:${item.question}`}
-          className="rounded-xl border border-border/70 bg-card/90 px-3 py-2.5"
-        >
-          <div className="text-[11px] font-mono text-muted-foreground">
-            {item.case_id || '--------'}
-          </div>
-          <div className="mt-1 text-[12.5px] leading-5 text-foreground">
-            {item.question || '（无问题文本）'}
-          </div>
-          <div className="mt-1.5 text-[10.5px] tabular-nums text-muted-foreground">
-            Recall {String(item.recall)} · MRR {String(item.mrr)}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function DiagnosticsFailuresPanelBody({
-  activeTab,
-  failedCases,
-}: Readonly<{
-  activeTab: DiagnosticsFailureTab
-  failedCases: DiagnosticsFailureCase[]
-}>) {
-  if (activeTab === 'distribution') {
-    return (
-      <DiagnosticsEmptyState
-        title="暂无错误分布"
-        description="执行评测后，这里会汇总常见错误类型和分布情况。"
-        icon={<Waypoints className="h-8 w-8" aria-hidden="true" />}
-      />
-    )
-  }
-
-  if (failedCases.length > 0) {
-    return <DiagnosticsFailureCaseList failedCases={failedCases} />
-  }
-
-  return (
-    <DiagnosticsEmptyState
-      title="暂无失败样本"
-      description="运行评测后，这里会显示失败样本详情，帮助你定位问题。"
-      icon={<CircleAlert className="h-8 w-8" aria-hidden="true" />}
-    />
-  )
-}
-
-function DiagnosticsRunRecordsPanel({
-  runs,
-  runRespJson,
-}: Readonly<{
-  runs: KGSearchDiagnosticsRunOut[]
-  runRespJson: string
-}>) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-background shadow-sm">
-      <div className="border-b border-border/70 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-[12.5px] font-semibold text-foreground">
-          <span>原始结果 / 运行记录</span>
-          <DiagnosticsInfoTooltip label="查看原始结果与运行记录说明">
-            显示最近保存的评测运行记录，并可展开查看本次评测接口返回的原始数据。
-          </DiagnosticsInfoTooltip>
-        </div>
-      </div>
-
-      <div className="px-4 py-3">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-[11.5px]">
-            <thead className="text-muted-foreground">
-              <tr className="border-b border-border/70">
-                <th className="px-2 py-1.5 font-medium">运行 ID</th>
-                <th className="px-2 py-1.5 font-medium">开始时间</th>
-                <th className="px-2 py-1.5 font-medium">数据集</th>
-                <th className="px-2 py-1.5 font-medium">样本数</th>
-                <th className="px-2 py-1.5 font-medium">TOP-K</th>
-                <th className="px-2 py-1.5 font-medium">
-                  主要指标（MRR / Recall）
-                </th>
-                <th className="px-2 py-1.5 font-medium">状态</th>
-                <th className="px-2 py-1.5 font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.length ? (
-                runs.slice(0, 8).map((run) => {
-                  const summary = diagnosticsRecordOrNull(run.summary) ?? {}
-                  const params = diagnosticsRecordOrNull(run.params)
-                  const maxCases =
-                    diagnosticsField(run, 'max_cases') ??
-                    diagnosticsField(params, 'max_cases') ??
-                    '-'
-                  const k =
-                    diagnosticsField(run, 'k') ??
-                    diagnosticsField(params, 'k') ??
-                    '-'
-                  const persisted =
-                    diagnosticsField(run, 'persisted') ??
-                    diagnosticsField(params, 'persist_run')
-                  return (
-                    <tr
-                      key={String(run.id)}
-                      className="border-b border-border/60"
-                    >
-                      <td className="px-2 py-2 font-mono text-foreground">
-                        {String(run.id || '').slice(0, 8)}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {String(run.created_at || '').slice(0, 16) || '-'}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {String(run.dataset_id || '').slice(0, 8) || '-'}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {toTrimmedPrimitiveString(maxCases)}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {toTrimmedPrimitiveString(k)}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {toTrimmedPrimitiveString(summary?.baseline_mrr, '-')} /{' '}
-                        {toTrimmedPrimitiveString(summary?.baseline_recall, '-')}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {persisted ? '已保存' : '临时'}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">-</td>
-                    </tr>
-                  )
-                })
-              ) : (
-                <tr>
-                  <td colSpan={8} className="py-6">
-                    <DiagnosticsEmptyState
-                      title="暂无运行记录"
-                      description="保存评测结果后，这里会列出历史运行记录，便于对比效果变化。"
-                      icon={
-                        <FileStack className="h-8 w-8" aria-hidden="true" />
-                      }
-                    />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <details className="mt-2.5 rounded-xl border border-border/70 bg-card/90 px-3 py-2.5">
-          <summary className="cursor-pointer select-none text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground">
-            查看原始数据
-          </summary>
-          <Textarea
-            value={runRespJson}
-            readOnly
-            rows={12}
-            className="mt-3 resize-none border-border/70 bg-background font-mono text-xs"
-          />
-        </details>
-      </div>
-    </div>
-  )
-}
-
-function DiagnosticsJsonPanel({
-  label,
-  value,
-  rows = 14,
-}: Readonly<{
+  step = 1,
+}: {
   label: string
   value: string
-  rows?: number
-}>) {
+  onChange: (value: string) => void
+  min: number
+  max: number
+  step?: number
+}) {
   return (
-    <div className="rounded-lg border border-border/70 bg-card">
-      <div className="border-b border-border/70 px-4 py-3">
-        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {label}
-        </div>
-      </div>
-      <details className="px-4 py-3">
-        <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
-          展开原始数据
-        </summary>
-        <Textarea
-          value={value}
-          readOnly
-          rows={rows}
-          className="mt-3 resize-none border-border/70 bg-background font-mono text-xs"
-        />
-      </details>
-    </div>
+    <label className="block space-y-2 text-[13px]">
+      {label}
+      <Input
+        type="number"
+        className="h-11 sm:h-9"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
+function RawResult({ label, value }: { label: string; value: unknown }) {
+  return (
+    <details className="mt-5 py-4">
+      <summary className="cursor-pointer text-[13px] font-medium">{label}</summary>
+      <pre tabIndex={0} className="mt-3 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
   )
 }
 
 export function KGDiagnosticsPage() {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <KGDiagnosticsWorkspace key={sessionKey} sessionKey={sessionKey} />
+}
+
+function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
   const t = useTranslations('KGDiagnosticsPage')
-  const [datasetId, setDatasetId] = useState('')
-  const [activeView, setActiveView] = useState<DiagnosticsView>('run')
+  const datasetIdFromUrl = useSearchParams().get('dataset_id')?.trim() ?? ''
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'kg-diagnostics' }),
-    queryFn: () => datasetApi.listAll(),
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
     staleTime: 30_000,
   })
-  const datasets = useMemo<DiagnosticsDatasetOption[]>(() => {
-    return datasetsQuery.data ?? []
-  }, [datasetsQuery.data])
-  const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
-
-  const [qualityDocLimit, setQualityDocLimit] = useState(200)
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
+  const [datasetId, setDatasetId] = useState(datasetIdFromUrl)
+  const [pane, setPane] = useState<'directory' | 'detail'>('detail')
+  const [activeView, setActiveView] = useState('run')
+  const [maxCases, setMaxCases] = useState('50')
+  const [k, setK] = useState('10')
+  const [autoExtractKg, setAutoExtractKg] = useState(true)
+  const [extractSkills, setExtractSkills] = useState('auto')
+  const [extractRelations, setExtractRelations] = useState('auto')
+  const [hardcaseMode, setHardcaseMode] = useState('deterministic')
+  const [hardcasesPerFailed, setHardcasesPerFailed] = useState('4')
+  const [maxFailedForHardcase, setMaxFailedForHardcase] = useState('20')
+  const [llmTemperature, setLlmTemperature] = useState('0.2')
+  const [persistRun, setPersistRun] = useState(true)
+  const [qualityDocLimit, setQualityDocLimit] = useState('200')
   const [qualityPipelineHash, setQualityPipelineHash] = useState('')
   const [qualityLoading, setQualityLoading] = useState(false)
-  const [qualityReport, setQualityReport] = useState<unknown>(null)
-  const qualityJson = useMemo(
-    () => prettyJson(qualityReport ?? { hint: t('qualityReport.hint') }),
-    [qualityReport, t]
+  const [qualityResult, setQualityResult] = useState<{ report: KGQualityReport; request: KGQualityRequest } | null>(
+    null,
   )
-
-  const [maxCases, setMaxCases] = useState(50)
-  const [k, setK] = useState(10)
-  const [autoExtractKg, setAutoExtractKg] = useState(true)
-  const [extractSkills, setExtractSkills] = useState<'auto' | 'on' | 'off'>(
-    'auto'
+  const qualityReport = qualityResult === null ? null : qualityResult.report
+  const [qualityError, setQualityError] = useState<string | null>(null)
+  const runRequests = useRef(new Map<string, Promise<KGSearchDiagnosticsResponse>>())
+  const [pendingDatasets, setPendingDatasets] = useState<ReadonlySet<string>>(new Set())
+  const running = pendingDatasets.has(datasetId)
+  const [runResult, setRunResult] = useState<{ report: KGSearchDiagnosticsResponse; persistRequested: boolean } | null>(
+    null,
   )
-  const [extractRelations, setExtractRelations] = useState<
-    'auto' | 'on' | 'off'
-  >('auto')
-  const [hardcaseMode, setHardcaseMode] =
-    useState<KGHardcaseMode>('deterministic')
-  const [hardcasesPerFailed, setHardcasesPerFailed] = useState(4)
-  const [maxFailedForHardcase, setMaxFailedForHardcase] = useState(20)
-  const [llmTemperature, setLlmTemperature] = useState(0.2)
-  const [persistRun, setPersistRun] = useState(true)
-  const [runAnalysisTab, setRunAnalysisTab] = useState<
-    'failures' | 'distribution'
-  >('failures')
-
-  const [running, setRunning] = useState(false)
-  const [runResp, setRunResp] = useState<KGSearchDiagnosticsResponse | null>(
-    null
-  )
-  const runRespJson = useMemo(
-    () => prettyJson(runResp ?? { hint: t('summary.runHint') }),
-    [runResp, t]
-  )
-
+  const runResp = runResult === null ? null : runResult.report
+  const [runError, setRunError] = useState<string | null>(null)
   const [runsLoading, setRunsLoading] = useState(false)
-  const [runs, setRuns] = useState<KGSearchDiagnosticsRunOut[]>([])
-  const [selectedRunA, setSelectedRunA] = useState<string>('')
-  const [selectedRunB, setSelectedRunB] = useState<string>('')
-  const [detailA, setDetailA] = useState<KGSearchDiagnosticsRunDetail | null>(
-    null
-  )
-  const [detailB, setDetailB] = useState<KGSearchDiagnosticsRunDetail | null>(
-    null
-  )
-
+  const [runsResult, setRunsResult] = useState<{ response: KGSearchDiagnosticsRunList; skip: number } | null>(null)
+  const runs = runsResult === null ? [] : runsResult.response.items
+  const [runsSkip, setRunsSkip] = useState(0)
+  const [runsError, setRunsError] = useState<string | null>(null)
+  const [selectedRunA, setSelectedRunA] = useState('')
+  const [selectedRunB, setSelectedRunB] = useState('')
+  const [detailA, setDetailA] = useState<KGSearchDiagnosticsRunDetail | null>(null)
+  const [detailB, setDetailB] = useState<KGSearchDiagnosticsRunDetail | null>(null)
+  const [detailErrors, setDetailErrors] = useState<{ a: string | null; b: string | null }>({ a: null, b: null })
+  const [detailLoading, setDetailLoading] = useState<ReadonlySet<'a' | 'b'>>(new Set())
+  const [analysisTab, setAnalysisTab] = useState('failures')
+  const scope = useRef<DiagnosticsScope | null>(null)
+  const requests = useRef({ runs: 0, a: 0, b: 0, quality: 0 })
+  const selectionInitialized = useRef(false)
+  useEffect(() => setDatasetId(datasetIdFromUrl), [datasetIdFromUrl])
   useEffect(() => {
-    setDatasetId((current) =>
-      resolveInitialDiagnosticsDatasetId(current, datasets)
-    )
-  }, [datasets])
-
-  const diff = useMemo(
-    () => buildKgDiagnosticsDiff(detailA, detailB),
-    [detailA, detailB]
-  )
-
-  const diffJson = useMemo(
-    () => prettyJson(diff ?? { hint: t('compare.diffHint') }),
-    [diff, t]
-  )
-
-  async function refreshRuns(): Promise<void> {
-    const ds = datasetId.trim()
-    if (!ds) {
-      toast.error(t('toasts.datasetRequired'))
-      return
+    if (!datasetId && datasets[0]) setDatasetId(datasets[0].id)
+  }, [datasets, datasetId])
+  useLayoutEffect(() => {
+    const context = { datasetId, active: true, controller: new AbortController() }
+    scope.current = context
+    selectionInitialized.current = false
+    setRunResult(null)
+    setQualityResult(null)
+    setRunsResult(null)
+    setRunsSkip(0)
+    setDetailA(null)
+    setDetailB(null)
+    setSelectedRunA('')
+    setSelectedRunB('')
+    setQualityPipelineHash('')
+    setRunError(null)
+    setQualityError(null)
+    setRunsError(null)
+    setDetailErrors({ a: null, b: null })
+    setQualityLoading(false)
+    setRunsLoading(false)
+    setDetailLoading(new Set())
+    setActiveView('run')
+    return () => {
+      context.active = false
+      context.controller.abort()
     }
+  }, [datasetId])
+
+  function isCurrentScope(context: DiagnosticsScope): boolean {
+    return context.active && getAuthSessionKey() === sessionKey
+  }
+
+  async function refreshRuns(targetSkip = runsSkip): Promise<void> {
+    if (datasetId === '') return
+    const context = scope.current!
+    const request = ++requests.current.runs
+    setRunsSkip(targetSkip)
     setRunsLoading(true)
+    setRunsError(null)
     try {
-      const res = await evaluationApi.listKgSearchDiagnosticsRuns({
-        dataset_id: ds,
-        limit: 50,
-      })
-      const items = Array.isArray(res.items) ? res.items : []
-      setRuns(items)
-      if (!selectedRunA && items?.[0]?.id) setSelectedRunA(items[0].id)
-      if (!selectedRunB && items?.[1]?.id) setSelectedRunB(items[1].id)
-      if (!selectedRunB && !items?.[1]?.id && items?.[0]?.id)
-        setSelectedRunB(items[0].id)
-    } catch (err) {
-      toast.error(formatApiError(err, t('toasts.runsLoadFailed')))
+      const response = await evaluationApi.listKgSearchDiagnosticsRuns(
+        { dataset_id: context.datasetId, limit: 50, skip: targetSkip },
+        { signal: context.controller.signal },
+      )
+      if (!isCurrentScope(context) || request !== requests.current.runs) return
+      setRunsResult({ response, skip: targetSkip })
+      if (!selectionInitialized.current) {
+        if (response.items.length > 0) setSelectedRunA(response.items[0].id)
+        if (response.items.length > 1) setSelectedRunB(response.items[1].id)
+        selectionInitialized.current = true
+      }
+    } catch (error) {
+      if (isCurrentScope(context) && request === requests.current.runs)
+        setRunsError(formatApiError(error, t('toasts.runsLoadFailed')))
     } finally {
-      setRunsLoading(false)
+      if (isCurrentScope(context) && request === requests.current.runs) setRunsLoading(false)
     }
   }
 
-  async function loadRun(which: 'a' | 'b', runId: string): Promise<void> {
-    const id = String(runId || '').trim()
-    if (!id) return
+  async function loadRun(which: 'a' | 'b', id: string): Promise<void> {
+    const context = scope.current!
+    const request = ++requests.current[which]
+    setDetailLoading((current) => new Set(current).add(which))
+    setDetailErrors((current) => ({ ...current, [which]: null }))
     try {
-      const detail = await evaluationApi.getKgSearchDiagnosticsRun(id)
-      if (which === 'a') setDetailA(detail)
-      else setDetailB(detail)
-    } catch (err) {
-      toast.error(
-        formatApiError(err, t('toasts.runLoadFailed', { id: id.slice(0, 8) }))
-      )
+      const result = await evaluationApi.getKgSearchDiagnosticsRun(id, { signal: context.controller.signal })
+      if (result.run.dataset_id.toLowerCase() !== context.datasetId.toLowerCase())
+        throw new Error('运行记录不属于当前数据集')
+      if (!isCurrentScope(context) || requests.current[which] !== request) return
+      if (which === 'a') setDetailA(result)
+      else setDetailB(result)
+    } catch (error) {
+      if (isCurrentScope(context) && requests.current[which] === request)
+        setDetailErrors((current) => ({ ...current, [which]: formatApiError(error, '运行记录读取失败') }))
+    } finally {
+      if (isCurrentScope(context) && requests.current[which] === request) {
+        setDetailLoading((current) => {
+          const next = new Set(current)
+          next.delete(which)
+          return next
+        })
+      }
     }
   }
 
   async function loadQualityReport(): Promise<void> {
-    const ds = datasetId.trim()
-    if (!ds) {
-      toast.error(t('toasts.datasetRequired'))
-      return
-    }
+    const context = scope.current!
+    const requestId = ++requests.current.quality
     setQualityLoading(true)
+    setQualityError(null)
     try {
-      const resp = await evaluationApi.getKgQualityReport({
-        dataset_id: ds,
-        document_limit: Math.max(1, Math.min(qualityDocLimit, 2000)),
-        pipeline_hash: qualityPipelineHash.trim() || undefined,
+      const request = kgQualityRequestSchema.parse({
+        dataset_id: context.datasetId,
+        document_limit: Number(qualityDocLimit),
+        ...(qualityPipelineHash.trim() === '' ? {} : { pipeline_hash: qualityPipelineHash.trim() }),
       })
-      setQualityReport(resp ?? null)
-      setActiveView('quality')
-      toast.success(t('toasts.qualityReportLoaded'))
-    } catch (err) {
-      toast.error(formatApiError(err, t('toasts.qualityReportLoadFailed')))
+      const result = await evaluationApi.getKgQualityReport(request, { signal: context.controller.signal })
+      if (isCurrentScope(context) && requestId === requests.current.quality)
+        setQualityResult({ report: result, request })
+    } catch (error) {
+      if (isCurrentScope(context) && requestId === requests.current.quality)
+        setQualityError(formatApiError(error, t('toasts.qualityReportLoadFailed')))
     } finally {
-      setQualityLoading(false)
+      if (isCurrentScope(context) && requestId === requests.current.quality) setQualityLoading(false)
     }
   }
 
   async function runDiagnostics(): Promise<void> {
-    const ds = datasetId.trim()
-    if (!ds) {
-      toast.error(t('toasts.datasetRequired'))
-      return
-    }
-    setRunning(true)
-    setRunResp(null)
-    try {
-      const resp = await evaluationApi.runKgSearchDiagnostics({
-        dataset_id: ds,
-        max_cases: Math.max(1, Math.min(maxCases, 200)),
-        k: Math.max(1, Math.min(k, 50)),
-        auto_extract_kg: Boolean(autoExtractKg),
-        extract_skills:
-          extractSkills === 'auto' ? null : extractSkills === 'on',
-        extract_relations:
-          extractRelations === 'auto' ? null : extractRelations === 'on',
-        hardcase_mode: hardcaseMode,
-        hardcases_per_failed_case: Math.max(
-          0,
-          Math.min(hardcasesPerFailed, 20)
-        ),
-        max_failed_cases_for_hardcase: Math.max(
-          0,
-          Math.min(maxFailedForHardcase, 200)
-        ),
-        llm_temperature: Math.max(0, Math.min(llmTemperature, 2)),
-        persist_run: Boolean(persistRun),
-      })
-      setRunResp(resp || null)
-      setActiveView('run')
-      toast.success(t('toasts.diagnosticsRan'))
-      if (persistRun) {
-        await refreshRuns()
-      }
-    } catch (err) {
-      toast.error(formatApiError(err, t('toasts.diagnosticsRunFailed')))
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  const summary = diagnosticsRecordOrNull(runResp?.summary)
-  const runItems = useMemo(
-    () => (Array.isArray(runResp?.items) ? runResp.items : []),
-    [runResp?.items]
-  )
-  const selectedDataset = useMemo(() => {
-    const selectedId = datasetId.trim()
-    return (
-      datasets.find(
-        (dataset) => String(dataset.id || '').trim() === selectedId
-      ) ?? null
-    )
-  }, [datasetId, datasets])
-  const datasetLabel = selectedDataset?.name || datasetId.trim() || '未选择'
-  const qualityObject = diagnosticsRecordOrNull(qualityReport)
-  const qualityHighlights = useMemo(() => {
-    if (!qualityObject) return []
-    return Object.entries(qualityObject)
-      .filter(([, value]) =>
-        ['string', 'number', 'boolean'].includes(typeof value)
-      )
-      .slice(0, 8)
-  }, [qualityObject])
-  const failedCases = useMemo(() => {
-    return runItems
-      .map((item) => {
-        const metrics = extractBaselineMetrics(item)
-        if (!metrics || metrics.hit_at_k) return null
-        return {
-          case_id: String(item?.case_id || '').slice(0, 8),
-          question: String(item?.question || '').trim(),
-          recall: metrics.recall,
-          mrr: metrics.mrr,
-        }
-      })
-      .filter(Boolean)
-      .slice(0, 12) as Array<{
-      case_id: string
-      question: string
-      recall: number
-      mrr: number
-    }>
-  }, [runItems])
-  const diffSummaryEntries = useMemo(
-    () => Object.entries(diff?.summary_delta || {}),
-    [diff]
-  )
-
-  function handleDatasetChange(nextDatasetId: string): void {
-    setDatasetId(nextDatasetId)
-    setRunResp(null)
-    setQualityReport(null)
-    setQualityPipelineHash('')
-    setRuns([])
-    setSelectedRunA('')
-    setSelectedRunB('')
-    setDetailA(null)
-    setDetailB(null)
+    if (runRequests.current.has(datasetId)) return
+    const context = scope.current!
+    const isCurrentDataset = () => scope.current?.datasetId === datasetId && getAuthSessionKey() === sessionKey
+    const runsRequestAtSubmit = requests.current.runs
+    setRunError(null)
     setActiveView('run')
+    setPane('detail')
+    try {
+      const config = kgDiagnosticsFormSchema.parse({
+        datasetId,
+        maxCases,
+        k,
+        autoExtractKg,
+        extractSkills,
+        extractRelations,
+        hardcaseMode,
+        hardcasesPerFailed,
+        maxFailedForHardcase,
+        llmTemperature,
+        persistRun,
+      })
+      const promise = evaluationApi.runKgSearchDiagnostics({
+        dataset_id: config.datasetId,
+        max_cases: config.maxCases,
+        k: config.k,
+        auto_extract_kg: config.autoExtractKg,
+        extract_skills: config.extractSkills === 'auto' ? null : config.extractSkills === 'on',
+        extract_relations: config.extractRelations === 'auto' ? null : config.extractRelations === 'on',
+        hardcase_mode: config.hardcaseMode,
+        hardcases_per_failed_case: config.hardcasesPerFailed,
+        max_failed_cases_for_hardcase: config.maxFailedForHardcase,
+        llm_temperature: config.llmTemperature,
+        persist_run: config.persistRun,
+      })
+      runRequests.current.set(context.datasetId, promise)
+      setPendingDatasets(new Set(runRequests.current.keys()))
+      const result = await promise
+      if (!isCurrentDataset()) return
+      setRunResult({ report: result, persistRequested: config.persistRun })
+      if (result.summary.baseline_search_errors > 0) toast.warning('诊断包含检索失败样本')
+      else toast.success(t('toasts.diagnosticsRan'))
+      if (result.run_id !== null && requests.current.runs === runsRequestAtSubmit) {
+        detachPromise(refreshRuns(scope.current === context ? runsSkip : 0))
+      }
+    } catch (error) {
+      if (isCurrentDataset())
+        setRunError(
+          formatApiError(error, t('toasts.diagnosticsRunFailed')) + ' 请先读取运行记录确认，再决定是否重新评测。',
+        )
+    } finally {
+      runRequests.current.delete(context.datasetId)
+      if (scope.current?.active && getAuthSessionKey() === sessionKey)
+        setPendingDatasets(new Set(runRequests.current.keys()))
+    }
   }
+
+  const diff = useMemo(() => buildKgDiagnosticsDiff(detailA, detailB), [detailA, detailB])
+  const items = runResp?.items ?? []
+  const failedItems = items.filter((item) => {
+    const metrics = extractBaselineMetrics(item)
+    return item.baseline.error !== null || (metrics !== null && !metrics.hit_at_k)
+  })
+  const summary = runResp?.summary
+  const unconfirmedPersistence = runResult !== null && runResult.persistRequested && runResult.report.run_id === null
+  const baselineValues = items.map(extractBaselineMetrics).filter((value) => value !== null)
+  function exportDiagnostics(): void {
+    if (runResp === null) return
+    try {
+      downloadJson(runResp, `${sanitizeFilename(`kg_diagnostics_${runResp.summary.dataset_id}`)}.json`)
+      toast.success('已开始下载本次诊断结果')
+    } catch (error) {
+      toast.error(formatApiError(error, '导出诊断结果失败'))
+    }
+  }
+  const configuration = (
+    <div className="space-y-5 p-4">
+      <h2 className={ws.sectionTitle}>评测配置</h2>
+      <label className="block space-y-2 text-[13px]">
+        数据集
+        <select
+          aria-label="数据集"
+          className={selectClass}
+          value={datasetId}
+          disabled={datasetsQuery.isLoading}
+          onChange={(event) => setDatasetId(event.target.value)}
+        >
+          <option value="" disabled>
+            选择数据集
+          </option>
+          {datasetId !== '' && !datasets.some((dataset) => dataset.id === datasetId) ? (
+            <option value={datasetId}>已选数据集：{datasetId}</option>
+          ) : null}
+          {datasets.map((dataset) => (
+            <option key={dataset.id} value={dataset.id}>
+              {dataset.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <fieldset disabled={running} className="min-w-0 space-y-5">
+        <legend className="sr-only">本轮评测参数</legend>
+        <NumberSetting label="评测样本数" value={maxCases} onChange={setMaxCases} min={1} max={200} />
+        <NumberSetting label="TOP-K" value={k} onChange={setK} min={1} max={50} />
+        <div className={ws.formRow}>
+          <label htmlFor="kg-auto-extract">自动抽取 KG</label>
+          <Switch id="kg-auto-extract" checked={autoExtractKg} onCheckedChange={setAutoExtractKg} />
+        </div>
+        <div className={ws.formRow}>
+          <label htmlFor="kg-persist-run">保存运行记录</label>
+          <Switch id="kg-persist-run" checked={persistRun} onCheckedChange={setPersistRun} />
+        </div>
+        <details className="group pt-4">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+            抽取与难例参数
+          </summary>
+          <div className="mt-4 space-y-5">
+            <label className="block space-y-2 text-[13px]">
+              技能抽取
+              <select
+                className={selectClass}
+                value={extractSkills}
+                onChange={(event) => setExtractSkills(event.target.value)}
+              >
+                <option value="auto">自动</option>
+                <option value="on">开启</option>
+                <option value="off">关闭</option>
+              </select>
+            </label>
+            <label className="block space-y-2 text-[13px]">
+              关系抽取
+              <select
+                className={selectClass}
+                value={extractRelations}
+                onChange={(event) => setExtractRelations(event.target.value)}
+              >
+                <option value="auto">自动</option>
+                <option value="on">开启</option>
+                <option value="off">关闭</option>
+              </select>
+            </label>
+            <label className="block space-y-2 text-[13px]">
+              难例生成方式
+              <select
+                className={selectClass}
+                value={hardcaseMode}
+                onChange={(event) => setHardcaseMode(event.target.value)}
+              >
+                <option value="off">关闭</option>
+                <option value="deterministic">规则生成</option>
+                <option value="llm">模型生成</option>
+              </select>
+            </label>
+            <NumberSetting
+              label="每条失败样本的难例数"
+              value={hardcasesPerFailed}
+              onChange={setHardcasesPerFailed}
+              min={0}
+              max={20}
+            />
+            <NumberSetting
+              label="生成难例的失败样本上限"
+              value={maxFailedForHardcase}
+              onChange={setMaxFailedForHardcase}
+              min={0}
+              max={200}
+            />
+            <NumberSetting
+              label="模型温度"
+              value={llmTemperature}
+              onChange={setLlmTemperature}
+              min={0}
+              max={2}
+              step={0.1}
+            />
+          </div>
+        </details>
+      </fieldset>
+    </div>
+  )
 
   return (
     <AppFrame showBackground={false}>
-      <div className="h-full bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--card)/0.82)_32%)] p-2">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-border/70 bg-background/95 shadow-sm">
-          <header className="shrink-0 border-b border-border/70 px-6 py-5">
-            <PageHeader
-              title={t('page.title')}
-              description={t('page.description')}
-              iconImage="kg-retrieval-evaluation"
-              icon={ClipboardList}
-              iconColor="text-info"
-              badge="KG"
-              compact
-              className="p-0"
+      <OperationalWorkspace
+        title={t('page.title')}
+        icon="kg-retrieval-evaluation"
+        mode="canvas"
+        context={
+          datasets.find((dataset) => dataset.id === datasetId)?.name ?? (datasetId === '' ? '选择数据集' : datasetId)
+        }
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              className="w-11 px-0 sm:w-auto sm:px-3"
+              disabled={!runResp}
+              aria-label="导出本次评测"
+              onClick={exportDiagnostics}
             >
-              <div className={DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS}>
-                <DiagnosticsHeaderPill
-                  label={t('runConfig.datasetId')}
-                  className="min-w-[208px] max-w-[300px]"
-                >
-                  <Select
-                    value={datasetId}
-                    onValueChange={handleDatasetChange}
-                    disabled={datasetsLoading || !datasets.length}
-                  >
-                    <SelectTrigger
-                      aria-label={t('runConfig.datasetId')}
-                      className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[12px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"
-                    >
-                      <SelectValue
-                        placeholder={diagnosticsDatasetPlaceholder(
-                          datasetsLoading,
-                          t
-                        )}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasets.map((dataset) => {
-                        const id = String(dataset.id || '').trim()
-                        if (!id) return null
-                        return (
-                          <SelectItem key={id} value={id}>
-                            {dataset.name || id}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </DiagnosticsHeaderPill>
-                <DiagnosticsHeaderPill
-                  label={t('runConfig.k')}
-                  className="min-w-[104px]"
-                >
-                  <Input
-                    type="number"
-                    value={String(k)}
-                    onChange={(e) => setK(Number(e.target.value || 0))}
-                    min={1}
-                    max={50}
-                    className="h-auto border-0 bg-transparent px-0 py-0 text-right text-[12px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              <Download className="size-4" />
+              <span className="hidden sm:inline">导出</span>
+            </Button>
+            <Button
+              className={cn(primaryActionClass, 'min-w-20')}
+              aria-label={running ? '正在评测…' : '开始评测'}
+              aria-busy={running}
+              disabled={!datasetId || running}
+              onClick={() => {
+                void runDiagnostics()
+              }}
+            >
+              {running ? <Loader2 className="hidden size-4 animate-spin motion-reduce:animate-none sm:inline" /> : null}
+              {running ? '评测中…' : '开始评测'}
+            </Button>
+          </>
+        }
+      >
+        {datasetsQuery.isError ||
+        runError ||
+        (runResp && unconfirmedPersistence) ||
+        qualityError ||
+        runsError ||
+        detailErrors.a !== null ||
+        detailErrors.b !== null ? (
+          <WorkspaceNoticeStack ariaLabel="图谱诊断状态提示">
+            {datasetsQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="数据集读取失败"
+                error={datasetsQuery.error}
+                fallbackMessage="数据集读取失败"
+                retry={() => {
+                  void datasetsQuery.refetch()
+                }}
+              />
+            ) : null}
+            {runError ? (
+              <WorkspaceNotice
+                retry={() => {
+                  void runDiagnostics()
+                }}
+                retryLabel="重新评测"
+                pending={running}
+              >
+                {runError}
+              </WorkspaceNotice>
+            ) : null}
+            {runResp && unconfirmedPersistence ? (
+              <WorkspaceNotice tone="warning">
+                本次诊断已返回，但没有取得保存身份；请先读取运行记录确认。
+              </WorkspaceNotice>
+            ) : null}
+            {qualityError ? (
+              <WorkspaceNotice
+                tone="warning"
+                retry={() => {
+                  void loadQualityReport()
+                }}
+              >
+                {qualityError}
+              </WorkspaceNotice>
+            ) : null}
+            {runsError ? (
+              <WorkspaceNotice
+                tone="warning"
+                retry={() => {
+                  void refreshRuns()
+                }}
+              >
+                {runsError}
+              </WorkspaceNotice>
+            ) : null}
+            {(['a', 'b'] as const).map((which) =>
+              detailErrors[which] === null ? null : (
+                <WorkspaceNotice key={which} tone="warning">
+                  运行 {which.toUpperCase()}：{detailErrors[which]}
+                </WorkspaceNotice>
+              ),
+            )}
+          </WorkspaceNoticeStack>
+        ) : null}
+        <DirectoryWorkspace
+          pane={pane}
+          onPaneChange={setPane}
+          directoryLabel="评测配置"
+          detailLabel="报告结果"
+          directory={configuration}
+        >
+          <Tabs
+            value={activeView}
+            onValueChange={(nextView) => {
+              setActiveView(nextView)
+              if (nextView === 'compare' && runsResult === null && !runsLoading) detachPromise(refreshRuns())
+            }}
+          >
+            <TabsList className={ws.tabList}>
+              <TabsTrigger value="run">本次评测</TabsTrigger>
+              <TabsTrigger value="quality">抽取质量</TabsTrigger>
+              <TabsTrigger value="compare">运行历史与比较</TabsTrigger>
+            </TabsList>
+            <TabsContent value="run" className={ws.tabContent}>
+              {running ? (
+                <p role="status" className="py-12 text-sm text-muted-foreground">
+                  {runResp ? '正在评测，当前显示上次报告。' : '正在评测…'}
+                </p>
+              ) : null}
+              {runResp ? (
+                <>
+                  <WorkspaceMetrics
+                    items={[
+                      'baseline_hit_rate',
+                      'baseline_mrr',
+                      'baseline_recall',
+                      'baseline_ndcg',
+                      'baseline_map',
+                      'baseline_valid_searches',
+                    ].map((key) => ({
+                      label: formatDiagnosticsMetricLabel(key),
+                      value: formatMetricValue(summary?.[key]),
+                    }))}
                   />
-                </DiagnosticsHeaderPill>
+                  <dl className="flex flex-wrap gap-x-6 gap-y-2 py-3 text-xs text-muted-foreground">
+                    {['baseline_search_errors', 'hardcases_generated'].map((key) => (
+                      <div key={key} className="inline-flex items-center gap-2">
+                        <dt>{formatDiagnosticsMetricLabel(key)}</dt>
+                        <dd className="font-medium text-foreground tabular-nums">
+                          {formatMetricValue(summary?.[key])}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <section className="min-w-0 py-5">
+                    <div className={ws.sectionHeading}>
+                      <h2 className={ws.sectionTitle}>样本结果</h2>
+                      <div role="group" aria-label="样本结果视图" className="flex gap-2">
+                        {[
+                          ['failures', '失败或未命中'],
+                          ['all', '全部样本'],
+                          ['distribution', '得分分布'],
+                        ].map(([value, label]) => (
+                          <Button
+                            key={value}
+                            variant={analysisTab === value ? 'secondary' : 'ghost'}
+                            aria-pressed={analysisTab === value}
+                            onClick={() => setAnalysisTab(value)}
+                          >
+                            {label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    {analysisTab === 'distribution' ? (
+                      baselineValues.length === 0 ? (
+                        <p className="py-8 text-sm text-muted-foreground">没有可用于分布的成功检索样本。</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {Array.from({ length: 5 }, (_, index) => {
+                            const count = baselineValues.filter(
+                              (value) =>
+                                value.recall >= index / 5 &&
+                                (index === 4 ? value.recall <= 1 : value.recall < (index + 1) / 5),
+                            ).length
+                            return (
+                              <div
+                                key={index}
+                                className="grid grid-cols-[72px_minmax(0,1fr)_40px] items-center gap-4 text-[13px]"
+                              >
+                                <span>
+                                  {(index / 5).toFixed(1)}–{((index + 1) / 5).toFixed(1)}
+                                </span>
+                                <span className="h-2 bg-muted">
+                                  <span
+                                    className="block h-2 bg-foreground/60"
+                                    style={{
+                                      width: `${baselineValues.length === 0 ? 0 : (count / baselineValues.length) * 100}%`,
+                                    }}
+                                  />
+                                </span>
+                                <span className="text-right tabular-nums">{count}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    ) : (
+                      <WorkspaceTableScroll label="评测样本结果">
+                        <table className={cn(ws.table, 'min-w-[560px]')}>
+                          <thead>
+                            <tr>
+                              <th>问题</th>
+                              <th>命中</th>
+                              <th>Recall</th>
+                              <th>MRR</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(analysisTab === 'failures' ? failedItems : items).map((item) => {
+                              const metrics = extractBaselineMetrics(item)
+                              let status = '未返回'
+                              if (item.baseline.error !== null) status = '检索失败'
+                              else if (metrics) status = metrics.hit_at_k ? '命中' : '未命中'
+                              return (
+                                <tr key={item.case_id}>
+                                  <td className="max-w-lg">{item.question}</td>
+                                  <td>
+                                    {status}
+                                    {item.baseline.error === null ? null : (
+                                      <p className="mt-1 max-w-lg break-words text-xs text-destructive">
+                                        {item.baseline.error}
+                                      </p>
+                                    )}
+                                  </td>
+                                  <td>{metrics ? formatMetricValue(metrics.recall) : '—'}</td>
+                                  <td>{metrics ? formatMetricValue(metrics.mrr) : '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                        {!(analysisTab === 'failures' ? failedItems : items).length ? (
+                          <p className="py-8 text-sm text-muted-foreground">
+                            {analysisTab === 'failures' ? '本次没有检索失败或未命中样本' : '本次评测未返回样本明细'}
+                          </p>
+                        ) : null}
+                      </WorkspaceTableScroll>
+                    )}
+                  </section>
+                  <RawResult label="完整评测结果" value={runResp} />
+                </>
+              ) : !runError && !running ? (
+                <div className={ws.empty}>
+                  <h2>尚未运行评测</h2>
+                  <p>选择数据集并确认参数后，开始评测。</p>
+                </div>
+              ) : null}
+            </TabsContent>
+            <TabsContent value="quality" className={ws.tabContent}>
+              <div className="flex flex-wrap items-end gap-4 py-5">
+                <div className="w-40">
+                  <NumberSetting
+                    label="抽样文档上限"
+                    value={qualityDocLimit}
+                    onChange={setQualityDocLimit}
+                    min={1}
+                    max={2000}
+                  />
+                </div>
+                <label className="block max-w-full space-y-2 text-[13px]">
+                  流程版本（选填）
+                  <Input
+                    value={qualityPipelineHash}
+                    onChange={(event) => setQualityPipelineHash(event.target.value)}
+                    placeholder="Pipeline hash"
+                  />
+                </label>
                 <Button
-                  variant="outline"
-                  className={DIAGNOSTICS_HEADER_ACTION_BUTTON_CLASS}
+                  className={primaryActionClass}
+                  disabled={!datasetId || qualityLoading}
                   onClick={() => {
-                    setActiveView('compare')
-                    if (datasetId.trim()) void refreshRuns()
+                    void loadQualityReport()
                   }}
                 >
-                  <History className="h-4 w-4" aria-hidden="true" />
-                  {t('runs.title')}
+                  {qualityLoading ? '正在读取…' : '读取质量报告'}
                 </Button>
               </div>
-            </PageHeader>
-          </header>
-
-          <div className="min-h-0 flex-1 overflow-hidden px-5 pb-4 pt-4">
-            <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[356px_minmax(0,1fr)]">
-              <aside className="min-h-0 rounded-xl border border-border/70 bg-background shadow-sm">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                    <div className="space-y-2.5">
-                      <DiagnosticsSection
-                        label={t('runConfig.title')}
-                        className="rounded-xl px-3.5 py-2.5"
-                      >
-                        <div className="space-y-2.5">
-                          <div className="space-y-1">
-                            <div
-                              className={cn(
-                                'flex items-center gap-1',
-                                DIAGNOSTICS_FIELD_LABEL_CLASS
-                              )}
-                            >
-                              <span>阈值设置</span>
-                              <DiagnosticsInfoTooltip label="查看阈值设置说明">
-                                控制本轮最多抽取多少条评测样本。数值越大覆盖越充分，但评测耗时也会更长。
-                              </DiagnosticsInfoTooltip>
+              {qualityReport ? (
+                <>
+                  {qualityResult !== null ? (
+                    <p className="mb-3 break-words text-xs text-muted-foreground">
+                      当前展示：数据集 {qualityResult.request.dataset_id}，文档上限{' '}
+                      {qualityResult.request.document_limit}；流程版本{' '}
+                      {qualityResult.request.pipeline_hash === undefined
+                        ? '请求时各文档的活跃版本'
+                        : qualityResult.request.pipeline_hash}
+                      。
+                    </p>
+                  ) : null}
+                  {(['summary', 'components', 'noise', 'truncation', 'scope'] as const).map((group) => (
+                    <section key={group} className={ws.section}>
+                      <h2 className={ws.sectionTitle}>
+                        {
+                          {
+                            summary: '总体统计',
+                            components: '连通性',
+                            noise: '关系噪声',
+                            truncation: '统计范围限制',
+                            scope: '抽样范围',
+                          }[group]
+                        }
+                      </h2>
+                      {group === 'scope' || group === 'truncation' ? (
+                        <dl className={ws.formRows}>
+                          {Object.entries(qualityReport[group]).map(([key, value]) => (
+                            <div key={key} className={ws.formRow}>
+                              <dt className="shrink-0 text-muted-foreground">{formatDiagnosticsMetricLabel(key)}</dt>
+                              <dd className="min-w-0 text-right font-mono text-xs leading-5 break-all">
+                                {formatMetricValue(value)}
+                              </dd>
                             </div>
-                            <DiagnosticsStepper
-                              value={maxCases}
-                              min={1}
-                              max={200}
-                              onChange={setMaxCases}
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>
-                              {t('runConfig.llmTemperature')}
-                            </Label>
-                            <Select
-                              value={String(llmTemperature)}
-                              onValueChange={(value) =>
-                                setLlmTemperature(Number(value))
-                              }
-                            >
-                              <SelectTrigger
-                                className={cn(
-                                  'h-9 rounded-lg border-border/70 bg-card/95 shadow-none',
-                                  DIAGNOSTICS_FIELD_VALUE_CLASS
-                                )}
-                              >
-                                <SelectValue placeholder="0.2" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[
-                                  '0',
-                                  '0.1',
-                                  '0.2',
-                                  '0.3',
-                                  '0.5',
-                                  '0.7',
-                                  '1.0',
-                                ].map((value) => (
-                                  <SelectItem key={value} value={value}>
-                                    {value}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label
-                              title={t('runConfig.extractSkills')}
-                              className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                            >
-                              智能裁度
-                            </Label>
-                            <Select
-                              value={extractSkills}
-                              onValueChange={(value) =>
-                                setExtractSkills(
-                                  coerceOneOf(
-                                    KG_EXTRACT_MODE_VALUES,
-                                    value,
-                                    'auto'
-                                  )
-                                )
-                              }
-                            >
-                              <SelectTrigger
-                                className={cn(
-                                  'h-9 rounded-lg border-border/70 bg-card/95 shadow-none',
-                                  DIAGNOSTICS_FIELD_VALUE_CLASS
-                                )}
-                              >
-                                <SelectValue
-                                  placeholder={t(
-                                    'runConfig.extractModePlaceholder'
-                                  )}
-                                />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="auto">自动</SelectItem>
-                                <SelectItem value="on">开启</SelectItem>
-                                <SelectItem value="off">关闭</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label
-                              title={t('runConfig.extractRelations')}
-                              className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                            >
-                              基线模式
-                            </Label>
-                            <Select
-                              value={extractRelations}
-                              onValueChange={(value) =>
-                                setExtractRelations(
-                                  coerceOneOf(
-                                    KG_EXTRACT_MODE_VALUES,
-                                    value,
-                                    'auto'
-                                  )
-                                )
-                              }
-                            >
-                              <SelectTrigger
-                                className={cn(
-                                  'h-9 rounded-lg border-border/70 bg-card/95 shadow-none',
-                                  DIAGNOSTICS_FIELD_VALUE_CLASS
-                                )}
-                              >
-                                <SelectValue
-                                  placeholder={t(
-                                    'runConfig.extractModePlaceholder'
-                                  )}
-                                />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="auto">自动</SelectItem>
-                                <SelectItem value="on">开启</SelectItem>
-                                <SelectItem value="off">关闭</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <details className="rounded-lg border border-dashed border-border/60 bg-card/45 px-3 py-1.5">
-                            <summary className="cursor-pointer select-none text-[11.5px] font-normal leading-5 text-muted-foreground">
-                              高级参数
-                            </summary>
-                            <div className="mt-3 space-y-3">
-                              <div className="space-y-1">
-                                <Label
-                                  className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                                >
-                                  {t('runConfig.hardcaseMode')}
-                                </Label>
-                                <Select
-                                  value={hardcaseMode}
-                                  onValueChange={(v) =>
-                                    setHardcaseMode(v as KGHardcaseMode)
-                                  }
-                                >
-                                  <SelectTrigger
-                                    className={cn(
-                                      'h-9 rounded-lg border-border/70 bg-background shadow-none',
-                                      DIAGNOSTICS_FIELD_VALUE_CLASS
-                                    )}
-                                  >
-                                    <SelectValue
-                                      placeholder={t(
-                                        'runConfig.hardcaseModePlaceholder'
-                                      )}
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="off">关闭</SelectItem>
-                                    <SelectItem value="deterministic">
-                                      规则生成
-                                    </SelectItem>
-                                    <SelectItem value="llm">
-                                      LLM 生成
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="space-y-1">
-                                  <Label
-                                    className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                                  >
-                                    {t('runConfig.hardcasesPerFailedCase')}
-                                  </Label>
-                                  <Input
-                                    type="number"
-                                    value={String(hardcasesPerFailed)}
-                                    onChange={(e) =>
-                                      setHardcasesPerFailed(
-                                        Number(e.target.value || 0)
-                                      )
-                                    }
-                                    min={0}
-                                    max={20}
-                                    className={cn(
-                                      'h-9 rounded-lg border-border/70 bg-background shadow-none',
-                                      DIAGNOSTICS_FIELD_VALUE_CLASS
-                                    )}
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label
-                                    className={DIAGNOSTICS_FIELD_LABEL_CLASS}
-                                  >
-                                    {t('runConfig.maxFailedCasesForHardcase')}
-                                  </Label>
-                                  <Input
-                                    type="number"
-                                    value={String(maxFailedForHardcase)}
-                                    onChange={(e) =>
-                                      setMaxFailedForHardcase(
-                                        Number(e.target.value || 0)
-                                      )
-                                    }
-                                    min={0}
-                                    max={200}
-                                    className={cn(
-                                      'h-9 rounded-lg border-border/70 bg-background shadow-none',
-                                      DIAGNOSTICS_FIELD_VALUE_CLASS
-                                    )}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </details>
-                        </div>
-                      </DiagnosticsSection>
-
-                      <DiagnosticsSection
-                        label={t('workspace.extractionOptions')}
-                        description={t('workspace.extractionHint')}
-                        className="rounded-xl px-3.5 py-2.5"
-                      >
-                        <div className="space-y-2">
-                          <DiagnosticsToggleCard
-                            title={t('runConfig.autoExtractKg')}
-                            description={t('workspace.autoExtractHint')}
-                            badge={t('workspace.autoExtractBadge')}
-                            checked={autoExtractKg}
-                            onCheckedChange={setAutoExtractKg}
-                            tone="sky"
-                            stateLabel={diagnosticsEnabledLabel(autoExtractKg, t)}
-                          />
-                          <DiagnosticsToggleCard
-                            title={t('runConfig.persistRun')}
-                            description={t('runs.hint')}
-                            badge={t('workspace.persistRunBadge')}
-                            checked={persistRun}
-                            onCheckedChange={setPersistRun}
-                            tone="emerald"
-                            stateLabel={diagnosticsEnabledLabel(persistRun, t)}
-                          />
-                        </div>
-                      </DiagnosticsSection>
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 border-t border-border/44 bg-background/92 px-3 py-3 backdrop-blur">
-                    <div className={DIAGNOSTICS_ACTION_CARD_CLASS}>
-                      <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                        <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/62">
-                          运行操作
-                        </div>
-                        <span className="rounded-full border border-border/32 bg-background/44 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/64">
-                          KG Eval
-                        </span>
-                      </div>
-
-                      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                        <DiagnosticsInlineStat label="样本" value={maxCases} />
-                        <DiagnosticsInlineStat label="TOP-K" value={k} />
-                        <DiagnosticsInlineStat
-                          label="保存"
-                          value={persistRun ? '开启' : '关闭'}
-                          tone={diagnosticsPersistTone(persistRun)}
+                          ))}
+                        </dl>
+                      ) : (
+                        <WorkspaceMetrics
+                          items={Object.entries(qualityReport[group]).map(([key, value]) => ({
+                            label: formatDiagnosticsMetricLabel(key),
+                            value:
+                              typeof value === 'number' ? (
+                                formatMetricValue(value)
+                              ) : (
+                                <span className="block break-all text-sm leading-6 font-normal">
+                                  {formatMetricValue(value)}
+                                </span>
+                              ),
+                          }))}
                         />
-                      </div>
-
-                      <Button
-                        className={DIAGNOSTICS_PRIMARY_ACTION_BUTTON_CLASS}
-                        onClick={runDiagnostics}
-                        disabled={running}
-                      >
-                        <PlayCircle className="h-4 w-4" aria-hidden="true" />
-                        {diagnosticsRunButtonLabel(running, t)}
-                      </Button>
-
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <Button
-                          variant="outline"
-                          className={DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS}
-                          onClick={refreshRuns}
-                          disabled={runsLoading}
-                        >
-                          <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-                          {t('page.actions.refreshRuns')}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className={DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS}
-                          onClick={() => {
-                            const base = sanitizeFilename(
-                              `kg_diagnostics_${datasetId.trim() || 'dataset'}`
-                            )
-                            downloadJson(runResp ?? {}, `${base}.json`)
-                            toast.success(t('toasts.runExported'))
-                          }}
-                          disabled={!runResp}
-                        >
-                          <Download className="h-4 w-4" aria-hidden="true" />
-                          {t('page.actions.exportRun')}
-                        </Button>
-                      </div>
-
-                      <p className="mt-2 px-1 text-[10.5px] leading-5 text-muted-foreground">
-                        {t('summary.runHint')}
-                      </p>
-                    </div>
+                      )}
+                    </section>
+                  ))}
+                  <RawResult label="完整质量报告" value={qualityReport} />
+                </>
+              ) : !qualityLoading && !qualityError ? (
+                <div className={ws.empty}>
+                  <h2>尚未读取质量报告</h2>
+                  <p>读取后查看实体、关系和来源引用的实际统计。</p>
+                </div>
+              ) : null}
+            </TabsContent>
+            <TabsContent value="compare" className={ws.tabContent}>
+              <div className={cn(ws.sectionHeading, 'mt-5')}>
+                <h2 className={ws.sectionTitle}>运行历史</h2>
+                <Button
+                  variant="outline"
+                  disabled={!datasetId || runsLoading}
+                  onClick={() => {
+                    void refreshRuns()
+                  }}
+                >
+                  {runsLoading ? '正在读取…' : '重新读取运行记录'}
+                </Button>
+              </div>
+              {runsLoading ? (
+                <p role="status" className="py-4 text-sm text-muted-foreground">
+                  正在读取运行历史，保留已加载页…
+                </p>
+              ) : null}
+              {runsResult === null && !runsLoading && !runsError ? (
+                <p className="py-8 text-sm text-muted-foreground">选择数据集后读取运行历史。</p>
+              ) : null}
+              {runsResult !== null && !runsLoading && !runsError && !runs.length ? (
+                <div className={ws.empty}>
+                  <h2>当前数据集暂无运行记录</h2>
+                  <p>运行评测时开启“保存运行记录”，即可在这里对比。</p>
+                </div>
+              ) : runsResult !== null ? (
+                <WorkspaceTableScroll label="诊断运行历史">
+                  <table className={cn(ws.table, 'min-w-[540px]')}>
+                    <thead>
+                      <tr>
+                        <th>运行</th>
+                        <th>时间</th>
+                        <th>命中率</th>
+                        <th>MRR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {runs.map((run) => (
+                        <tr key={run.id}>
+                          <td className="break-all font-mono">{run.id}</td>
+                          <td>{run.created_at.replace('T', ' ').slice(0, 19)}</td>
+                          <td>{formatMetricValue(run.summary.baseline_hit_rate)}</td>
+                          <td>{formatMetricValue(run.summary.baseline_mrr)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </WorkspaceTableScroll>
+              ) : null}
+              {runsResult !== null && runsResult.response.total > 0 ? (
+                <div className="my-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    已加载 {runsResult.skip + 1} 起的 {runs.length} 条，共 {runsResult.response.total} 条运行。
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={runsLoading || runsResult.skip === 0}
+                      onClick={() => detachPromise(refreshRuns(runsResult.skip - 50))}
+                    >
+                      上一页
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={runsLoading || runsResult.skip + 50 >= runsResult.response.total}
+                      onClick={() => detachPromise(refreshRuns(runsResult.skip + 50))}
+                    >
+                      下一页
+                    </Button>
                   </div>
                 </div>
-              </aside>
-
-              <section className="min-w-0 min-h-0 rounded-xl border border-border/70 bg-background shadow-sm">
-                <Tabs
-                  value={activeView}
-                  onValueChange={(value) =>
-                    setActiveView(value as DiagnosticsView)
-                  }
-                  className="flex h-full min-h-0 flex-col"
-                >
-                  <div className="shrink-0 border-b border-border/70 px-4 pt-3">
-                    <TabsList className="h-auto justify-start gap-5 rounded-none border-none bg-transparent p-0">
-                      <TabsTrigger
-                        value="run"
-                        className="rounded-none border-b-2 border-transparent px-0 pb-2.5 pt-0 text-[12.5px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      >
-                        {t('summary.title')}
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="quality"
-                        title={t('qualityReport.title')}
-                        className="rounded-none border-b-2 border-transparent px-0 pb-2.5 pt-0 text-[12.5px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      >
-                        抽取数据
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="compare"
-                        className="rounded-none border-b-2 border-transparent px-0 pb-2.5 pt-0 text-[12.5px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      >
-                        {t('compare.title')}
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <div className="flex flex-wrap items-center gap-2 py-2.5">
-                      <DiagnosticsHeaderPill
-                        label={t('runConfig.datasetId')}
-                        value={datasetLabel}
-                        className="min-w-[148px]"
-                      />
-                      <DiagnosticsHeaderPill
-                        label={t('runConfig.maxCases')}
-                        value={maxCases}
-                        className="min-w-[132px]"
-                      />
-                      <DiagnosticsHeaderPill
-                        label={t('runConfig.k')}
-                        value={k}
-                        className="min-w-[112px]"
-                      />
-                    </div>
-                  </div>
-
-                  <TabsContent
-                    value="run"
-                    className="mt-0 min-h-0 flex-1 overflow-auto px-4 py-3"
-                  >
-                    <div className="space-y-3">
-                      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-6">
-                        <DiagnosticsMetricTile
-                          label={t('summary.baselineHitRate')}
-                          value={formatMetricValue(summary?.baseline_hit_rate)}
-                          caption="整体是否命中参考基础指标"
-                          accent="sky"
-                          icon={
-                            <Target className="h-4 w-4" aria-hidden="true" />
-                          }
-                        />
-                        <DiagnosticsMetricTile
-                          label={t('summary.baselineMrr')}
-                          value={formatMetricValue(summary?.baseline_mrr)}
-                          caption="命中位置越靠前越好"
-                          accent="violet"
-                          icon={
-                            <TrendingUp
-                              className="h-4 w-4"
-                              aria-hidden="true"
-                            />
-                          }
-                        />
-                        <DiagnosticsMetricTile
-                          label={t('summary.baselineRecall')}
-                          value={formatMetricValue(summary?.baseline_recall)}
-                          caption="召回覆盖越高越好"
-                          accent="emerald"
-                          icon={
-                            <RefreshCcw
-                              className="h-4 w-4"
-                              aria-hidden="true"
-                            />
-                          }
-                        />
-                        <DiagnosticsMetricTile
-                          label={t('summary.baselineNdcg')}
-                          value={formatMetricValue(summary?.baseline_ndcg)}
-                          caption="兼顾命中位置与排序质量"
-                          accent="sky"
-                          icon={
-                            <Activity className="h-4 w-4" aria-hidden="true" />
-                          }
-                        />
-                        <DiagnosticsMetricTile
-                          label={t('summary.baselineMap')}
-                          value={formatMetricValue(summary?.baseline_map)}
-                          caption="多位置平均精度"
-                          accent="violet"
-                          icon={
-                            <Waypoints className="h-4 w-4" aria-hidden="true" />
-                          }
-                        />
-                        <DiagnosticsMetricTile
-                          label={t('summary.hardcasesGenerated')}
-                          value={formatMetricValue(
-                            summary?.hardcases_generated
-                          )}
-                          caption="深挖样本生成的案例数量"
-                          accent="amber"
-                          icon={
-                            <Sparkles className="h-4 w-4" aria-hidden="true" />
-                          }
-                        />
-                      </div>
-
-                      <DiagnosticsRunHeroPanel
-                        summary={summary}
-                        emptyTitle={t('summary.empty')}
-                        emptyDescription={t('summary.runHint')}
-                      />
-
-                      <div className="grid gap-3 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-                        <DiagnosticsFailuresPanel
-                          failedCases={failedCases}
-                          activeTab={runAnalysisTab}
-                          onTabChange={setRunAnalysisTab}
-                        />
-                        <DiagnosticsRunRecordsPanel
-                          runs={runs}
-                          runRespJson={runRespJson}
-                        />
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="quality" className="mt-0 min-h-0 flex-1">
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="border-b border-border/70 px-4 py-4">
-                        <div className="grid gap-3 xl:grid-cols-[180px_minmax(0,1fr)_auto]">
-                          <div className="space-y-1.5">
-                            <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                              {t('qualityReport.documentLimit')}
-                            </Label>
-                            <Input
-                              type="number"
-                              value={String(qualityDocLimit)}
-                              onChange={(e) =>
-                                setQualityDocLimit(Number(e.target.value || 0))
-                              }
-                              min={1}
-                              max={2000}
-                              className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                              {t('qualityReport.pipelineHash')}
-                            </Label>
-                            <Input
-                              value={qualityPipelineHash}
-                              onChange={(e) =>
-                                setQualityPipelineHash(e.target.value)
-                              }
-                              placeholder={t(
-                                'qualityReport.pipelineHashPlaceholder'
-                              )}
-                              className="h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none"
-                            />
-                          </div>
-                          <div className="flex items-end">
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                'h-10 px-3'
-                              )}
-                              onClick={loadQualityReport}
-                              disabled={qualityLoading}
-                            >
-                              <RefreshCcw
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                              />
-                              {t('qualityReport.pull')}
-                            </Button>
-                          </div>
-                        </div>
-                        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-                          {t('qualityReport.hint')}
-                        </p>
-                      </div>
-
-                      <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-                          <div className="space-y-4">
-                            {qualityObject ? (
-                              <div className="rounded-lg border border-border/70 bg-card">
-                                <div className="border-b border-border/70 px-4 py-3">
-                                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                                    {t('workspace.qualityHighlightsTitle')}
-                                  </div>
-                                </div>
-                                <div className="grid gap-3 px-4 py-4 md:grid-cols-2">
-                                  <DiagnosticsMetricTile
-                                    label={t('workspace.qualityKeyCount')}
-                                    value={Object.keys(qualityObject).length}
-                                    caption={t('workspace.qualityKeyCountHint')}
-                                  />
-                                  <DiagnosticsMetricTile
-                                    label={t('qualityReport.documentLimit')}
-                                    value={qualityDocLimit}
-                                    caption={
-                                      qualityPipelineHash.trim() ||
-                                      t('workspace.currentPipelineLabel')
-                                    }
-                                  />
-                                  {qualityHighlights.map(([key, value]) => (
-                                    <DiagnosticsMetricTile
-                                      key={key}
-                                      label={formatDiagnosticsMetricLabel(key)}
-                                      value={formatMetricValue(value)}
-                                      tone="neutral"
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <DiagnosticsEmptyState
-                                title={t('workspace.qualityEmptyTitle')}
-                                description={t('qualityReport.hint')}
-                              />
-                            )}
-                          </div>
-
-                          <DiagnosticsJsonPanel
-                            label={t('workspace.rawQualityJson')}
-                            value={qualityJson}
-                            rows={18}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="compare" className="mt-0 min-h-0 flex-1">
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="border-b border-border/70 px-4 py-4">
-                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-                          <div className="space-y-1.5">
-                            <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                              {t('runs.runA')}
-                            </Label>
-                            <div className="flex gap-2">
-                              <Select
-                                value={selectedRunA}
-                                onValueChange={(v) => setSelectedRunA(v)}
-                              >
-                                <SelectTrigger className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none">
-                                  <SelectValue
-                                    placeholder={t('runs.runAPlaceholder')}
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {runs.map((r) => (
-                                    <SelectItem key={r.id} value={r.id}>
-                                      {String(r.created_at || '').slice(0, 19)}{' '}
-                                      · {String(r.id).slice(0, 8)}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                  'h-10 px-3'
-                                )}
-                                onClick={() => loadRun('a', selectedRunA)}
-                                disabled={!selectedRunA}
-                              >
-                                {t('runs.loadA')}
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                              {t('runs.runB')}
-                            </Label>
-                            <div className="flex gap-2">
-                              <Select
-                                value={selectedRunB}
-                                onValueChange={(v) => setSelectedRunB(v)}
-                              >
-                                <SelectTrigger className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none">
-                                  <SelectValue
-                                    placeholder={t('runs.runBPlaceholder')}
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {runs.map((r) => (
-                                    <SelectItem key={r.id} value={r.id}>
-                                      {String(r.created_at || '').slice(0, 19)}{' '}
-                                      · {String(r.id).slice(0, 8)}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                  'h-10 px-3'
-                                )}
-                                onClick={() => loadRun('b', selectedRunB)}
-                                disabled={!selectedRunB}
-                              >
-                                {t('runs.loadB')}
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="flex items-end">
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                'h-10 px-3'
-                              )}
-                              onClick={refreshRuns}
-                              disabled={runsLoading}
-                            >
-                              <RefreshCcw
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                              />
-                              {t('runs.refresh')}
-                            </Button>
-                          </div>
-
-                          <div className="flex items-end">
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
-                                'h-10 px-3'
-                              )}
-                              onClick={() => {
-                                const a =
-                                  String(detailA?.run?.id || '').slice(0, 8) ||
-                                  'A'
-                                const b =
-                                  String(detailB?.run?.id || '').slice(0, 8) ||
-                                  'B'
-                                const diffName = sanitizeFilename(`kg_diagnostics_diff_${a}_vs_${b}`)
-                                downloadJson(
-                                  diff ?? {},
-                                  `${diffName}.json`
-                                )
-                                toast.success(t('compare.exported'))
+              ) : null}
+              {runsResult !== null &&
+              (runs.length > 0 ||
+                selectedRunA !== '' ||
+                selectedRunB !== '' ||
+                detailA !== null ||
+                detailB !== null) ? (
+                <section className={ws.section}>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {(['a', 'b'] as const).map((which) => {
+                      const loaded = which === 'a' ? detailA : detailB
+                      return (
+                        <div key={which} className="space-y-2">
+                          <label className="block text-sm" htmlFor={`kg-run-${which}`}>
+                            运行 {which.toUpperCase()}
+                          </label>
+                          <div className="flex gap-2">
+                            <select
+                              id={`kg-run-${which}`}
+                              className={selectClass}
+                              value={which === 'a' ? selectedRunA : selectedRunB}
+                              onChange={(event) => {
+                                requests.current[which]++
+                                selectionInitialized.current = true
+                                setDetailLoading((current) => {
+                                  const next = new Set(current)
+                                  next.delete(which)
+                                  return next
+                                })
+                                setDetailErrors((current) => ({ ...current, [which]: null }))
+                                if (which === 'a') {
+                                  setSelectedRunA(event.target.value)
+                                } else {
+                                  setSelectedRunB(event.target.value)
+                                }
                               }}
-                              disabled={!diff}
                             >
-                              <Download
-                                className="h-4 w-4"
-                                aria-hidden="true"
-                              />
-                              {t('compare.export')}
+                              <option value="">选择运行 {which.toUpperCase()}</option>
+                              {(which === 'a' ? selectedRunA : selectedRunB) !== '' &&
+                              !runs.some((run) => run.id === (which === 'a' ? selectedRunA : selectedRunB)) ? (
+                                <option value={which === 'a' ? selectedRunA : selectedRunB}>
+                                  已选运行：{which === 'a' ? selectedRunA : selectedRunB}
+                                </option>
+                              ) : null}
+                              {runs.map((run) => (
+                                <option key={run.id} value={run.id}>
+                                  {run.created_at.slice(0, 19)} · {run.id.slice(0, 8)}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              variant="outline"
+                              disabled={
+                                detailLoading.has(which) || (which === 'a' ? selectedRunA : selectedRunB) === ''
+                              }
+                              onClick={() => {
+                                void loadRun(which, which === 'a' ? selectedRunA : selectedRunB)
+                              }}
+                            >
+                              {detailLoading.has(which) ? '读取中…' : '读取'}
                             </Button>
                           </div>
+                          {loaded !== null ? (
+                            <p className="break-all text-xs text-muted-foreground">
+                              当前已加载：{loaded.run.id}；新选择在读取成功后才替换。
+                            </p>
+                          ) : null}
                         </div>
-
-                        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-                          {t('runs.hint')}
-                        </p>
-                      </div>
-
-                      <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-                        {diff ? (
-                          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_420px]">
-                            <div className="space-y-4">
-                              <div className="grid gap-3 md:grid-cols-4">
-                                <DiagnosticsMetricTile
-                                  label={t('compare.hitFlips')}
-                                  value={diff.hit_flips.total}
-                                />
-                                <DiagnosticsMetricTile
-                                  label={t('workspace.compareImproved')}
-                                  value={diff.hit_flips.improved}
-                                  tone="positive"
-                                />
-                                <DiagnosticsMetricTile
-                                  label={t('workspace.compareRegressed')}
-                                  value={diff.hit_flips.regressed}
-                                  tone="negative"
-                                />
-                                <DiagnosticsMetricTile
-                                  label={t('compare.summaryKeys')}
-                                  value={diffSummaryEntries.length}
-                                />
-                              </div>
-
-                              <div className="rounded-lg border border-border/70 bg-card">
-                                <div className="border-b border-border/70 px-4 py-3">
-                                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                                    {t('compare.changedCases')}
-                                  </div>
-                                </div>
-                                <div className="px-4 py-4">
-                                  {diff.changed_cases?.length ? (
-                                    <div className="grid gap-2">
-                                      {diff.changed_cases.map((r) => (
-                                        <div
-                                          key={r.case_id}
-                                          className="rounded-lg border border-border/70 bg-background px-3 py-3"
-                                        >
-                                          <div className="text-[11px] font-mono text-muted-foreground">
-                                            {String(r.case_id).slice(0, 8)}
-                                          </div>
-                                          <div className="mt-1 text-sm text-foreground">
-                                            {r.question ||
-                                              t('compare.noQuestion')}
-                                          </div>
-                                          <div className="mt-2 text-[11px] leading-5 tabular-nums text-muted-foreground">
-                                            命中 {String(r.a_hit)} →{' '}
-                                            {String(r.b_hit)} · Recall{' '}
-                                            {String(r.a_recall)} →{' '}
-                                            {String(r.b_recall)} · 变化{' '}
-                                            {String(r.delta_recall)}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
+                      )
+                    })}
+                  </div>
+                  {diff ? (
+                    <>
+                      <p className="my-3 break-all text-xs text-muted-foreground">
+                        当前比较：A {diff.run_a.id} · B {diff.run_b.id}
+                      </p>
+                      <WorkspaceMetrics
+                        items={[
+                          { label: '命中变化', value: diff.hit_flips.total },
+                          { label: '改善', value: diff.hit_flips.improved },
+                          {
+                            label: '退化',
+                            value: diff.hit_flips.regressed,
+                            tone: diff.hit_flips.regressed ? 'danger' : undefined,
+                          },
+                        ]}
+                      />
+                      <h3 className="my-5 text-sm font-semibold">全部已返回样本中的变化与不可比记录</h3>
+                      <WorkspaceTableScroll label="运行样本差异">
+                        <table className={cn(ws.table, 'min-w-[600px]')}>
+                          <thead>
+                            <tr>
+                              <th>问题</th>
+                              <th>A Recall</th>
+                              <th>B Recall</th>
+                              <th>变化</th>
+                              <th>可比状态</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {diff.changed_cases.map((item) => (
+                              <tr key={item.case_id}>
+                                <td>
+                                  <span className="block break-all font-mono text-[11px] text-muted-foreground">
+                                    {item.case_id}
+                                  </span>
+                                  {item.question}
+                                </td>
+                                <td>{formatMetricValue(item.a_recall)}</td>
+                                <td>{formatMetricValue(item.b_recall)}</td>
+                                <td>{formatMetricValue(item.delta_recall)}</td>
+                                <td>
+                                  {item.presence === 'only_a' ? (
+                                    '仅A返回此样本'
+                                  ) : item.presence === 'only_b' ? (
+                                    '仅B返回此样本'
+                                  ) : item.a_error !== null || item.b_error !== null ? (
+                                    <>
+                                      A：{item.a_error === null ? '成功' : item.a_error}；B：
+                                      {item.b_error === null ? '成功' : item.b_error}
+                                    </>
                                   ) : (
-                                    <DiagnosticsEmptyState
-                                      title={t(
-                                        'workspace.compareCasesEmptyTitle'
-                                      )}
-                                      description={t('compare.diffHint')}
-                                    />
+                                    '两侧检索成功'
                                   )}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="space-y-4">
-                              <div className="rounded-lg border border-border/70 bg-card">
-                                <div className="border-b border-border/70 px-4 py-3">
-                                  <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                                    {t('workspace.compareSummaryTitle')}
-                                  </div>
-                                </div>
-                                <div className="px-4 py-4">
-                                  {diffSummaryEntries.length ? (
-                                    <div className="grid gap-2">
-                                      {diffSummaryEntries.map(
-                                        ([key, value]) => {
-                                          const row = value as {
-                                            a?: number | null
-                                            b?: number | null
-                                            delta?: number | null
-                                          }
-                                          const delta = Number(row.delta ?? 0)
-                                          return (
-                                            <div
-                                              key={key}
-                                              className="rounded-lg border border-border/70 bg-background px-3 py-3"
-                                            >
-                                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                                                {formatDiagnosticsMetricLabel(
-                                                  key
-                                                )}
-                                              </div>
-                                              <div className="mt-1 text-sm font-medium tabular-nums text-foreground">
-                                                {String(row.a ?? '-')} →{' '}
-                                                {String(row.b ?? '-')}
-                                              </div>
-                                              <div
-                                                className={cn(
-                                                  'mt-1 text-[11px] tabular-nums',
-                                                  diagnosticsDeltaClass(delta)
-                                                )}
-                                              >
-                                                Δ {String(row.delta ?? '-')}
-                                              </div>
-                                            </div>
-                                          )
-                                        }
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <DiagnosticsEmptyState
-                                      title={t(
-                                        'workspace.compareSummaryEmptyTitle'
-                                      )}
-                                      description={t('compare.diffHint')}
-                                    />
-                                  )}
-                                </div>
-                              </div>
-
-                              <DiagnosticsJsonPanel
-                                label={t('compare.diffJson')}
-                                value={diffJson}
-                                rows={18}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <DiagnosticsEmptyState
-                            title={t('workspace.compareEmptyTitle')}
-                            description={t('compare.empty')}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </section>
-            </div>
-          </div>
-        </div>
-      </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </WorkspaceTableScroll>
+                      <RawResult label="完整运行对比" value={diff} />
+                    </>
+                  ) : (
+                    <p className="py-8 text-sm text-muted-foreground">请选择不同的 A、B 运行并分别读取，再查看差异。</p>
+                  )}
+                </section>
+              ) : null}
+            </TabsContent>
+          </Tabs>
+        </DirectoryWorkspace>
+      </OperationalWorkspace>
     </AppFrame>
   )
 }
