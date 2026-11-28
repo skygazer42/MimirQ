@@ -9,13 +9,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-accent text-accent-foreground hover:bg-accent/90',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        success: 'bg-success text-success-foreground hover:bg-success/90',
-        warning: 'bg-warning text-warning-foreground hover:bg-warning/90',
-        info: 'bg-info text-info-foreground hover:bg-info/90',
-        outline: 'border border-input bg-background hover:bg-muted hover:text-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        default:
+          'bg-accent text-accent-foreground shadow-[0_1px_2px_hsl(var(--accent)/0.28),inset_0_1px_0_hsl(0_0%_100%/0.2)] hover:bg-accent/92 hover:shadow-[0_2px_6px_hsl(var(--accent)/0.34),inset_0_1px_0_hsl(0_0%_100%/0.24)] active:shadow-none dark:shadow-[0_1px_2px_rgba(0,0,0,0.35),inset_0_1px_0_hsl(0_0%_100%/0.18)]',
+        destructive:
+          'bg-destructive text-destructive-foreground shadow-[0_1px_2px_hsl(var(--destructive)/0.2),inset_0_1px_0_hsl(0_0%_100%/0.16)] hover:bg-destructive/90',
+        success:
+          'bg-success text-success-foreground shadow-[0_1px_2px_hsl(var(--success)/0.2),inset_0_1px_0_hsl(0_0%_100%/0.16)] hover:bg-success/90',
+        warning:
+          'bg-warning text-warning-foreground shadow-[0_1px_2px_hsl(var(--warning)/0.2),inset_0_1px_0_hsl(0_0%_100%/0.16)] hover:bg-warning/90',
+        info: 'bg-info text-info-foreground shadow-[0_1px_2px_hsl(var(--info)/0.2),inset_0_1px_0_hsl(0_0%_100%/0.16)] hover:bg-info/90',
+        outline:
+          'border border-input bg-card text-foreground shadow-[0_1px_2px_hsl(var(--foreground)/0.04)] hover:bg-muted/70 hover:border-foreground/22 hover:text-foreground dark:shadow-[0_1px_2px_rgba(0,0,0,0.22)]',
+        secondary: 'border border-border/60 bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-foreground/5 hover:text-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },

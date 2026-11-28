@@ -50,20 +50,29 @@
   color: hsl(var(--accent-foreground));
   font-size: 13px;
   font-weight: 500;
-  box-shadow: none;
+  box-shadow:
+    0 1px 2px hsl(var(--accent) / 0.28),
+    inset 0 1px 0 hsl(0 0% 100% / 0.2);
 }
 .createButton:hover {
   background: hsl(var(--accent) / 0.9);
 }
+.createButton:hover:not(:active) {
+  box-shadow:
+    0 2px 6px hsl(var(--accent) / 0.34),
+    inset 0 1px 0 hsl(0 0% 100% / 0.24);
+  transform: translateY(-1px);
+}
 .manageHeaderButton {
   height: 32px;
   gap: 6px;
+  border: 1px solid hsl(var(--input));
   border-radius: 6px;
   padding: 0 11px;
   background: hsl(var(--card));
   font-size: 12.5px;
   font-weight: 500;
-  box-shadow: none;
+  box-shadow: var(--shadow-subtle);
 }
 .workspace {
   display: flex;
@@ -79,7 +88,7 @@
   flex: 0 0 208px;
   flex-direction: column;
   border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--surface-2));
 }
 .categoryHeader {
   display: flex;
@@ -737,7 +746,7 @@
   background: hsl(var(--surface-2));
   color: hsl(var(--muted-foreground));
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 20px;
   white-space: nowrap;
 }
@@ -769,7 +778,8 @@
   background: hsl(var(--surface-2));
 }
 .table tbody tr[data-selected='true'] {
-  background: hsl(var(--accent) / 0.06);
+  background: hsl(var(--surface-2));
+  box-shadow: inset 2px 0 0 hsl(var(--accent));
 }
 .table .numeric {
   text-align: right;
@@ -1447,6 +1457,9 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .createButton:hover:not(:active) {
+    transform: none;
+  }
   .card,
   .table tbody tr,
   .toolLink {

@@ -40,14 +40,15 @@ export function RecentConversations({ enabled, onNavigate }: Readonly<{ enabled:
       <div
         className={cn(
           'mb-1.5 flex min-h-8 items-center justify-between gap-2 rounded-md border-l-2 border-transparent px-2.5',
-          isHistoryPage && 'border-l-accent bg-secondary',
+          isHistoryPage &&
+            'border-l-accent bg-card shadow-[0_1px_2px_hsl(var(--foreground)/0.06)] ring-1 ring-sidebar-border/80',
         )}
       >
         <h2
           id="recent-conversations-title"
           className={cn(
-            'min-w-0 flex-1 text-[13px]',
-            isHistoryPage ? 'font-medium text-sidebar-foreground' : 'font-normal text-muted-foreground',
+            'min-w-0 flex-1 text-[11.5px] font-semibold',
+            isHistoryPage ? 'text-foreground/80' : 'text-muted-foreground/85',
           )}
         >
           <button
@@ -114,13 +115,19 @@ export function RecentConversations({ enabled, onNavigate }: Readonly<{ enabled:
                 aria-current={selected ? 'page' : undefined}
                 title={label}
                 className={cn(
-                  'group flex min-h-10 items-center gap-2.5 rounded-md border-l-2 border-transparent px-2.5 py-2 text-sm focus-ring hover:bg-muted',
+                  'group flex min-h-10 items-center gap-2.5 rounded-md border-l-2 border-transparent px-2.5 py-2 text-[13px] transition-colors duration-150 focus-ring',
                   selected
-                    ? 'border-l-accent bg-secondary font-medium text-sidebar-foreground'
-                    : 'text-sidebar-foreground/80',
+                    ? 'border-l-accent bg-card font-medium text-sidebar-foreground shadow-[0_1px_2px_hsl(var(--foreground)/0.06)] ring-1 ring-sidebar-border/80'
+                    : 'text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground',
                 )}
               >
-                <Conversation className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <Conversation
+                  className={cn(
+                    'size-3.5 shrink-0 transition-colors duration-150',
+                    selected ? 'text-accent' : 'text-muted-foreground group-hover:text-sidebar-foreground',
+                  )}
+                  aria-hidden="true"
+                />
                 <span className="min-w-0 flex-1 truncate">{label}</span>
                 <ChevronRight
                   className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"

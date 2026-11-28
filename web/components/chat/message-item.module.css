@@ -34,3 +34,53 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+.studioMessages :global([data-chat-message-variant='default'].justify-end) > :first-child {
+  outline: 1px solid hsl(var(--border));
+  outline-offset: -1px;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+}
+
+.studioMessages :global([class~='group/card']) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+  transition:
+    border-color 150ms,
+    background-color 150ms,
+    box-shadow 150ms;
+}
+
+.studioMessages :global([class~='group/card']):hover {
+  border-color: hsl(var(--foreground) / 0.22);
+  background: hsl(var(--surface-2));
+  box-shadow: 0 3px 8px -2px hsl(var(--foreground) / 0.08);
+}
+
+.studioMessages :global(button.rounded-full:has(> span.truncate)) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
+}
+
+.studioMessages :global(button.rounded-full:has(> span.truncate)):hover {
+  border-color: hsl(var(--foreground) / 0.22);
+  background: hsl(var(--surface-2));
+}
+
+.studioMessages :global(div:has(> button[aria-controls^='chat-steps-'])) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2) / 0.7);
+}
+
+.studioMessages :global(button[aria-controls^='chat-steps-'] span.rounded-full.border) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studioMessages :global([class~='group/card']) {
+    transition: none;
+  }
+}

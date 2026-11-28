@@ -25,6 +25,8 @@
   align-items: center;
   justify-content: center;
   padding: clamp(28px, 4vw, 44px) clamp(20px, 3.5vw, 44px);
+  background-image: radial-gradient(hsl(var(--foreground) / 0.065) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
 .primaryInner {
@@ -48,7 +50,9 @@
   border-radius: 14px;
   background: hsl(var(--icon-knowledge) / 0.08);
   color: hsl(var(--icon-knowledge));
-  box-shadow: 0 2px 5px hsl(var(--foreground) / 0.035);
+  box-shadow:
+    0 2px 6px hsl(var(--foreground) / 0.06),
+    0 0 0 4px hsl(var(--icon-knowledge) / 0.045);
 }
 
 .illustration > svg {
@@ -92,7 +96,6 @@
   padding-inline: 16px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: none;
 }
 
 .actions svg {

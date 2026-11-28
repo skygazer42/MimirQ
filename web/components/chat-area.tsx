@@ -28,6 +28,7 @@ import { promptTemplateApi, type PromptTemplate } from '@/lib/api/prompts'
 import { recordSchema } from '@/lib/response-schema'
 import { settingsApi } from '@/lib/api/settings'
 import { ChatMessageItem } from '@/components/chat/message-item'
+import messageStyles from '@/components/chat/message-item.module.css'
 import { StarterPrompts } from '@/components/chat/starter-prompts'
 import { DatasetScopePicker } from '@/components/chat/dataset-scope-picker'
 import { BrandLogo } from '@/components/brand-logo'
@@ -605,7 +606,7 @@ export function ChatArea({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-background relative transition-colors duration-200 motion-reduce:transition-none">
-      <header className="relative z-10 flex h-[52px] shrink-0 items-center justify-between gap-3 border-b border-border/75 bg-background pl-16 pr-4 sm:px-5">
+      <header className="relative z-10 flex h-[52px] shrink-0 items-center justify-between gap-3 border-b border-border/75 bg-background/95 pl-16 pr-4 sm:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
           <span className="truncate font-medium">{t('workspaceTitle')}</span>
           <span className="hidden text-muted-foreground sm:inline" aria-hidden="true">
@@ -623,7 +624,7 @@ export function ChatArea({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-11 shrink-0 gap-2 px-2 text-xs font-normal md:h-8"
+          className="h-11 shrink-0 gap-2 rounded-lg border border-border/70 bg-card px-2 text-xs font-normal shadow-[0_1px_2px_hsl(var(--foreground)/0.04)] hover:border-foreground/20 hover:bg-surface-2 disabled:shadow-none md:h-8"
           disabled={!conversationId}
           onClick={() => setTraceDialogOpen(true)}
           title={conversationId ? t('viewRagTrace') : t('sendMessageFirst')}
@@ -636,6 +637,7 @@ export function ChatArea({
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className={cn(
+          messageStyles.studioMessages,
           'flex-1 overflow-y-auto overscroll-contain px-4 pb-20 scroll-smooth no-scrollbar sm:pb-8 md:px-6',
           isWelcomeState && 'hidden',
         )}
@@ -734,7 +736,7 @@ export function ChatArea({
         className={cn(
           'relative z-10',
           isWelcomeState
-            ? "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-[clamp(1rem,4%,2.5rem)] py-6 before:flex-[0.38] before:content-[''] after:flex-[0.62] after:content-['']"
+            ? "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-[radial-gradient(hsl(var(--foreground)/0.065)_1px,transparent_1px)] px-[clamp(1rem,4%,2.5rem)] py-6 [background-size:20px_20px] before:flex-[0.38] before:content-[''] after:flex-[0.62] after:content-['']"
             : 'px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:px-6',
         )}
       >
@@ -748,7 +750,7 @@ export function ChatArea({
 
           <div
             className={cn(
-              '@container relative rounded-2xl border border-border bg-card shadow-[0_2px_12px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow] duration-200 hover:border-foreground/20 focus-within:border-foreground/30 focus-within:shadow-[0_4px_18px_rgba(15,23,42,0.06)] dark:shadow-none dark:focus-within:border-foreground/35 motion-reduce:transition-none',
+              '@container relative rounded-2xl border border-border bg-card shadow-[0_2px_8px_hsl(var(--foreground)/0.05),0_14px_30px_-14px_hsl(var(--foreground)/0.1)] transition-[border-color,box-shadow] duration-200 hover:border-foreground/22 focus-within:border-foreground/30 focus-within:ring-[3px] focus-within:ring-accent/12 focus-within:shadow-[0_4px_16px_hsl(var(--foreground)/0.08)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.38)] dark:focus-within:border-foreground/35 motion-reduce:transition-none',
             )}
           >
             <Label htmlFor="chat-composer" className="sr-only">
@@ -775,8 +777,8 @@ export function ChatArea({
 
             <div
               className={cn(
-                'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @min-[30rem]:flex',
-                isWelcomeState ? 'px-2 pb-2 sm:px-3 sm:pb-3' : 'px-3 pb-3 pt-1 sm:px-4',
+                'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-border/55 pt-2 @min-[30rem]:flex',
+                isWelcomeState ? 'px-2 pb-2 sm:px-3 sm:pb-3' : 'px-3 pb-3 sm:px-4',
               )}
             >
               <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-2 @min-[30rem]:flex-1">
@@ -1128,7 +1130,7 @@ export function ChatArea({
                     size="icon"
                     onClick={handleSend}
                     disabled={isLoading || !inputValue.trim() || Boolean(metadataFilterError)}
-                    className="size-11 rounded-full bg-accent text-accent-foreground shadow-none transition-colors duration-150 hover:bg-accent/90 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100 motion-reduce:transition-none sm:size-10"
+                    className="size-11 rounded-full bg-accent text-accent-foreground shadow-[0_1px_2px_hsl(var(--foreground)/0.12),inset_0_1px_0_hsl(var(--accent-foreground)/0.16)] transition-[background-color,box-shadow] duration-150 hover:bg-accent/90 hover:shadow-[0_2px_5px_hsl(var(--foreground)/0.14)] disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100 disabled:shadow-none motion-reduce:transition-none sm:size-10"
                     title={t('composerSendHint')}
                     aria-label={t('send')}
                     aria-describedby={!hasChatScope && inputValue.trim() ? 'chat-composer-scope-hint' : undefined}
@@ -1256,8 +1258,10 @@ function WelcomeScreen() {
 
   return (
     <header className="mb-6 text-center sm:mb-7">
-      <div className="flex items-center justify-center gap-2.5">
-        <BrandLogo variant="mark" className="size-7 shrink-0 sm:size-8" decorative priority />
+      <div className="flex items-center justify-center gap-3">
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card shadow-[0_1px_3px_hsl(var(--foreground)/0.05)] sm:size-11">
+          <BrandLogo variant="mark" className="size-7 shrink-0 sm:size-8" decorative priority />
+        </span>
         <h1 className="text-xl font-medium leading-8 text-foreground sm:text-[24px]">{t('welcomeTitle')}</h1>
       </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('welcomeSubtitle')}</p>

@@ -75,6 +75,7 @@
   border: 1px solid hsl(var(--border));
   border-radius: 16px;
   background: hsl(var(--card));
+  box-shadow: var(--shadow-subtle);
   padding-inline: 11px;
 }
 .vectorLabel {
@@ -262,6 +263,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  background: hsl(var(--card));
 }
 .retrievalBody {
   display: flex;
@@ -466,7 +468,6 @@
   gap: 7px;
   font-size: 13px;
   border-radius: 6px;
-  box-shadow: none;
 }
 .queryActions button[type='submit'] {
   flex: 1;

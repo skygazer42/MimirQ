@@ -454,7 +454,7 @@ export function Navbar({
                         className={cn(
                           'flex min-h-11 cursor-pointer items-center justify-center border-l-2 border-transparent transition-colors duration-150 hover:bg-muted focus-ring motion-reduce:transition-none',
                           active
-                            ? 'border-primary bg-muted text-foreground'
+                            ? 'border-l-accent bg-card text-accent shadow-[0_1px_2px_hsl(var(--foreground)/0.06)] hover:bg-card'
                             : 'text-muted-foreground hover:text-foreground',
                         )}
                       >
@@ -470,7 +470,7 @@ export function Navbar({
                 )
               })}
           </div>
-          <div className="flex shrink-0 flex-col items-center border-t border-sidebar-border py-3">
+          <div className="flex shrink-0 flex-col items-center border-t border-sidebar-border/80 py-3">
             {canOpenSettings ? (
               <Link
                 href="/settings"
@@ -479,9 +479,9 @@ export function Navbar({
                 title={t('items.settings')}
                 aria-current={activeHref === '/settings' ? 'page' : undefined}
                 className={cn(
-                  'grid size-10 place-items-center rounded-md focus-ring',
+                  'grid size-10 place-items-center rounded-md border-l-2 border-transparent transition-colors duration-150 focus-ring motion-reduce:transition-none',
                   activeHref === '/settings'
-                    ? 'bg-muted text-foreground'
+                    ? 'border-l-accent bg-card text-accent shadow-[0_1px_2px_hsl(var(--foreground)/0.06)]'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
@@ -526,7 +526,7 @@ export function Navbar({
         aria-label={t('toolbar.navLabel')}
         inert={!isSidebarOpen}
         className={cn(
-          'peer flex-shrink-0 border-r border-sidebar-border/60 bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-50',
+          'peer flex-shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
           isSidebarOpen
             ? 'w-[208px] translate-x-0'
@@ -534,7 +534,7 @@ export function Navbar({
         )}
       >
         {/* Logo 区域 */}
-        <div className="flex h-13 shrink-0 items-center gap-3 px-4">
+        <div className="flex h-[52px] shrink-0 items-center gap-3 border-b border-sidebar-border/75 px-4">
           <Link
             href="/"
             prefetch={false}
@@ -566,8 +566,8 @@ export function Navbar({
             ref={firstActionRef}
             variant="ghost"
             className={cn(
-              'h-8.5 max-md:h-11 w-full justify-start gap-2.5 rounded-md border border-sidebar-border/80 bg-card px-3 text-[13px] font-normal text-sidebar-foreground transition-colors duration-150 shadow-none',
-              'hover:border-sidebar-border hover:bg-muted',
+              'h-8.5 max-md:h-11 w-full justify-start gap-2.5 rounded-md border border-sidebar-border bg-card px-3 text-[13px] font-medium text-sidebar-foreground transition-colors duration-150 shadow-[0_1px_2px_hsl(var(--foreground)/0.05)]',
+              'hover:border-accent/40 hover:bg-card hover:shadow-[0_2px_6px_hsl(var(--foreground)/0.07)]',
               'active:scale-[0.98]',
             )}
             onClick={() => {
@@ -575,7 +575,7 @@ export function Navbar({
               closeSidebarOnMobile()
             }}
           >
-            <Plus className="size-4 text-muted-foreground" />
+            <Plus className="size-4 text-accent" />
             <span>{t('actions.newConversation')}</span>
           </Button>
         </div>
@@ -583,7 +583,7 @@ export function Navbar({
         <div className="px-3 pb-2">
           <button
             type="button"
-            className="group flex h-8.5 max-md:h-11 w-full items-center justify-between gap-2.5 rounded-md bg-transparent px-3 text-left text-sidebar-foreground/80 shadow-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-ring"
+            className="group flex h-8.5 max-md:h-11 w-full items-center justify-between gap-2.5 rounded-md border border-sidebar-border/70 bg-background/60 px-3 text-left text-sidebar-foreground/80 transition-colors duration-150 hover:border-sidebar-border hover:bg-card hover:text-foreground focus-ring"
             onClick={() => {
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
@@ -600,7 +600,9 @@ export function Navbar({
                 <p className="truncate text-[13px] font-normal">{t('command.triggerLabel')}</p>
               </div>
             </div>
-            <kbd className="shrink-0 text-micro font-normal tabular-nums text-muted-foreground">{commandShortcut}</kbd>
+            <kbd className="shrink-0 rounded-[5px] border border-border/90 bg-card px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted-foreground shadow-[0_1px_0_hsl(var(--border))]">
+              {commandShortcut}
+            </kbd>
           </button>
         </div>
 
@@ -625,17 +627,20 @@ export function Navbar({
                       className={cn(
                         'flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left transition-colors duration-150 focus-ring',
                         hasActiveItem
-                          ? 'text-muted-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                          ? 'text-foreground/80'
+                          : 'text-muted-foreground/85 hover:bg-muted hover:text-foreground',
                       )}
                       onClick={() => toggleSection(section.id)}
                       aria-expanded={isOpen}
                       aria-controls={`sidebar-section-${section.id}`}
                     >
                       <div className="min-w-0">
-                        <p className="text-[13px] font-normal">{t(section.titleKey)}</p>
+                        <p className="text-[11.5px] font-semibold">{t(section.titleKey)}</p>
                       </div>
                       <div className="flex items-center gap-2">
+                        {!isOpen && hasActiveItem ? (
+                          <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                        ) : null}
                         <ToggleIcon className="size-3.5 shrink-0" />
                       </div>
                     </button>
@@ -665,7 +670,7 @@ export function Navbar({
                                   className={cn(
                                     'relative flex h-8.5 max-md:h-11 items-center gap-2.5 border-l-2 border-transparent px-2.5 py-1.5 rounded-md transition-colors duration-150 group focus-ring',
                                     isActive
-                                      ? 'border-l-accent text-sidebar-foreground font-medium bg-secondary shadow-none'
+                                      ? 'border-l-accent bg-card text-sidebar-foreground font-medium shadow-[0_1px_2px_hsl(var(--foreground)/0.06)] ring-1 ring-sidebar-border/80'
                                       : 'font-normal text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground',
                                   )}
                                 >
@@ -673,7 +678,7 @@ export function Navbar({
                                     className={cn(
                                       'size-4 transition-colors duration-150',
                                       isActive
-                                        ? 'text-sidebar-foreground'
+                                        ? 'text-accent'
                                         : 'text-muted-foreground group-hover:text-sidebar-foreground',
                                     )}
                                   />
@@ -691,15 +696,15 @@ export function Navbar({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-sidebar-border/60 bg-sidebar p-2.5">
+        <div className="shrink-0 border-t border-sidebar-border/80 bg-sidebar p-2.5">
           <Popover open={accountMenuOpen} onOpenChange={(open) => setAccountView(open ? 'main' : 'closed')}>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 aria-label={t('user.menu')}
-                className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-muted focus-ring"
+                className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-card/85 hover:ring-1 hover:ring-sidebar-border/70 focus-ring"
               >
-                <span className="relative grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-sm font-medium text-sidebar-foreground">
+                <span className="relative grid size-9 shrink-0 place-items-center rounded-full bg-card text-sm font-medium text-sidebar-foreground ring-1 ring-sidebar-border shadow-[0_1px_2px_hsl(var(--foreground)/0.05)]">
                   {isAuthenticated && userInitial ? userInitial : <User className="size-4" aria-hidden="true" />}
                   <span
                     title={serviceStatus}
@@ -816,7 +821,7 @@ export function Navbar({
           aria-expanded={false}
           aria-label={t('toolbar.expand')}
           title={t('toolbar.expand')}
-          className="fixed left-4 top-4 z-50 size-9 rounded-md bg-card text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
+          className="fixed left-4 top-4 z-50 size-9 rounded-md border border-border/80 bg-card text-muted-foreground shadow-subtle hover:bg-muted hover:text-foreground"
           onClick={handleSidebarToggle}
         >
           <PanelLeftOpen className="size-4" />
