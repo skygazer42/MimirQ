@@ -11,13 +11,15 @@ import hashlib
 import time
 import zlib
 from collections import Counter
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.schemas.knowledge_graph import KGGraphResponse
+from app.api.schemas.knowledge_graph import KGGraphLink, KGGraphNode, KGGraphResponse
 from app.api.v1.knowledge_graph.routes_support.common import logger
 from app.api.v1.knowledge_graph.routes_support.types import (
     KGGraphBuildResult,
@@ -25,6 +27,8 @@ from app.api.v1.knowledge_graph.routes_support.types import (
     KGGraphProjectionParams,
 )
 from app.infrastructure.config import settings
+from app.models.knowledge_graph.enterprise_ontology import EnterpriseOntologyDocument
+from app.rag.kg.enterprise_ontology.documents import current_document_previews
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.services.documents.pipeline_versions import get_active_pipeline_hash as _doc_pipeline_hash
 from app.services.documents.read_scope import filter_allowed_document_ids, list_accessible_document_ids
@@ -533,6 +537,96 @@ def _empty_kg_graph_response(
     out = KGGraphResponse(nodes=[], links=[], stats=stats)
     _log_kg_graph_metric(metric, t0=t0, tenant_id=tenant_id, docs=docs, events=0, entities=0, links=0)
     return out
+
+
+def _build_ontology_graph_response(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    version_id: UUID,
+    allowed_doc_ids: list[UUID],
+    limits: KGGraphProjectionLimits,
+) -> KGGraphResponse:
+    from app.models.documents.records import Document
+
+    rows = db.execute(
+        select(EnterpriseOntologyDocument, Document)
+        .join(Document, Document.id == EnterpriseOntologyDocument.document_id)
+        .where(
+            EnterpriseOntologyDocument.tenant_id == tenant_id,
+            EnterpriseOntologyDocument.dataset_id == dataset_id,
+            EnterpriseOntologyDocument.version_id == version_id,
+            Document.id.in_(allowed_doc_ids),
+            Document.tenant_id == tenant_id,
+            Document.dataset_id == dataset_id,
+            Document.publication_status == "published",
+            Document.archived_at.is_(None),
+        )
+        .order_by(Document.updated_at.desc(), Document.id)
+    )
+    nodes: list[KGGraphNode] = []
+    links: dict[str, KGGraphLink] = {}
+    chunk_count = 0
+    for row, document in rows:
+        remaining_chunks = limits.max_events - chunk_count
+        if remaining_chunks <= 0 or len(nodes) >= limits.max_entities:
+            break
+        for preview, _chunk in current_document_previews(db, row, document)[:remaining_chunks]:
+            chunk_count += 1
+            occurrence_ids: dict[str, str] = {}
+            provenance = {
+                "ontology_version_id": str(version_id),
+                "document_id": str(document.id),
+                "chunk_id": str(preview.chunk_id),
+                "page": preview.page,
+            }
+            for entity in preview.entities[: limits.max_entities - len(nodes)]:
+                occurrence_id = f"ontology-{uuid5(version_id, f'{preview.chunk_id}:{entity.id}')}"
+                occurrence_ids[entity.id] = occurrence_id
+                nodes.append(
+                    KGGraphNode(
+                        id=occurrence_id,
+                        label=entity.name,
+                        group=_stable_group_for(entity.object_type),
+                        meta={
+                            **provenance,
+                            "kind": "entity",
+                            "type": entity.object_type,
+                            "ontology_entity_id": entity.id,
+                            "evidence": asdict(entity.evidence),
+                        },
+                    )
+                )
+            for relation in preview.relations:
+                if len(links) >= limits.max_links:
+                    break
+                source = occurrence_ids.get(relation.subject_id)
+                target = occurrence_ids.get(relation.object_id)
+                if source is None or target is None:
+                    continue
+                span = relation.evidence
+                relation_key = f"{source}:{target}:{relation.predicate}:{span.start_char}:{span.end_char}"
+                link_id = f"ontology-{uuid5(version_id, relation_key)}"
+                links[link_id] = KGGraphLink(
+                    source=source,
+                    target=target,
+                    label=relation.predicate,
+                    meta={
+                        **provenance,
+                        "id": link_id,
+                        "kind": "entity_relation",
+                        "predicate": relation.predicate,
+                        "ontology_subject_id": relation.subject_id,
+                        "ontology_object_id": relation.object_id,
+                        "evidence": asdict(span),
+                    },
+                )
+    return KGGraphResponse(
+        nodes=nodes,
+        links=list(links.values()),
+        stats={"ontology_version_id": str(version_id), "events": 0, "entities": len(nodes), "links": len(links)},
+    )
 
 
 def _load_kg_projection_events(

@@ -1,8 +1,9 @@
 """Authenticate requests and bind their account and workspace context."""
 
+from typing import Annotated, AsyncIterator
 from uuid import UUID
 
-from fastapi import HTTPException, Request
+from fastapi import Header, HTTPException, Request
 from jwt import ExpiredSignatureError, InvalidTokenError
 from pydantic import TypeAdapter, ValidationError
 
@@ -11,8 +12,16 @@ from app.infrastructure.config import settings
 from app.infrastructure.env import is_production_env
 from app.infrastructure.observability.logging import set_request_route, set_request_tenant_id, set_request_user_id
 from app.infrastructure.security.jwt_verify import decode_access_token
+from app.rag.kg.enterprise_ontology.edo_source import edo_authorization
 
 _TENANT_ID = TypeAdapter(UUID)
+
+
+async def bind_edo_authorization(
+    credential: Annotated[str | None, Header(alias="X-EDO-Authorization")] = None,
+) -> AsyncIterator[None]:
+    with edo_authorization(credential):
+        yield
 
 
 def _parse_tenant_header(header: str) -> UUID:

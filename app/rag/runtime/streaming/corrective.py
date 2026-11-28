@@ -13,6 +13,7 @@ from app.infrastructure.config import settings
 from app.infrastructure.tokens import num_tokens_from_string
 from app.rag.retrieval.configuration.profiles import is_recall_first_profile
 from app.rag.retrieval.evidence.citations import build_citations_from_docs
+from app.rag.retrieval.evidence.validity import NO_CURRENT_EVIDENCE, requests_current_evidence
 from app.rag.retrieval.planning.variants import deduplicate_retrieval_queries
 from app.rag.retrieval.ranking.fusion import annotate_documents_with_role, fuse_doc_lists
 from app.rag.retrieval.recall.retriever import hybrid_retriever
@@ -362,6 +363,10 @@ def _evaluate_retry_abstention(runtime: StandardStreamState) -> None:
     runtime.data.top_rel = _top_relevance_score(runtime.data.citations)
     runtime.data.abstain_triggered = False
     runtime.data.abstain_reason = None
+    if not runtime.data.citations and requests_current_evidence(runtime.data.question):
+        runtime.data.abstain_triggered = True
+        runtime.data.abstain_reason = NO_CURRENT_EVIDENCE
+        return
     if not runtime.data.abstain_enabled:
         return
     min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS))

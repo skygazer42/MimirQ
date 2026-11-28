@@ -18,13 +18,17 @@ from app.query.expand import heuristic_decompose_query
 from app.rag.agents.rag_agent import (
     AgenticStreamRequest,
     _normalized_plan_queries,
+    build_agentic_grounded_context,
     build_agentic_rag_state,
+    prepare_agentic_ontology,
     resolve_agentic_stream_request,
 )
-from app.rag.llm.prompts.templates import format_history_text
+from app.rag.llm.prompts.templates import format_history_text, with_answer_semantics_system_message
 from app.rag.llm.response_parsing import parse_json_from_text
-from app.rag.retrieval.evidence.citations import build_citations_from_docs
+from app.rag.retrieval.evidence.citations import build_citations_from_docs, filter_citations_for_context
 from app.rag.retrieval.orchestrator import run_retrieval
+from app.rag.retrieval.ranking.fusion import prefer_document
+from app.rag.retrieval.results import document_key
 from app.rag.runtime.graph.context import _build_context
 from app.rag.workflows.base import cancel_and_drain_tasks
 from app.services.runtime.retrieval_limiter import run_blocking_retrieval_call_with_managed_session
@@ -229,9 +233,9 @@ class MultiAgentRAGRunner:
             metrics = result.get("metrics") or {}
             final_retrieval_mode = str(metrics.get("retrieval_mode") or final_retrieval_mode)
             for doc in result.get("docs") or []:
-                key = self._engine._doc_key(doc)
+                key = document_key(doc)
                 existing = docs_by_key.get(key)
-                docs_by_key[key] = doc if existing is None else self._engine._prefer_doc(existing, doc)
+                docs_by_key[key] = doc if existing is None else prefer_document(existing, doc)
             for citation in result.get("citations") or []:
                 if not isinstance(citation, dict):
                     continue
@@ -283,8 +287,12 @@ class MultiAgentRAGRunner:
             if prompt_template_content
             else self._engine.prompt_template
         )
+        if base_state.get("ontology_context"):
+            prompt_template = with_answer_semantics_system_message(prompt_template)
         generation_inputs = {
-            "context": _build_context(collected_docs, query=question),
+            "context": base_state["grounded_context"]
+            if "grounded_context" in base_state
+            else _build_context(collected_docs, query=question),
             "history": format_history_text(history, window=settings.CHAT_HISTORY_WINDOW),
             "question": question,
             "format_instructions": base_state["format_instructions"],
@@ -350,6 +358,7 @@ class MultiAgentRAGRunner:
         self,
         *,
         request: AgenticStreamRequest | None = None,
+        plan_steps: list[MultiAgentPlanStep] | None = None,
         **_kwargs: Any,
     ) -> AsyncIterator[dict[str, Any]]:
         stream_request = resolve_agentic_stream_request(
@@ -357,6 +366,7 @@ class MultiAgentRAGRunner:
             legacy_overrides=_kwargs,
         )
         t_start = time.time()
+        stream_request = await prepare_agentic_ontology(stream_request)
         question = stream_request.question
         history = list(stream_request.history or [])
         conversation_id = stream_request.conversation_id
@@ -378,7 +388,8 @@ class MultiAgentRAGRunner:
         )
 
         yield {"type": "agentic_step", "data": {"step": "planning"}}
-        plan_steps = await self._decompose(question=question, llm=llm, max_sub_questions=max_sub_questions)
+        if plan_steps is None:
+            plan_steps = await self._decompose(question=question, llm=llm, max_sub_questions=max_sub_questions)
         if stream_request.db is not None:
             stream_request.db.rollback()
 
@@ -400,6 +411,16 @@ class MultiAgentRAGRunner:
             retrieval_mode=retrieval_mode,
             question=question,
         )
+        grounded = build_agentic_grounded_context(
+            collected_docs, ontology_context=base_state.get("ontology_context", {}), question=question
+        )
+        if grounded is not None:
+            collected_docs = grounded.documents
+            citations = filter_citations_for_context(
+                citations, collected_docs, retrieval_mode=final_retrieval_mode, query=question
+            )
+            base_state["grounded_context"] = grounded.text
+            base_state["metrics"]["generation_context"] = grounded.trace
         yield {"type": "citations", "data": citations}
 
         answer_state: dict[str, Any] = {}
@@ -430,6 +451,7 @@ class MultiAgentRAGRunner:
             collected_docs=collected_docs,
             tasks_count=len(results),
         )
+        metrics = {**base_state.get("metrics", {}), **metrics}
 
         yield {
             "type": "done",
@@ -445,6 +467,7 @@ class MultiAgentRAGRunner:
                 "metrics": metrics,
                 "structured": bool(answer_state["structured_data"]),
                 "structured_data": answer_state["structured_data"],
+                **({"ontology_action": base_state["ontology_action"]} if "ontology_action" in base_state else {}),
             },
         }
 

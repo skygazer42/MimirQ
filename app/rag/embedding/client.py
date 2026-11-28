@@ -12,7 +12,8 @@ class EmbeddingClient:
         self._provider = get_active_embedding_client()
 
     async def generate(self, text: str) -> list[float]:
-        return await self._provider.aembed_query(text)
+        # Document processing runs in private event loops that cannot share async connections.
+        return await run_blocking_in_thread(self._provider.embed_query, text)
 
     async def generate_batch(self, texts: list[str]) -> list[list[float]]:
         batch_limit = min(
@@ -21,7 +22,8 @@ class EmbeddingClient:
         )
         out: list[list[float]] = []
         for start in range(0, len(texts), batch_limit):
-            out.extend(await self._provider.aembed_documents(texts[start : start + batch_limit]))
+            batch = texts[start : start + batch_limit]
+            out.extend(await run_blocking_in_thread(self._provider.embed_documents, batch))
         return out
 
 

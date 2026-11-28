@@ -46,9 +46,6 @@ async def test_stream_chat_reports_retryable_admission_timeout(
     import app.services.chat.stream_orchestrator as orchestrator
     from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
-    async def provider_available() -> tuple[bool, None]:
-        return True, None
-
     async def overloaded_stream(**_kwargs):  # noqa: ANN003, ANN202
         raise RetrievalAdmissionTimeoutError(2.1)
         yield  # pragma: no cover
@@ -62,7 +59,6 @@ async def test_stream_chat_reports_retryable_admission_timeout(
         prepare_stream_runtime,
     )
     monkeypatch.setattr(orchestrator, "is_model_provider_unavailable_circuit_open", lambda: False)
-    monkeypatch.setattr(orchestrator, "preflight_model_provider_fast", provider_available)
     monkeypatch.setattr(engine_module, "get_rag_engine", lambda: object())
     monkeypatch.setattr(orchestrator, "stream_graph_chat_session_events", overloaded_stream)
     monkeypatch.setattr(orchestrator, "stream_langchain_chat_session_events", overloaded_stream)
@@ -118,9 +114,6 @@ async def test_ag_ui_consumer_close_closes_the_nested_graph_source(monkeypatch: 
     async def prepare_runtime(**_kwargs):
         return _stream_runtime(use_graph=True)
 
-    async def provider_available():
-        return True, None
-
     def source(_state, *, context, **_kwargs):
         graph_context.update(context)
         try:
@@ -131,7 +124,6 @@ async def test_ag_ui_consumer_close_closes_the_nested_graph_source(monkeypatch: 
 
     monkeypatch.setattr(orchestrator, "prepare_stream_chat_runtime", prepare_runtime)
     monkeypatch.setattr(orchestrator, "is_model_provider_unavailable_circuit_open", lambda: False)
-    monkeypatch.setattr(orchestrator, "preflight_model_provider_fast", provider_available)
     workflow_module = types.ModuleType("app.rag.runtime.graph.workflow")
     workflow_module.rag_workflow = SimpleNamespace(stream=source)
     monkeypatch.setitem(sys.modules, workflow_module.__name__, workflow_module)

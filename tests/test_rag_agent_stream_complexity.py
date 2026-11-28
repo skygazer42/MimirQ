@@ -363,7 +363,9 @@ async def test_stream_hands_off_to_multi_agent_runner_without_local_events(
     forwarded_requests: list[object] = []
 
     class _MultiAgentRunner:
-        async def stream(self, *, request: object) -> AsyncIterator[dict[str, object]]:
+        async def stream(self, *, request: object, plan_steps) -> AsyncIterator[dict[str, object]]:
+            assert [step.query for step in plan_steps] == ["one", "two"]
+            assert all(step.rationale == "test" for step in plan_steps)
             forwarded_requests.append(request)
             for event in forwarded_events:
                 yield event

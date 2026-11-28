@@ -11,7 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.infrastructure.config import settings
 from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
-from app.rag.llm.prompts.templates import format_history_text
+from app.rag.llm.prompts.templates import format_history_text, with_answer_semantics_system_message
 from app.rag.llm.structured_output import build_structured_output_instructions
 from app.rag.retrieval.planning.contracts import QueryPreparationOverrides
 from app.rag.retrieval.planning.options import QUERY_PLANNING_OPTION_KEYS, resolve_query_preparation_request
@@ -159,6 +159,8 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
             runtime.data.selected_prompt_ab_experiment_key = prompt["ab_experiment_key"]
             runtime.data.selected_prompt_ab_variant = prompt["ab_variant"]
 
+    if runtime.data.ontology_enabled:
+        runtime.data.current_prompt_template = with_answer_semantics_system_message(runtime.data.current_prompt_template)
     runtime.data.chain = runtime.data.current_prompt_template | runtime.data.llm | StrOutputParser()
 
     runtime.data.format_instructions = ""

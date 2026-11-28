@@ -2,20 +2,23 @@
 
 import json
 import time
+from contextlib import closing
 from typing import Any
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.config import get_stream_writer
 
 from app.infrastructure.config import settings
 from app.infrastructure.security.pii import pii_redaction_enabled, redact_text
-from app.rag.llm.prompts.templates import format_history_text
+from app.rag.llm.prompts.templates import format_history_text, with_answer_semantics_system_message
 from app.rag.llm.response_parsing import (
     build_abstain_answer_message,
     derive_followup_questions,
     extract_followup_questions_from_answer,
 )
 from app.rag.llm.structured_output import build_structured_abstain_payload
+from app.rag.retrieval.evidence.citations import anchor_answer_citations, filter_citations_for_context
 from app.rag.retrieval.evidence.source_labels import maybe_build_source_identification_answer
 from app.rag.runtime.engine import get_rag_engine
 from app.rag.runtime.graph.answers import (
@@ -26,7 +29,7 @@ from app.rag.runtime.graph.answers import (
     _normalized_claim_verifier_mode,
     _render_generation_answer_extras,
 )
-from app.rag.runtime.graph.context import _build_context
+from app.rag.runtime.graph.context import _build_context, build_grounded_context
 from app.rag.runtime.graph.metrics import (
     _apply_common_generation_metrics,
     _compute_generation_faithfulness,
@@ -84,8 +87,33 @@ def _generate_abstain_result(state: RAGState) -> RAGState:
 def _generate_standard_result(state: RAGState) -> RAGState:
     engine, llm, route, reason, model_used = _prepare_generation_model(state)
     llm, generation_max_tokens = _apply_generation_max_tokens(llm, state)
-    chain = _build_generation_chain(engine=engine, llm=llm, prompt_content=state.get("prompt_template_content"))
-    ctx = _build_context(state.get("docs") or [], query=state.get("query_for_retrieval") or state.get("question"))
+    chain = _build_generation_chain(
+        engine=engine,
+        llm=llm,
+        prompt_content=state.get("prompt_template_content"),
+        ontology_context=bool(state.get("ontology_context")),
+    )
+    query = state.get("query_for_retrieval") or state.get("question")
+    if state.get("ontology_context"):
+        context = build_grounded_context(
+            state.get("docs") or [], ontology_context=state["ontology_context"], query=query
+        )
+        metrics = dict(state.get("metrics") or {})
+        metrics["generation_context"] = context.trace
+        state = {
+            **state,
+            "docs": context.documents,
+            "metrics": metrics,
+            "citations": filter_citations_for_context(
+                state.get("citations") or [],
+                context.documents,
+                retrieval_mode=str(state.get("retrieval_mode") or "hybrid"),
+                query=query,
+            ),
+        }
+        ctx = context.text
+    else:
+        ctx = _build_context(state.get("docs") or [], query=query)
     hist_text = format_history_text(state.get("history"), window=settings.CHAT_HISTORY_WINDOW)
     pii_on = bool(pii_redaction_enabled())
     answer, generation_elapsed = _invoke_generation_chain(
@@ -111,6 +139,9 @@ def _generate_standard_result(state: RAGState) -> RAGState:
         state=state,
         claim_ctx=claim_ctx,
     )
+    citations = state.get("citations") or []
+    if not state.get("structured_output"):
+        citations = anchor_answer_citations(citations, state.get("docs") or [], answer)
     answer, sentence_meta = _render_generation_answer_extras(
         answer=answer,
         state=state,
@@ -145,6 +176,7 @@ def _generate_standard_result(state: RAGState) -> RAGState:
     return {
         **state,
         "answer": answer,
+        "citations": citations,
         "route": route,
         "model_used": model_used,
         "routing_reason": reason,
@@ -180,10 +212,12 @@ def _abstain_answer_payload(state: RAGState, *, abstain_message: str) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _build_generation_chain(*, engine: Any, llm: Any, prompt_content: Any) -> Any:
+def _build_generation_chain(*, engine: Any, llm: Any, prompt_content: Any, ontology_context: bool) -> Any:
     prompt_obj = engine.prompt_template
     if prompt_content is not None:
         prompt_obj = ChatPromptTemplate.from_template(prompt_content)
+    if ontology_context:
+        prompt_obj = with_answer_semantics_system_message(prompt_obj)
     return prompt_obj | llm | StrOutputParser()
 
 
@@ -196,14 +230,41 @@ def _invoke_generation_chain(
     pii_on: bool,
 ) -> tuple[str, float]:
     start = time.time()
-    answer = chain.invoke(
-        {
-            "context": redact_text(ctx) if pii_on else ctx,
-            "history": redact_text(hist_text) if pii_on else hist_text,
-            "question": redact_text(state["question"]) if pii_on else state["question"],
-            "format_instructions": state["format_instructions"],
-        }
+    inputs = {
+        "context": redact_text(ctx) if pii_on else ctx,
+        "history": redact_text(hist_text) if pii_on else hist_text,
+        "question": redact_text(state["question"]) if pii_on else state["question"],
+        "format_instructions": state["format_instructions"],
+    }
+    buffered = (
+        pii_on
+        or state.get("structured_output")
+        or state.get("visible_evidence_only")
+        or settings.RAG_CLAIM_CHECK_ENABLED
+        or settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED
+        or settings.OUTPUT_GUARD_ENABLED
+        or settings.RAG_CORRECTIVE_ENABLED
+        or settings.RAG_FOLLOWUP_SUGGESTIONS_ENABLED
+        or settings.SENTENCE_CITATIONS_INLINE_ENABLED
+        or maybe_build_source_identification_answer(question=state["question"], docs=state.get("docs"))
     )
+    if state.get("stream_answer") and not buffered:
+        writer = get_stream_writer()
+        parts = []
+        try:
+            with closing(chain.stream(inputs)) as tokens:
+                for token in tokens:
+                    if token:
+                        parts.append(token)
+                        writer({"event": "answer_delta", "content": token})
+            answer = "".join(parts)
+        except Exception as exc:
+            if parts:
+                # LangGraph must not retry and append a second answer after visible text.
+                raise ValueError("Answer stream interrupted after text was emitted") from exc
+            raise
+    else:
+        answer = chain.invoke(inputs)
     rendered = redact_text(str(answer)) if pii_on else str(answer)
     return rendered, time.time() - start
 

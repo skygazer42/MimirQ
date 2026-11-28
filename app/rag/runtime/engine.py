@@ -120,8 +120,7 @@ use File only when no Title is available
 [Output Format Instructions]
 {format_instructions}
 
-[Answer]"""
-        )
+[Answer]""")
 
         # Structured output instructions are centralized in app.rag.llm.structured_output.
         self.structured_presets: dict[str, str] = {}
@@ -322,6 +321,7 @@ Requirements:
         dataset_id = context.dataset_id
         dataset_ids = context.dataset_ids
         request_id = context.request_id
+        ontology_enabled = context.ontology_enabled
 
         metadata_filter = rag_config.metadata_filter
         top_k = rag_config.top_k
@@ -453,6 +453,7 @@ Requirements:
                         dataset_ids=dataset_ids,
                         tenant_id=tenant_id,
                         account_id=account_id,
+                        ontology_enabled=ontology_enabled,
                         dataset_id=dataset_id,
                         top_k=top_k,
                         score_threshold=score_threshold,

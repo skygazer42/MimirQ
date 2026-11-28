@@ -13,6 +13,20 @@ from uuid import UUID
 KG_EXTRACTION_COMPLETE_KEY = "kg_extraction_complete"
 
 
+def event_evidence_span(references: object) -> tuple[str, int, int] | None:
+    """Read an event quote and its character offsets relative to the source chunk."""
+    if not isinstance(references, dict):
+        return None
+    quote = references.get("evidence_quote")
+    start = references.get("evidence_start_char")
+    end = references.get("evidence_end_char")
+    if not isinstance(quote, str) or not quote.strip() or len(quote) > 240:
+        return None
+    if type(start) is not int or type(end) is not int or start < 0 or end - start != len(quote):
+        return None
+    return quote, start, end
+
+
 def is_event_extraction_complete(extra_data: object) -> bool:
     """Only an owner-confirmed generation can be reused by skip-unchanged.
 
@@ -432,4 +446,5 @@ __all__ = [
     "build_kg_path_provenance",
     "build_kg_shortest_path_provenance",
     "confidence_bucket",
+    "event_evidence_span",
 ]

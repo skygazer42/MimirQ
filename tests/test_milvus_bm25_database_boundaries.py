@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from sqlalchemy import JSON, Column, DateTime, Integer, MetaData, String, Table, Text, Uuid, create_engine
 from sqlalchemy.orm import Session
 
+import app.models.registry  # noqa: F401
 from tests.test_milvus_bm25_cutover import Store
 
 

@@ -709,6 +709,7 @@ async def test_kg_recall_resolves_search_through_engine_module(
         payload={
             "strict_visible": False,
             "kg_result_cached": None,
+            "docs": [],
             "query_plan": SimpleNamespace(kg=SimpleNamespace(failure=None, response=None)),
             "question": "What changed?",
             "tenant_id": tenant_id,
@@ -760,6 +761,7 @@ async def test_out_of_scope_guard_resolves_through_engine_module(
             "abstain_triggered": False,
             "abstain_reason": None,
             "top_rel": 0.0,
+            "question": "Uncovered topic",
             "query_for_retrieval": "Uncovered topic",
             "tenant_id": tenant_id,
             "dataset_id": None,

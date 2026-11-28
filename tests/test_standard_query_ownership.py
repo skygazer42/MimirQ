@@ -143,6 +143,63 @@ async def test_standard_kg_consumers_do_not_repeat_rejected_or_empty_reads(monke
 
 
 @pytest.mark.asyncio
+async def test_standard_kg_context_checks_event_quotes_against_retrieved_chunks(monkeypatch) -> None:
+    from langchain_core.documents import Document
+
+    from app.infrastructure.config import settings
+    from app.rag.kg.search.utils import format_events
+    from app.rag.runtime.streaming import evidence as standard_stream_evidence
+
+    monkeypatch.setattr(settings, "KG_ENABLED", True)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", True)
+    monkeypatch.setattr(settings, "RAG_CONTEXT_MAX_KG_TOKENS", 0)
+    monkeypatch.setattr(settings, "RAG_CONTEXT_MAX_KG_CHARS", 10_000)
+    document_id, chunk_id = uuid4(), uuid4()
+    prefix = "旧版规则已作废。\n"
+    quote = "审批通过后保留 30 天。"
+    stale_quote = "审批通过后保留 60 天。"
+    refs = {
+        "evidence_quote": quote,
+        "evidence_start_char": len(prefix),
+        "evidence_end_char": len(prefix + quote),
+    }
+    events = [
+        SimpleNamespace(
+            id=uuid4(),
+            title=title,
+            summary="事件摘要",
+            content="事件摘要",
+            document_id=document_id,
+            chunk_id=chunk_id,
+            references=references,
+        )
+        for title, references in (
+            ("当前规则", refs),
+            ("过期引用", {**refs, "evidence_quote": stale_quote}),
+            ("旧记录", None),
+            ("错误偏移", {**refs, "evidence_start_char": -1}),
+        )
+    ]
+    scores = {str(event.id): len(events) - index for index, event in enumerate(events)}
+    ranked = format_events(events, scores, limit=len(events))
+    runtime = _runtime(
+        document_ids=[document_id],
+        docs=[Document(id=str(chunk_id), page_content=prefix + quote)],
+        query_plan=SimpleNamespace(kg=SimpleNamespace(failure=None, response={"events": ranked})),
+    )
+
+    await standard_stream_evidence.recall_kg_context(runtime)
+    await standard_stream_evidence.join_context_sections(runtime)
+
+    assert ranked[0]["evidence_quote"] == quote
+    assert "evidence_quote" not in ranked[-1]
+    assert "[Source excerpt] " + quote in runtime.data.context
+    assert stale_quote not in runtime.data.context
+    assert "[Event 3] 旧记录\n事件摘要" in runtime.data.context
+    assert runtime.data.kg_context_failure is None
+
+
+@pytest.mark.asyncio
 async def test_stream_builds_the_actual_retriever_and_queries_from_the_plan(monkeypatch):
     from app.infrastructure.config import settings
     from app.query import expand

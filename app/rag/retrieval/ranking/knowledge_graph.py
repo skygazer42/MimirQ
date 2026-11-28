@@ -5,11 +5,13 @@ Split out of ``app.rag.retrieval.orchestrator`` (see
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID
 
 from langchain_core.documents import Document
 
+from app.rag.retrieval.evidence.validity import find_outside_window_document_ids
 from app.rag.retrieval.results import _log_orchestrator_fallback, _safe_float, document_key
 from app.types.document_metadata import metadata_text
 
@@ -144,6 +146,7 @@ def _fetch_document_chunks_for_kg_injection(
     dataset_ids: list[UUID] | None = None,
     document_ids: list[UUID] | None,
     chunk_ids: list[UUID],
+    valid_at: datetime | None = None,
 ) -> list["DocumentChunk"]:
     """
     Load scoped KG injection chunks; the optional KG stage owns error reporting.
@@ -158,47 +161,60 @@ def _fetch_document_chunks_for_kg_injection(
 
     # Prefer explicit document_ids scope (already ACL-filtered by the API layer when present).
     if document_ids is not None:
-        return (
-            db.query(DBDocumentChunk)
-            .filter(
-                DBDocumentChunk.tenant_id == tenant_id,
-                DBDocumentChunk.document_id.in_(list(document_ids)),
-                DBDocumentChunk.id.in_(list(chunk_ids)),
+        allowed_document_filter = DBDocumentChunk.document_id.in_(document_ids)
+    else:
+        # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
+        scoped_dataset_ids = [dataset_id] if dataset_id is not None else (dataset_ids if dataset_ids is not None else [])
+        if not scoped_dataset_ids or (account_id is None or not account_id.strip()):
+            return []
+
+        from sqlalchemy import or_, select  # noqa: WPS433
+
+        from app.models.documents.records import Document as DBDocument  # noqa: WPS433
+        from app.services.datasets.profile import build_dataset_documents_query  # noqa: WPS433
+
+        allowed_doc_filters = []
+        for scoped_dataset_id in scoped_dataset_ids:
+            _dataset, allowed_documents = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=scoped_dataset_id,
             )
-            .all()
-        )
+            doc_ids_subquery = allowed_documents.with_entities(DBDocument.id).subquery()
+            allowed_doc_filters.append(DBDocumentChunk.document_id.in_(select(doc_ids_subquery.c.id)))
+        allowed_document_filter = or_(*allowed_doc_filters)
 
-    # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
-    scoped_dataset_ids = [dataset_id] if dataset_id is not None else (dataset_ids if dataset_ids is not None else [])
-
-    if not scoped_dataset_ids or (account_id is None or not account_id.strip()):
-        return []
-
-    from sqlalchemy import or_, select  # noqa: WPS433
-
-    from app.models.documents.records import Document as DBDocument  # noqa: WPS433
-    from app.services.datasets.profile import build_dataset_documents_query  # noqa: WPS433
-
-    allowed_doc_filters = []
-    for scoped_dataset_id in scoped_dataset_ids:
-        _dataset, allowed_documents = build_dataset_documents_query(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=scoped_dataset_id,
-        )
-        doc_ids_subquery = allowed_documents.with_entities(DBDocument.id).subquery()
-        allowed_doc_filters.append(DBDocumentChunk.document_id.in_(select(doc_ids_subquery.c.id)))
-
-    return (
+    rows = (
         db.query(DBDocumentChunk)
-        .filter(
-            DBDocumentChunk.tenant_id == tenant_id,
-            or_(*allowed_doc_filters),
-            DBDocumentChunk.id.in_(list(chunk_ids)),
-        )
+        .filter(DBDocumentChunk.tenant_id == tenant_id, allowed_document_filter, DBDocumentChunk.id.in_(chunk_ids))
         .all()
     )
+    if valid_at is not None and rows:
+        excluded = find_outside_window_document_ids(
+            db,
+            tenant_id=tenant_id,
+            document_ids={chunk.document_id for chunk in rows},
+            observed_at=valid_at,
+        )
+        return [chunk for chunk in rows if chunk.document_id not in excluded]
+    return rows
+
+
+def filter_current_kg_events(events: list[dict[str, Any]], *, tenant_id: UUID) -> list[dict[str, Any]]:
+    """Keep graph events whose source is not known to be outside its validity window."""
+    document_ids = {UUID(event["document_id"]) for event in events if event.get("document_id") is not None}
+    if not document_ids:
+        return events
+
+    from app.infrastructure.database.connection import SessionLocal
+
+    with SessionLocal() as db:
+        excluded = find_outside_window_document_ids(
+            db, tenant_id=tenant_id, document_ids=document_ids, observed_at=datetime.now(UTC)
+        )
+    excluded_ids = {str(document_id) for document_id in excluded}
+    return [event for event in events if event.get("document_id") not in excluded_ids]
 
 
 def _kg_chunk_boost_meta(*, enabled: bool, weight: float, max_promoted: int) -> dict[str, Any]:

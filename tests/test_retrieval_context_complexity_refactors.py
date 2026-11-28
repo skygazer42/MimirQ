@@ -1,9 +1,37 @@
+import pytest
 from langchain_core.documents import Document
 
+from app.infrastructure.config import settings
 from app.rag.retrieval.expansion.context import expand_ranked_chunk_results
 from app.rag.retrieval.expansion.hierarchy import expand_hierarchy_context
 from app.rag.retrieval.planning.followup import build_contextual_followup_query
+from app.rag.runtime.context import denoise_context_docs
 from tests.candidate_fixtures import ranking_algorithms
+
+
+@pytest.mark.parametrize("other_document", [False, True])
+def test_context_diversity_cap_only_applies_when_there_are_multiple_sources(monkeypatch, other_document):
+    monkeypatch.setattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 3)
+    monkeypatch.setattr(settings, "RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED", False)
+    sources = [
+        Document(page_content=text, metadata={"document_id": "paper"})
+        for text in (
+            "Trace compilation optimizes frequent execution paths.",
+            "The implementation allocates typed registers.",
+            "A modified interpreter collects loop information.",
+            "The research prototype targets JavaScript.",
+        )
+    ]
+    if other_document:
+        sources.append(
+            Document(page_content="Peer review compared benchmark results.", metadata={"document_id": "review"})
+        )
+
+    context = denoise_context_docs(sources)
+
+    assert [doc.page_content for doc in context] == [
+        doc.page_content for doc in (sources[:3] + sources[4:] if other_document else sources)
+    ]
 
 
 class _Chunk:

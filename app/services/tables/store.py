@@ -14,6 +14,7 @@ import logging
 import re
 import sqlite3
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
@@ -1191,9 +1192,10 @@ def _execute_table_query(
     normalized_sql: str,
     limits: TableQueryLimits,
     timeout_sec: float,
+    parameters: tuple[str | int | float | bool | None, ...] | Mapping[str, str | int | float | bool | None] = (),
 ) -> _TableQueryRows:
     try:
-        cur = conn.execute(normalized_sql)
+        cur = conn.execute(normalized_sql, parameters)
         col_names, truncated_cols = _limited_query_columns(cur, max_cols=limits.max_cols)
         out_rows, truncated_rows = _fetch_query_rows(cur, col_names=col_names, limits=limits)
     except sqlite3.OperationalError as exc:
@@ -1217,6 +1219,8 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
     allowed_sql_tables: list[str] | None = None,
     planner_diagnostics: dict[str, Any] | None = None,
     expected_sql_fingerprint: str | None = None,
+    parameters: tuple[str | int | float | bool | None, ...] | Mapping[str, str | int | float | bool | None] = (),
+    scoped_views: dict[str, tuple[str, str]] | None = None,
 ) -> TableQueryResult:
     """
     Execute a SELECT-only query against a single table within a document store.
@@ -1236,18 +1240,31 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
     if not db_path.exists():
         raise FileNotFoundError("table store not found")
 
-    normalized = _normalize_table_query_sql(raw_sql, limit=limits.row_limit)
-    allowed_tables = _query_allowed_tables(sql_table=sql_table, allowed_sql_tables=allowed_sql_tables)
+    if scoped_views is None:
+        normalized = _normalize_table_query_sql(raw_sql, limit=limits.row_limit)
+        allowed_tables = _query_allowed_tables(sql_table=sql_table, allowed_sql_tables=allowed_sql_tables)
+    else:
+        # Read one extra row so the published query can distinguish a full result from a capped one.
+        normalized = f"SELECT * FROM (\n{raw_sql.strip()}\n) LIMIT {limits.row_limit + 1}"
+        allowed_tables = set(scoped_views)
     _validate_query_table_refs(normalized, allowed_tables=allowed_tables)
 
     # SQLite authorizer: deny writes/pragma/attach and restrict reads to our sheet table only.
     conn = _connect_ro(db_path)
     try:
+        view_sources = None
+        if scoped_views is not None:
+            view_sources = {}
+            for name, (physical_table, projection) in scoped_views.items():
+                conn.execute(f"CREATE TEMP VIEW {quote_sqlite_ident(name)} AS {projection}")
+                view_sources[name] = physical_table
         timeout_sec = settings.TABLE_QUERY_TIMEOUT_SEC
         progress_ops = settings.TABLE_QUERY_PROGRESS_OPS
         _install_query_progress_handler(conn, timeout_sec=timeout_sec, progress_ops=progress_ops)
-        _apply_sqlite_readonly_authorizer(conn, allowed_tables=allowed_tables)
-        result = _execute_table_query(conn, normalized_sql=normalized, limits=limits, timeout_sec=timeout_sec)
+        _apply_sqlite_readonly_authorizer(conn, allowed_tables=allowed_tables, view_sources=view_sources)
+        result = _execute_table_query(
+            conn, normalized_sql=normalized, limits=limits, timeout_sec=timeout_sec, parameters=parameters
+        )
         planner_mismatch = evaluate_planner_execution_mismatch(
             planner_diagnostics=planner_diagnostics,
             expected_sql_fingerprint=expected_sql_fingerprint,
@@ -1267,7 +1284,9 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
             logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
 
 
-def _apply_sqlite_readonly_authorizer(conn: sqlite3.Connection, *, allowed_tables: set[str]) -> None:
+def _apply_sqlite_readonly_authorizer(
+    conn: sqlite3.Connection, *, allowed_tables: set[str], view_sources: dict[str, str] | None = None
+) -> None:
     """
     Set a conservative authorizer:
     - deny writes / schema changes / pragma / attach
@@ -1316,6 +1335,18 @@ def _apply_sqlite_readonly_authorizer(conn: sqlite3.Connection, *, allowed_table
         deny_actions.add(int(vacuum_code))
 
     def auth(action_code: int, arg1: Any, arg2: Any, dbname: Any, source: Any) -> int:  # noqa: ANN401
+        if view_sources is not None:
+            if action_code == sqlite3.SQLITE_READ:
+                if dbname == "main" and source in view_sources and arg1 == view_sources[source]:
+                    return ok
+                if arg1 in view_sources and dbname in ("temp", None):
+                    return ok
+                return deny
+            if action_code == sqlite3.SQLITE_SELECT:
+                return ok
+            if action_code == sqlite3.SQLITE_FUNCTION and arg2 != "load_extension":
+                return ok
+            return deny
         # Block non-read operations.
         if action_code in deny_actions:
             return deny

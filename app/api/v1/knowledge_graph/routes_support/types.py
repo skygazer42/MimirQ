@@ -21,6 +21,7 @@ class KGGraphProjectionParams(BaseModel):
     document_ids: list[UUID] | None = None
     dataset_id: UUID | None = None
     pipeline_hash: str | None = None
+    prefer_ontology: bool = False
     max_events: int | None = None
     max_entities: int | None = None
     max_links: int | None = None

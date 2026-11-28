@@ -598,8 +598,10 @@ def test_hybrid_search_singleflight_only_uses_behavior_hash_in_cache_key(
 ) -> None:
     import app.rag.retrieval.recall.retriever as retriever_module
     from app.rag.retrieval.cache import candidates as cache_mod
+    from app.rag.retrieval.ranking import candidates as ranking
     from app.rag.retrieval.recall import channel_collection
     from app.rag.retrieval.recall.retriever import HybridRetriever
+    from app.rag.retrieval.reranking.factory import get_reranker_for_retrieval
     from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid.uuid4()
@@ -626,6 +628,7 @@ def test_hybrid_search_singleflight_only_uses_behavior_hash_in_cache_key(
     _patch_hybrid_dependencies(
         monkeypatch, runtime=runtime, tenant_id=tenant_id, dataset_id=dataset_id, document_id=document_id
     )
+    monkeypatch.setattr(ranking, "get_reranker", lambda _provider: get_reranker_for_retrieval("none"))
     monkeypatch.setattr(channel_collection, "emit_stream_event", lambda *args, **kwargs: None, raising=True)
     monkeypatch.setattr(
         channel_collection,

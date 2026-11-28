@@ -10,12 +10,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query as ORMQuery
 from sqlalchemy.orm import Session
 
 import app.services.datasets.management as dataset_service
-from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.dependencies import bind_edo_authorization, get_current_account_id, get_tenant_id
 from app.api.schemas.conversations import (
     ConversationCreate,
     ConversationDetail,
@@ -34,6 +35,7 @@ from app.services.chat.conversation_titles import (
     derive_auto_conversation_title,
     get_latest_user_message_content,
 )
+from app.services.chat.enterprise_ontology import visible_ontology_message
 from app.services.chat.scope import enforce_non_empty_chat_scope
 from app.services.documents.read_scope import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.services.observability.audit_log import audit_log_event
@@ -389,7 +391,8 @@ def list_conversations(
     }
 
 
-@router.get("/conversations/{conversation_id}/export", responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/conversations/{conversation_id}/export", responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
+            dependencies=[Depends(bind_edo_authorization)])
 def export_conversation(
     conversation_id: UUID,
     fmt: Annotated[str, Query(pattern="^(markdown|json)$")] = "markdown",
@@ -415,6 +418,7 @@ def export_conversation(
         .order_by(Message.created_at.asc(), Message.id.asc())
         .all()
     )
+    messages = [visible_ontology_message(db, tenant_id=tenant_id, account_id=account_id, message=m) for m in messages]
 
     title = conversation.title.strip() if conversation.title is not None else None
     if not title:
@@ -431,7 +435,7 @@ def export_conversation(
                     "id": str(m.id),
                     "role": m.role,
                     "content": m.content,
-                    "citations": (m.citations if include_citations else None),
+                    "citations": (jsonable_encoder(m.citations) if include_citations else None),
                     "created_at": m.created_at.isoformat() if m.created_at else None,
                 }
                 for m in messages
@@ -459,6 +463,7 @@ def export_conversation(
             if include_citations and role == "assistant" and isinstance(m.citations, list) and m.citations:
                 parts.append("### citations")
                 for c in m.citations[:20]:
+                    c = jsonable_encoder(c)
                     if not isinstance(c, dict):
                         continue
                     doc_name = (str(c.get("document_name") or "")).strip()
@@ -509,6 +514,7 @@ def export_conversation(
     "/conversations/{conversation_id}/messages",
     response_model=ConversationDetail,
     responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    dependencies=[Depends(bind_edo_authorization)],
 )
 def get_conversation_messages(
     conversation_id: UUID,
@@ -532,7 +538,10 @@ def get_conversation_messages(
 
     # Backwards compatible behavior: no limit => return all messages.
     if limit is None:
-        messages = query.order_by(Message.created_at.asc()).all()
+        messages = [
+            visible_ontology_message(db, tenant_id=tenant_id, account_id=account_id, message=m)
+            for m in query.order_by(Message.created_at.asc()).all()
+        ]
         return {
             "conversation_id": conversation_id,
             "returned": len(messages),
@@ -563,7 +572,10 @@ def get_conversation_messages(
     # Fetch latest-first for cheap paging, then reverse for display order.
     rows = query.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1).all()
     has_more = len(rows) > limit
-    messages = list(reversed(rows[:limit]))
+    messages = [
+        visible_ontology_message(db, tenant_id=tenant_id, account_id=account_id, message=m)
+        for m in reversed(rows[:limit])
+    ]
 
     return {
         "conversation_id": conversation_id,

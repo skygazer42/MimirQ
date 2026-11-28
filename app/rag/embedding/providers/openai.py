@@ -12,6 +12,7 @@ Supports any embedding API that follows the OpenAI embeddings format:
 """
 
 from typing import Unpack
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -27,6 +28,7 @@ from app.rag.embedding.providers._embedding_http import (
 from app.rag.embedding.utils import decode_embedding_response, logger
 
 DASHSCOPE_BATCH_CAP = 10
+SILICONFLOW_QWEN3_VL_BATCH_CAP = 8
 _HTTP_CONCURRENCY = EmbeddingHTTPConcurrency()
 
 
@@ -74,6 +76,13 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
         configured = settings.EMBEDDING_API_BATCH_SIZE
         if self.base_url is not None and "dashscope.aliyuncs.com" in self.base_url.lower():
             return min(configured, DASHSCOPE_BATCH_CAP)
+        if (
+            self.model == "Qwen/Qwen3-VL-Embedding-8B"
+            and self.base_url is not None
+            and urlsplit(self.base_url).hostname == "api.siliconflow.cn"
+        ):
+            # SiliconFlow restarts response indices after every eighth VL input.
+            return min(configured, SILICONFLOW_QWEN3_VL_BATCH_CAP)
         return configured
 
     def _encode_one_batch(self, texts: list[str]) -> list[list[float]]:

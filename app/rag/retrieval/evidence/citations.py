@@ -26,6 +26,7 @@ from app.rag.retrieval.evidence.excerpts import (
 from app.types.indexing import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, RECORD_IDENTITY_METADATA_KEY
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z\d_+-]+|[\u4e00-\u9fff]{2,}")
+_ANSWER_LITERAL_RE = re.compile(r"`([^`\r\n]{2,120})`|(?<![A-Za-z0-9_.+-])\.?[A-Za-z][\w+-]*(?:[./][\w+-]+)+", re.ASCII)
 _POSITION_TAG_RE = re.compile(r"@@([^#]+)##")
 logger = logging.getLogger("app.rag.core.citations")
 _CITATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical citation fallback failure: %s"
@@ -1173,3 +1174,80 @@ def build_citations_from_docs(
         logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
 
     return citations
+
+
+def filter_citations_for_context(
+    citations: list[dict[str, Any]],
+    docs: list[Document],
+    *,
+    retrieval_mode: str,
+    query: str | None = None,
+) -> list[dict[str, Any]]:
+    """Retain approved citations whose exact source is present in the model context."""
+
+    def source_key(citation: dict[str, Any]) -> tuple[str, ...]:
+        return tuple(str(citation.get(key) or "") for key in ("document_id", "chunk_id", "pipeline_hash", "table_id"))
+
+    included = build_citations_from_docs(
+        [doc for doc in docs if doc.metadata.get("document_id")],
+        retrieval_elapsed_sec=0,
+        retrieval_mode=retrieval_mode,
+        query=query,
+    )
+    visible = {source_key(citation) for citation in included}
+    return [citation for citation in citations if source_key(citation) in visible]
+
+
+def anchor_answer_citations(citations: list[dict[str, Any]], docs: list[Document], answer: str) -> list[dict[str, Any]]:
+    """Show the original sentence containing a technical value returned in the answer."""
+    literals = {match[1] or match[0] for match in _ANSWER_LITERAL_RE.finditer(answer)}
+    terms = sorted((term for term in literals if len(term) <= 120), key=lambda term: (-len(term), term))
+    if not terms or not citations:
+        return citations
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9_./+-])(?:" + "|".join(map(re.escape, terms[:16])) + r")(?![A-Za-z0-9_/+-]|\.[A-Za-z0-9_])",
+        re.IGNORECASE | re.ASCII,
+    )
+    parent_anchors = {
+        str(item.get("neighbor_of")) for item in citations if item.get("retrieval_role") == "hierarchy_parent"
+    }
+    by_chunk = {
+        (str(item.get("document_id")), str(item.get("chunk_id"))): index
+        for index, item in enumerate(citations)
+        if item.get("start_char") is not None
+        and str(item.get("chunk_id")) not in parent_anchors
+        and item.get("retrieval_role") not in {"tag", "image", "hierarchy_parent"}
+    }
+    anchored = citations.copy()
+    for doc in docs:
+        metadata = doc.metadata
+        index = by_chunk.get((str(metadata.get("document_id")), str(doc.id or metadata.get("chunk_id"))))
+        if index is None:
+            continue
+        original = citations[index]
+        text = doc.page_content
+        match = pattern.search(text)
+        if match is None or pattern.search(original["chunk_content"]):
+            continue
+        base_start, base_end = _hit_window(text, index=match.start(), max_chars=220)
+        start, end = _sentence_window(
+            text, base_start=base_start, base_end=base_end, focus_start=match.start(), focus_end=match.end()
+        )
+        page = _extract_page_number(metadata)
+        bbox, bbox_page, inline_bbox = _extract_citation_bbox_with_page(
+            metadata, text, page_number=page, evidence_start=start, evidence_end=end
+        )
+        updated = {**original}
+        updated.update(
+            chunk_content=_snippet_text(text, start=start, end=end, fallback_start=base_start, fallback_end=base_end),
+            evidence_start_char=original["start_char"] + start,
+            evidence_end_char=original["start_char"] + end,
+            page_number=bbox_page if inline_bbox else page,
+            matched_terms=_matched_terms_in_window(text[start:end], [*original["matched_terms"], match[0]]),
+        )
+        if bbox is not None:
+            updated.update(bbox=bbox, bbox_page_number=bbox_page)
+        updated.pop("citation_hash", None)
+        _apply_hashes(updated)
+        anchored[index] = updated
+    return anchored if anchored != citations else citations

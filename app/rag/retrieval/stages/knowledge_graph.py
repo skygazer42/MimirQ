@@ -3,12 +3,14 @@
 import asyncio
 import concurrent.futures
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
 
 from app.infrastructure.config import settings
+from app.rag.retrieval.evidence.validity import requests_current_evidence
 from app.rag.retrieval.ranking.knowledge_graph import (
     _apply_kg_chunk_boost,
     _fetch_document_chunks_for_kg_injection,
@@ -221,6 +223,8 @@ def _fetch_kg_injection_rows(
         }
         if dataset_ids:
             fetch_kwargs["dataset_ids"] = dataset_ids
+        if requests_current_evidence(ctx.question):
+            fetch_kwargs["valid_at"] = datetime.now(UTC)
         return _fetch_document_chunks_for_kg_injection(**fetch_kwargs)
     finally:
         if owns_db:

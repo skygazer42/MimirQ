@@ -108,7 +108,8 @@ def _apply_per_doc_cap(docs: list[Document], *, max_per_doc: int) -> list[Docume
             if counts[gid] > max_per_doc:
                 continue
         out.append(d)
-    return out
+    # A diversity cap cannot improve a prompt whose matches all come from one source.
+    return docs if len(counts) == 1 and sum(counts.values()) == len(docs) else out
 
 
 def _apply_exact_dedup(docs: list[Document]) -> list[Document]:

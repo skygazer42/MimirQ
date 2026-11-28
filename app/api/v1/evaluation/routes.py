@@ -13,6 +13,8 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import Query as OrmQuery
 from sqlalchemy.orm import Session
 
 import app.services.datasets.management as dataset_service
@@ -68,6 +70,7 @@ from app.api.utils import file_response_headers, set_content_disposition
 from app.infrastructure.config import settings
 from app.infrastructure.database.connection import get_db
 from app.models.conversations.chat import Conversation, Message
+from app.models.datasets.records import Dataset
 from app.models.documents.records import Document as DBDocument
 from app.models.evaluation.results import (
     KGSearchDiagnosticsRun,
@@ -83,8 +86,13 @@ from app.rag.evaluation.generation.test_generator import (
     generate_questions_from_documents,
 )
 from app.rag.evaluation.regression.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
+from app.rag.kg.enterprise_ontology.activation import active_version_id, published_version
 from app.services.chat.conversation_access import ensure_conversation_access
-from app.services.documents.read_scope import filter_allowed_document_ids
+from app.services.documents.read_scope import (
+    build_dataset_read_filter,
+    filter_allowed_document_ids,
+    get_allowed_document_id_sets,
+)
 from app.services.evaluation.ablation import expand_ablation_grid
 from app.services.evaluation.case_bundle import export_case_bundle
 from app.services.evaluation.case_import import (
@@ -121,6 +129,7 @@ logger = logging.getLogger("api.evaluations")
 _EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical evaluations router fallback failure: %s"
 
 _REGRESSION_RUN_CONTROL_FIELDS = {
+    "answer_mode",
     "case_ids",
     "dataset_id",
     "metrics",
@@ -207,6 +216,13 @@ def _create_regression_run_and_enqueue(
     db: Session,
 ) -> RagasRegressionRun:
     rag_params = request.model_dump(include=_REGRESSION_RAG_FIELDS)
+    answer_params: dict[str, str | int] = {"answer_mode": request.answer_mode}
+    if request.answer_mode == "ontology":
+        version_id = active_version_id(db, tenant_id, request.dataset_id)
+        version = published_version(db, tenant_id, version_id) if version_id is not None else None
+        if version is None:
+            raise HTTPException(status_code=409, detail="请先为该知识库启用本体版本")
+        answer_params.update(ontology_version_id=str(version.id), ontology_version_number=version.number)
     run = RagasRegressionRun(
         tenant_id=tenant_id,
         account_id=account_id,
@@ -214,6 +230,7 @@ def _create_regression_run_and_enqueue(
         status="pending",
         metrics=request.metrics,
         params={
+            **answer_params,
             "case_ids": [str(case_id) for case_id in request.case_ids],
             "dataset_id": str(request.dataset_id),
             "skip_empty_contexts": request.skip_empty_contexts,
@@ -1139,7 +1156,7 @@ def list_ragas_regression_runs(
     """List regression runs."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    query = db.query(RagasRegressionRun).filter(RagasRegressionRun.tenant_id == tenant_id)
+    query = _visible_regression_runs(db, tenant_id=tenant_id, account_id=account_id)
     if params.dataset_id is not None:
         dataset_service.get_dataset(db, tenant_id, params.dataset_id)
         query = query.filter(RagasRegressionRun.dataset_id == params.dataset_id)
@@ -1167,11 +1184,8 @@ def get_ragas_regression_run_leaderboard(
     dataset_service.assert_dataset_readable(db, ds, account_id)
 
     query = (
-        db.query(RagasRegressionRun)
-        .filter(
-            RagasRegressionRun.tenant_id == tenant_id,
-            RagasRegressionRun.dataset_id == params.dataset_id,
-        )
+        _visible_regression_runs(db, tenant_id=tenant_id, account_id=account_id)
+        .filter(RagasRegressionRun.dataset_id == params.dataset_id)
         .order_by(RagasRegressionRun.created_at.desc())
     )
     if not params.include_incomplete:
@@ -1182,17 +1196,43 @@ def get_ragas_regression_run_leaderboard(
     return RagasRegressionRunLeaderboardResponse(metric_key=params.metric_key, items=items)
 
 
+def _visible_regression_runs(db: Session, *, tenant_id: UUID, account_id: str) -> OrmQuery[RagasRegressionRun]:
+    readable_datasets = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id, build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id)
+    )
+    return db.query(RagasRegressionRun).filter(
+        RagasRegressionRun.tenant_id == tenant_id,
+        or_(
+            RagasRegressionRun.params["answer_mode"].as_string().is_distinct_from("ontology"),
+            and_(RagasRegressionRun.account_id == account_id, RagasRegressionRun.dataset_id.in_(readable_datasets)),
+        ),
+    )
+
+
 def _get_regression_run_or_404(
-    db: Session, *, tenant_id: UUID, run_id: UUID, not_found_detail: str = _DETAIL_RUN_NOT_FOUND
+    db: Session, *, tenant_id: UUID, account_id: str, run_id: UUID, not_found_detail: str = _DETAIL_RUN_NOT_FOUND
 ) -> RagasRegressionRun:
     run = (
-        db.query(RagasRegressionRun)
-        .filter(RagasRegressionRun.id == run_id, RagasRegressionRun.tenant_id == tenant_id)
+        _visible_regression_runs(db, tenant_id=tenant_id, account_id=account_id)
+        .filter(RagasRegressionRun.id == run_id)
         .first()
     )
     if run is None:
         raise HTTPException(status_code=404, detail=not_found_detail)
     return run
+
+
+def _assert_ontology_run_evidence_readable(
+    db: Session, *, run: RagasRegressionRun, items: list[RagasRegressionItem], account_id: str
+) -> None:
+    if (run.params or {}).get("answer_mode") != "ontology":
+        return
+    documents = {UUID(citation["document_id"]) for item in items for citation in item.citations or []}
+    if not documents:
+        return
+    allowed, _ = get_allowed_document_id_sets(db, run.tenant_id, account_id, list(documents), check_member=False)
+    if not documents <= allowed:
+        raise HTTPException(status_code=403, detail="本体评测的引用权限已变化，请重新运行评测")
 
 
 @router.get(
@@ -1211,7 +1251,7 @@ def get_ragas_regression_run(
     """Get a regression run detail (optional items and contexts)."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    run = _get_regression_run_or_404(db, tenant_id=tenant_id, run_id=run_id)
+    run = _get_regression_run_or_404(db, tenant_id=tenant_id, account_id=account_id, run_id=run_id)
 
     items_out: list[RagasRegressionItemSchema] = []
     if params.include_items:
@@ -1221,6 +1261,7 @@ def get_ragas_regression_run(
             .order_by(RagasRegressionItem.created_at.asc())
             .all()
         )
+        _assert_ontology_run_evidence_readable(db, run=run, items=items, account_id=account_id)
         for item in items:
             payload = RagasRegressionItemSchema.model_validate(item)
             if not params.include_contexts:
@@ -1242,7 +1283,7 @@ def export_ragas_regression_run_bundle_api(
     """Export a compact regression run bundle (PII-safe by default)."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    run = _get_regression_run_or_404(db, tenant_id=tenant_id, run_id=run_id)
+    run = _get_regression_run_or_404(db, tenant_id=tenant_id, account_id=account_id, run_id=run_id)
 
     if run.dataset_id is not None:
         ds = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
@@ -1255,6 +1296,7 @@ def export_ragas_regression_run_bundle_api(
         .limit(params.max_items)
         .all()
     )
+    _assert_ontology_run_evidence_readable(db, run=run, items=items, account_id=account_id)
 
     bundle = export_regression_run_bundle(
         run,
@@ -1377,6 +1419,7 @@ def diff_ragas_regression_runs(
     return _build_regression_run_diff(
         db=db,
         tenant_id=tenant_id,
+        account_id=account_id,
         run_id=run_id,
         base_run_id=params.base_run_id,
         include_significance=params.include_significance,
@@ -1389,6 +1432,7 @@ def _build_regression_run_diff(
     *,
     db: Session,
     tenant_id: UUID,
+    account_id: str,
     run_id: UUID,
     base_run_id: UUID,
     include_significance: bool,
@@ -1396,9 +1440,11 @@ def _build_regression_run_diff(
     max_case_diffs: int,
 ) -> RagasRegressionRunDiffResponse:
     base = _get_regression_run_or_404(
-        db, tenant_id=tenant_id, run_id=base_run_id, not_found_detail="Base run not found"
+        db, tenant_id=tenant_id, account_id=account_id, run_id=base_run_id, not_found_detail="Base run not found"
     )
-    target = _get_regression_run_or_404(db, tenant_id=tenant_id, run_id=run_id, not_found_detail="Target run not found")
+    target = _get_regression_run_or_404(
+        db, tenant_id=tenant_id, account_id=account_id, run_id=run_id, not_found_detail="Target run not found"
+    )
 
     base_summary = base.summary
     base_summary = base_summary if isinstance(base_summary, dict) else {}
@@ -1458,6 +1504,7 @@ def export_ragas_regression_run_diff_html(
         run_id=run_id,
         base_run_id=params.base_run_id,
         tenant_id=tenant_id,
+        account_id=account_id,
         db=db,
         include_significance=True,
         include_per_case=False,

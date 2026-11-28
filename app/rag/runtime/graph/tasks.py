@@ -47,6 +47,8 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         policy_json = json.dumps(raw_policy, ensure_ascii=False, sort_keys=True, default=str)
     policy_hash = hashlib.sha256(policy_json.encode("utf-8", errors="ignore")).hexdigest()[:16] if policy_json else ""
     key_obj = {
+        "ontology_request": state.get("request_id") if state.get("ontology_enabled") else None,
+        "ontology_enabled": bool(state.get("ontology_enabled")),
         "question": state["question"],
         "history": history_text,
         "tenant_id": metadata_text(state, "tenant_id"),
@@ -84,6 +86,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "lexical_db_hybrid_metadata_exact_fallback_enabled": state.get(
             "lexical_db_hybrid_metadata_exact_fallback_enabled"
         ),
+        "lexical_db_hybrid_fallback_only": state.get("lexical_db_hybrid_fallback_only"),
         "metadata_exact_db_fallback_enabled": state.get("metadata_exact_db_fallback_enabled"),
         "query_rewrite_strategy": state.get("query_rewrite_strategy"),
         "query_rewrite_temperature": state.get("query_rewrite_temperature"),

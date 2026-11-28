@@ -805,6 +805,7 @@ def test_prepare_chat_cache_lookup_keeps_singleflight_key_when_cache_disabled(
 
     monkeypatch.setattr(cache_runtime.settings, "CHAT_RESPONSE_CACHE_ENABLED", False, raising=False)
     monkeypatch.setattr(cache_runtime.settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(cache_runtime, "active_version_id", lambda *_args: None)
     monkeypatch.setattr(
         cache_runtime,
         "resolve_chat_response_cache_key",

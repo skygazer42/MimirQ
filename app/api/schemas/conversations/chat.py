@@ -99,6 +99,24 @@ class Citation(BaseModel):
     clean_docx_url: str | None = Field(default=None, description="Optional URL for cleaned DOCX preview/download")
 
 
+class OntologyActionParameterField(BaseModel):
+    label: str
+    required: bool
+
+
+class OntologyActionProposal(BaseModel):
+    ontology_id: UUID
+    version_id: UUID
+    action_id: str
+    label: str
+    target: str
+    approval_required: bool
+    key_fields: dict[str, str]
+    parameter_fields: dict[str, OntologyActionParameterField]
+    key: dict[str, str]
+    parameters: dict[str, str | int | float | bool]
+
+
 class MessageSchema(OrmModel):
     """Message."""
 
@@ -107,6 +125,7 @@ class MessageSchema(OrmModel):
     content: str
     citations: list[Citation] = Field(default_factory=list)
     message_metadata: dict[str, Any] | None = None
+    ontology_action: OntologyActionProposal | None = Field(default=None, exclude_if=lambda value: value is None)
     created_at: datetime
 
 
@@ -592,6 +611,7 @@ class ChatResponse(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     structured: bool = False
     structured_data: Any = None
+    ontology_action: OntologyActionProposal | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class ConversationSummaryResponse(BaseModel):

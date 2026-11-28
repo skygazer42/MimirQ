@@ -7,12 +7,19 @@ from typing import Any
 from app.infrastructure.config import settings
 from app.infrastructure.tokens import num_tokens_from_string
 from app.rag.llm.structured_output import parse_and_repair_structured_output
+from app.rag.retrieval.evidence.citations import anchor_answer_citations
 from app.rag.runtime.contracts import _UNABLE_TO_ANSWER_MESSAGE
 from app.rag.runtime.streaming.state import StandardStreamState, StreamOperation
 from app.services.observability.metrics_log import log_metrics
 
 
 async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
+    if not runtime.data.structured_output:
+        citations = anchor_answer_citations(runtime.data.citations, runtime.data.docs, runtime.data.full_response)
+        if citations is not runtime.data.citations:
+            runtime.data.citations = citations
+            yield {"type": "citations", "data": citations}
+
     # Step 5: Send completion signal.
     runtime.data.generation_elapsed = time.time() - runtime.data.gen_start
     runtime.data.t_total = time.time() - runtime.data.t_all_start
@@ -295,6 +302,9 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
             "structured_data": runtime.data.structured_data,
         },
     }
+    runtime.data.done_payload["data"]["metrics"].update(runtime.data.ontology_metrics)
+    if runtime.data.ontology_action is not None:
+        runtime.data.done_payload["data"]["ontology_action"] = runtime.data.ontology_action.model_dump(mode="json")
     yield runtime.data.done_payload
 
     # Persist logs (optional).

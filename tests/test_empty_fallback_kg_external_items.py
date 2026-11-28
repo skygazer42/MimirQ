@@ -1,20 +1,23 @@
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
-from app.models.documents.records import DocumentChunk
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 from app.rag.kg.extraction.processor import EventProcessor, _collect_event_entities
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
 from app.rag.kg.extraction.skill_processor import SkillProcessor, _coerce_str_list
+from app.rag.llm.models import LLMMessage, LLMRole
 
 
 class StructuredClient:
     def __init__(self, payload):
         self.payload = payload
+        self.messages: list[LLMMessage] = []
 
-    async def chat_with_schema(self, messages, **kwargs):
+    async def chat_with_schema(self, messages: list[LLMMessage], **kwargs):
+        self.messages = messages
         return self.payload
 
 
@@ -39,16 +42,37 @@ async def test_skill_extraction_preserves_optional_text_and_rejects_malformed_si
 
 
 @pytest.mark.asyncio
+async def test_builtin_event_extraction_sends_chunks_as_source_data():
+    client = StructuredClient({"events": []})
+    sections = [
+        SimpleNamespace(id=UUID(int=1), content="The access window is 30 days.", page_number=4),
+        SimpleNamespace(id=UUID(int=2), content="This section covers contractor accounts.", page_number=5),
+    ]
+
+    await EventProcessor(client).extract_from_sections(sections, batch_index=0)
+
+    assert [message.role for message in client.messages] == [LLMRole.SYSTEM, LLMRole.USER]
+    instructions, source = client.messages
+    assert all(section.content not in instructions.content for section in sections)
+    assert source.content == (
+        "[Target p4] The access window is 30 days.\n\n[Context 1 p5] This section covers contractor accounts."
+    )
+
+
+@pytest.mark.asyncio
 async def test_event_extraction_preserves_optional_schema_and_rejects_malformed_siblings():
     event = {"title": "valid", "summary": "evidence", "schema_version": None, "event_schema": None}
     client = StructuredClient({"events": [event]})
     processor = EventProcessor(client)
-    sections = [DocumentChunk(id=UUID(int=1), content="valid evidence", doc_metadata={})]
+    sections = [SimpleNamespace(id=UUID(int=1), content="valid evidence")]
     events = await processor.extract_from_sections(sections, batch_index=0)
     assert [event["title"] for event in events] == ["valid"]
     assert events[0]["schema_version"] is None
     client.payload = {"events": [event, {"title": "bad", "summary": False}]}
     with pytest.raises(ValueError, match="Extracted event title and summary must be strings"):
+        await processor.extract_from_sections(sections, batch_index=0)
+    client.payload = {"events": [event, {**event, "evidence_quote": []}]}
+    with pytest.raises(ValueError, match="Extracted event evidence quote must be a string or null"):
         await processor.extract_from_sections(sections, batch_index=0)
 
 

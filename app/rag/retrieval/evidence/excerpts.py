@@ -1,10 +1,22 @@
 """Select query-relevant evidence excerpts and map spans to their source text."""
 
 import re
+from collections.abc import Iterator
 
-_SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
+_SENTENCE_BOUNDARY = re.compile(r"[。！？!?\n]|\.(?![A-Za-z0-9_])")
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
-_SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
+
+
+def iter_sentence_spans(text: str) -> Iterator[tuple[int, int]]:
+    """Yield original text spans, keeping periods inside identifiers and decimals."""
+    start = 0
+    for boundary in _SENTENCE_BOUNDARY.finditer(text):
+        end = boundary.end()
+        if boundary.start() > start:
+            yield start, end
+        start = end
+    if start < len(text):
+        yield start, len(text)
 
 
 def _truncate_with_ellipsis(text: str, *, max_chars: int) -> str:
@@ -36,8 +48,8 @@ def _query_terms(query: str, *, max_terms: int) -> list[str]:
 
 def _evidence_sentences(text: str, *, min_sentence_chars: int) -> list[str]:
     sentences: list[str] = []
-    for match in _SENTENCE_RE.finditer(text):
-        sentence = (match.group(0)).strip()
+    for start, end in iter_sentence_spans(text):
+        sentence = text[start:end].strip()
         if not sentence:
             continue
         if min_sentence_chars and len(sentence) < min_sentence_chars:
@@ -109,29 +121,23 @@ def extract_evidence_text(
 
 def find_previous_sentence_boundary(text: str, *, start: int, end: int) -> int:
     """Return the last sentence-boundary position in [start, end), or -1."""
-    best = -1
-    for ch in _SENTENCE_BOUNDARIES:
-        pos = text.rfind(ch, start, end)
-        if pos > best:
-            best = pos
-    return best
+    # Look one character past the window to classify its final period.
+    return max(
+        (match.start() for match in _SENTENCE_BOUNDARY.finditer(text, start, end + 1) if match.start() < end),
+        default=-1,
+    )
 
 
 def find_next_sentence_boundary(text: str, *, start: int, end: int) -> int | None:
     """Return the first sentence-boundary position in [start, end), or None."""
-    best: int | None = None
-    for ch in _SENTENCE_BOUNDARIES:
-        pos = text.find(ch, start, end)
-        if pos < 0:
-            continue
-        if best is None or pos < best:
-            best = pos
-    return best
+    match = _SENTENCE_BOUNDARY.search(text, start, end + 1)
+    return match.start() if match is not None and match.start() < end else None
 
 
 __all__ = [
     "raw_index_from_casefold_index",
     "extract_evidence_text",
+    "iter_sentence_spans",
     "find_previous_sentence_boundary",
     "find_next_sentence_boundary",
 ]

@@ -7,6 +7,7 @@ from app.infrastructure.hashing import stable_hash
 from app.infrastructure.model_policy import reject_retired_retrieval_options
 from app.rag.policy.router_layers import build_router_layers
 from app.rag.retrieval.configuration.profiles import normalize_retrieval_mode
+from app.rag.retrieval.evidence.validity import requests_current_evidence
 from app.rag.retrieval.planning.contracts import QueryPreparationOverrides, RetrievalRequest
 from app.rag.retrieval.planning.options import (
     QUERY_PLANNING_OPTION_KEYS,
@@ -164,7 +165,7 @@ def _run_retrieval_bootstrap_phase(ctx: RetrievalRuntimeState) -> dict[str, Any]
     ctx.hierarchy_parent_depth = normalization.hierarchy.parent_depth
     ctx.hierarchy_sibling_window = normalization.hierarchy.sibling_window
     ctx.hierarchy_overfetch_factor = normalization.hierarchy.overfetch_factor
-    ctx.retriever_update = dict(plan.retriever_options)
+    ctx.retriever_update = dict(plan.retriever_options, current_evidence_only=requests_current_evidence(ctx.question))
     ctx.retriever = hybrid_retriever.model_copy(update=ctx.retriever_update)
     ctx.retrieval_mode = ctx.retriever_update["retrieval_mode"]
     return None

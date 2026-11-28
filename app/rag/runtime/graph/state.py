@@ -101,6 +101,7 @@ class RAGState(TypedDict, total=False):
     max_tokens: int | None
     format_instructions: str
     structured_output: bool
+    stream_answer: bool
     structured_preset: str | None
     visible_evidence_only: bool
     prompt_template_content: str | None
@@ -111,6 +112,12 @@ class RAGState(TypedDict, total=False):
     # Optional: TAG injection (table_store query results) passed in by API layer.
     tag_docs: list[Document] | None
     tag_meta: dict[str, Any] | None
+    ontology_enabled: bool
+    ontology_context: dict[str, Any]
+    ontology_docs: list[Document]
+    ontology_prepared: bool
+    ontology_action: dict[str, Any]
+    conversation_id: UUID | None
     # Output fields
     query_for_retrieval: str | None
     docs: list[Document] | None

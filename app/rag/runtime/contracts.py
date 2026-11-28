@@ -48,6 +48,7 @@ class RAGChatContext:
     dataset_id: UUID | None = None
     dataset_ids: list[UUID] | None = None
     request_id: str | None = None
+    ontology_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ _STREAM_CONTEXT_KEYS = {
     "dataset_id",
     "dataset_ids",
     "request_id",
+    "ontology_enabled",
 }
 _STREAM_RESPONSE_KEYS = {"structured_output", "structured_preset"}
 _STREAM_PROMPT_KEYS = {

@@ -10,7 +10,7 @@ import logging
 import math
 import re
 from collections.abc import AsyncIterator, Callable, Iterable
-from contextlib import AsyncExitStack, asynccontextmanager, nullcontext
+from contextlib import AsyncExitStack, aclosing, asynccontextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -51,7 +51,12 @@ from app.rag.evaluation.regression.regression_sample_builder import (
     build_regression_item_meta,
     build_regression_sample,
 )
+from app.rag.kg.enterprise_ontology.activation import published_version
+from app.rag.kg.enterprise_ontology.consumption import OntologyQuestion, answer_ontology_question
+from app.rag.kg.enterprise_ontology.definition import OntologyDefinition
+from app.rag.llm.factory import create_llm_client
 from app.services.chat.conversation_access import ensure_conversation_access
+from app.services.chat.enterprise_ontology import OntologyChatTurn
 from app.services.documents.read_scope import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.types.indexing import (
     DISPLAY_METADATA_KEY,
@@ -180,6 +185,14 @@ class RegressionCaseRoutingState:
     tag_meta: dict[str, Any]
     image_meta: dict[str, Any]
     injected_docs: list[Any]
+
+
+@dataclass(frozen=True)
+class RegressionOntologyScope:
+    dataset_id: UUID
+    version_id: UUID
+    definition: OntologyDefinition
+    observed_at: datetime
 
 
 def _normalized_metric_names(metric_names: list[str] | None) -> list[str]:
@@ -2040,6 +2053,68 @@ def _merge_regression_item_meta(
     return merged_meta
 
 
+def _load_regression_ontology(
+    db: "Session", run: RagasRegressionRun, *, tenant_id: UUID, account_id: str
+) -> RegressionOntologyScope | None:
+    params = run.params or {}
+    if params.get("answer_mode") != "ontology":
+        return None
+    dataset_id = run.dataset_id
+    if dataset_id is None:
+        raise ValueError("Ontology evaluation requires a dataset")
+    dataset_service.assert_dataset_readable(db, dataset_service.get_dataset(db, tenant_id, dataset_id), account_id)
+    version_id = UUID(params["ontology_version_id"])
+    version = published_version(db, tenant_id, version_id)
+    if version is None:
+        raise ValueError("The ontology version selected for this run is unavailable")
+    return RegressionOntologyScope(
+        dataset_id=dataset_id,
+        version_id=version_id,
+        definition=OntologyDefinition.model_validate(version.definition),
+        observed_at=run.created_at,
+    )
+
+
+async def _invoke_regression_ontology(
+    db: "Session",
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    scope: RegressionOntologyScope,
+    document_ids: list[UUID] | None,
+    question: str,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    query = OntologyQuestion(
+        question=question,
+        dataset_ids=[scope.dataset_id],
+        document_ids=document_ids,
+        observed_at=scope.observed_at,
+    )
+    async with aclosing(await create_llm_client()) as client:
+        answer = await answer_ontology_question(
+            db,
+            definition=scope.definition,
+            version_id=scope.version_id,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request=query,
+            llm_client=client,
+            require_active=False,
+            documents_only=True,
+        )
+    citations = OntologyChatTurn(answer=answer, query=query).citations
+    abstain = bool(answer.unavailable) and not citations
+    return (
+        answer.answer,
+        citations,
+        {
+            "abstain_triggered": abstain,
+            "abstain_reason": answer.unavailable[0] if abstain else None,
+            "metrics": {"route": "enterprise_ontology", "ontology_version_id": str(scope.version_id)},
+        },
+    )
+
+
 def _build_regression_eval_item(
     db: "Session",
     *,
@@ -2051,6 +2126,7 @@ def _build_regression_eval_item(
     rag_params: dict[str, Any],
     case_slice_meta: dict[UUID, dict[str, str]],
     skip_empty_contexts: bool,
+    ontology: RegressionOntologyScope | None = None,
 ) -> dict[str, Any] | None:
     scope_doc_ids, scope_dataset_id = _resolve_case_scope(
         db=db,
@@ -2058,30 +2134,45 @@ def _build_regression_eval_item(
         account_id=account_id,
         case=case,
     )
-    routing_state = _prepare_regression_case_routing(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        case=case,
-        scope_doc_ids=scope_doc_ids,
-        scope_dataset_id=scope_dataset_id,
-    )
-    state = _build_regression_graph_state(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        case=case,
-        scope_doc_ids=scope_doc_ids,
-        scope_dataset_id=scope_dataset_id,
-        rag_params=rag_params,
-        routing_state=routing_state,
-    )
-    response, citations, graph_result = _invoke_regression_graph(
-        state=state,
-        retrieval_only=mode.retrieval_only,
-        run_id=run_id,
-        case_id=case.id,
-    )
+    if ontology is None:
+        routing_state = _prepare_regression_case_routing(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            case=case,
+            scope_doc_ids=scope_doc_ids,
+            scope_dataset_id=scope_dataset_id,
+        )
+        state = _build_regression_graph_state(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            case=case,
+            scope_doc_ids=scope_doc_ids,
+            scope_dataset_id=scope_dataset_id,
+            rag_params=rag_params,
+            routing_state=routing_state,
+        )
+        response, citations, graph_result = _invoke_regression_graph(
+            state=state,
+            retrieval_only=mode.retrieval_only,
+            run_id=run_id,
+            case_id=case.id,
+        )
+    else:
+        modality, router_meta = _resolve_case_modality(case)
+        routing_state = RegressionCaseRoutingState(modality, router_meta, {}, {}, [])
+        response, citations, graph_result = asyncio.run(
+            _invoke_regression_ontology(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                scope=ontology,
+                document_ids=scope_doc_ids,
+                question=case.question,
+            )
+        )
+        scope_dataset_id = ontology.dataset_id
     citations = _enrich_citations_with_chunk_metadata(
         db=db,
         tenant_id=tenant_id,
@@ -2144,6 +2235,7 @@ def _collect_regression_eval_items(
     rag_params: dict[str, Any],
     skip_empty_contexts: bool,
     case_slice_meta: dict[UUID, dict[str, str]],
+    ontology: RegressionOntologyScope | None = None,
 ) -> list[dict[str, Any]]:
     eval_items: list[dict[str, Any]] = []
     total_cases = len(cases)
@@ -2158,6 +2250,7 @@ def _collect_regression_eval_items(
             rag_params=rag_params,
             case_slice_meta=case_slice_meta,
             skip_empty_contexts=skip_empty_contexts,
+            ontology=ontology,
         )
         if eval_item is not None:
             eval_items.append(eval_item)
@@ -2544,6 +2637,7 @@ def run_regression_ragas_evaluation(
             return
 
         mode = _build_regression_run_mode(metric_names)
+        ontology = _load_regression_ontology(db, run, tenant_id=tenant_id, account_id=account_id)
         evidence_doc_ids, case_to_evidence_docs = _collect_case_evidence_docs(cases)
         doc_attr = _load_evidence_document_attributes(
             db,
@@ -2566,6 +2660,7 @@ def run_regression_ragas_evaluation(
             rag_params=rag_params,
             skip_empty_contexts=skip_empty_contexts,
             case_slice_meta=case_slice_meta,
+            ontology=ontology,
         )
         total_cases = len(cases)
 

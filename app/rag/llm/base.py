@@ -77,8 +77,9 @@ class BaseLLMClient(ABC):
         enhanced_messages: list[LLMMessage] = []
         if response_schema:
             schema_prompt = (
-                "Return JSON that follows the schema. If a field is missing, use null.\n"
-                f"{json.dumps(response_schema, ensure_ascii=False)}"
+                "Return JSON that follows the schema. Omit optional fields you cannot fill. "
+                "Null is valid only when the field schema permits it.\n"
+                f"{json.dumps(response_schema, ensure_ascii=False, separators=(',', ':'))}"
             )
             enhanced_messages.append(LLMMessage(role=LLMRole.SYSTEM, content=schema_prompt))
         enhanced_messages.extend(messages)

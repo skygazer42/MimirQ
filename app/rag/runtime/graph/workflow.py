@@ -71,7 +71,7 @@ def run_rag_workflow_functional(
     *,
     thread_id: str | None = None,
     stream_mode: str | None = None,
-    context: dict[str, Any] | None = None,
+    context: RAGRuntimeContext | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Execute RAG workflow using Functional API.

@@ -1325,10 +1325,16 @@ def _normalize_event_payload(
         chunk_text=(chunk.content),
         max_entities=max_entities_per_event,
     )
+    event_evidence = coerce_evidence(
+        text=chunk.content,
+        evidence_quote=event_data.get("evidence_quote"),
+        fallback_mention=None,
+    )
     payload = {
         "title": title,
         "summary": summary,
         "content": content,
+        "event_evidence": event_evidence,
         "entities": entities,
     }
     return (title.casefold(), summary.casefold()), payload
@@ -1555,7 +1561,9 @@ def _entity_noise_bucket(name: str, normalized: str) -> str | None:
     return None
 
 
-def _apply_entity_evidence(ent: dict, *, chunk: DocumentChunk, name: str, evidence_required: bool):
+def _apply_entity_evidence(
+    ent: dict, *, chunk: DocumentChunk, name: str, event_evidence: EvidenceSpan | None, evidence_required: bool
+) -> dict | None:
     evidence_quote = ent.get("evidence_quote")
     evidence = coerce_evidence(
         text=(chunk.content),
@@ -1563,10 +1571,19 @@ def _apply_entity_evidence(ent: dict, *, chunk: DocumentChunk, name: str, eviden
         fallback_mention=name,
         max_quote_chars=240,
     )
-    if evidence_required and evidence is not None and not surface_mentioned(quote=evidence.quote, surface=name):
+    if evidence is not None and not surface_mentioned(quote=evidence.quote, surface=name):
         evidence = coerce_evidence(text=chunk.content, evidence_quote=None, fallback_mention=name, max_quote_chars=240)
+    if event_evidence is not None and surface_mentioned(quote=event_evidence.quote, surface=name):
+        if evidence is None or not (
+            event_evidence.start_char <= evidence.start_char < evidence.end_char <= event_evidence.end_char
+        ):
+            evidence = event_evidence
     if evidence is None:
-        return None if evidence_required else ent
+        if evidence_required:
+            return None
+        for key in ("evidence_quote", "evidence_start_char", "evidence_end_char", "evidence_source"):
+            ent.pop(key, None)
+        return ent
     ent["evidence_quote"] = evidence.quote
     ent["evidence_start_char"] = evidence.start_char
     ent["evidence_end_char"] = evidence.end_char
@@ -1607,6 +1624,7 @@ def _apply_entity_evidence_gates(
                 ent,
                 chunk=chunk,
                 name=name,
+                event_evidence=event_payload["event_evidence"],
                 evidence_required=evidence_required,
             )
             if kept_ent is None:
@@ -1731,7 +1749,7 @@ def _build_event_index_records(
                 content=event_payload["content"].strip() or "Event",
                 document_id=chunk.document_id,
                 chunk_id=chunk.id,
-                references=refs,
+                references=_refs_with_evidence(refs, event_payload["event_evidence"], default_source="quote"),
                 vector=vector,
                 entities=entity_inputs,
                 extra_data={
@@ -3497,17 +3515,17 @@ def _skill_ids_in_chunk(items: list[dict], skill_id_by_norm: dict[str, object]) 
     return skill_ids
 
 
-def _edge_refs_from_evidence(
+def _refs_with_evidence(
     refs_base: dict[str, object], evidence: EvidenceSpan | None, *, default_source: str
 ) -> dict[str, object]:
-    edge_refs = dict(refs_base)
+    refs = dict(refs_base)
     if evidence is None:
-        return edge_refs
-    edge_refs["evidence_quote"] = evidence.quote
-    edge_refs["evidence_start_char"] = evidence.start_char
-    edge_refs["evidence_end_char"] = evidence.end_char
-    edge_refs["evidence_source"] = evidence.source.strip() or default_source
-    return edge_refs
+        return refs
+    refs["evidence_quote"] = evidence.quote
+    refs["evidence_start_char"] = evidence.start_char
+    refs["evidence_end_char"] = evidence.end_char
+    refs["evidence_source"] = evidence.source.strip() or default_source
+    return refs
 
 
 def _skill_relation_extra_data(context: _SkillPostIndexContext) -> dict[str, object]:
@@ -3561,7 +3579,7 @@ def _append_skill_belong_to_edge(
             object_entity_id=object_id,
             confidence=conf,
             qualifiers={"method": "skill_taxonomy", "kind": kind},
-            references=_edge_refs_from_evidence(refs_base, evidence, default_source="mention"),
+            references=_refs_with_evidence(refs_base, evidence, default_source="mention"),
             extra_data=_skill_relation_extra_data(context),
         )
     )

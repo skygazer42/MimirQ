@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from app.infrastructure.config import settings
 from app.infrastructure.database.connection import SessionLocal
 from app.infrastructure.runtime.stream_events import emit_stream_event
 from app.rag.retrieval.configuration.options import HybridSearchOptions
@@ -195,7 +196,8 @@ class _ChannelCollector:
             self._hybrid_lexical_search()
         if self.request.mode == "vector" and (not self.vector.records or self.vector.shard_failed):
             self._bm25_search()
-            self._lexical_search("vector_fallback")
+            deadline = time.perf_counter() + settings.LEXICAL_DB_FALLBACK_BUDGET_MS / 1000
+            self._lexical_search("vector_fallback", deadline=deadline)
         elif self.request.mode == "keyword" and not (self.keyword.bm25.records or self.keyword.lexical.records):
             self._vector_search()
         return ChannelCollection(self.plan, self.vector, self.keyword, self.health)
@@ -260,25 +262,26 @@ class _ChannelCollector:
         finally:
             self.keyword.bm25_elapsed_ms += (time.perf_counter() - started) * 1000
 
-    def _lexical_request(self) -> lexical_search.LexicalRequest:
+    def _lexical_request(self, deadline: float | None) -> lexical_search.LexicalRequest:
         return lexical_search.LexicalRequest(
             self.request.query,
             self.request.fetch_k,
             replace(self.request.resolved_scope.scope, metadata_filter=self.request.resolved_scope.keyword_filter),
+            deadline=deadline,
         )
 
-    def _lexical_search(self, run_reason: str) -> None:
+    def _lexical_search(self, run_reason: str, *, deadline: float | None = None) -> None:
         self.health.started("lexical_db")
         started = time.perf_counter()
         try:
             with SessionLocal() as db:
                 result = lexical_search.search_lexical(
-                    db, self._lexical_request(), pg_trgm_available=self.keyword.lexical.pg_trgm_available
+                    db, self._lexical_request(deadline), pg_trgm_available=self.keyword.lexical.pg_trgm_available
                 )
             self.keyword.lexical = result
             if result.failure is not None:
                 self.health.failed("lexical_db", result.failure)
-                logger.warning("Lexical DB search failed: %s", result.failure)
+                logger.warning("Lexical DB search failed: %s", type(result.failure).__name__)
             if result.failure is None or result.records:
                 self.health.succeeded("lexical_db")
                 self.keyword.lexical_run_reason = run_reason
@@ -294,43 +297,55 @@ class _ChannelCollector:
 
     def _hybrid_lexical_search(self) -> None:
         metadata_exact = self.keyword.metadata_exact
-        anchor_like = self.policy.lexical_metadata_exact_fallback_enabled and _query_looks_like_cjk_metadata_anchor(
-            self.request.query
+        fallback_only = self.policy.lexical_hybrid_fallback_only
+        anchor_like = (
+            self.request.mode in ("hybrid", "mmr")
+            and fallback_only
+            and self.policy.lexical_metadata_exact_fallback_enabled
+            and _query_looks_like_cjk_metadata_anchor(self.request.query)
         )
         primary = self.vector.records + self.keyword.bm25.records
+        options = self.request.options
+        top_k = max(1, options.requested_k if options.requested_k is not None else options.top_k)
+        primary_count = len({record["chunk_id"] for record in primary if record.get("chunk_id")})
         if anchor_like:
             metadata_exact.primary_has_anchor = _results_contain_metadata_exact_anchor(
-                self.request.query, primary, limit=max(1, self.request.options.top_k)
+                self.request.query, primary, limit=top_k
             )
-        metadata_exact.triggered = self.policy.lexical_hybrid_fallback_only and anchor_like
+        metadata_exact.triggered = anchor_like and not metadata_exact.primary_has_anchor
+        search_metadata = self.policy.metadata_exact_db_enabled and metadata_exact.triggered
+        search_body_for_anchor = metadata_exact.triggered and not self.policy.metadata_exact_db_enabled
+        deadline = time.perf_counter() + settings.LEXICAL_DB_FALLBACK_BUDGET_MS / 1000
         if self.plan.lexical:
-            if (
-                not self.policy.lexical_hybrid_fallback_only
-                or len(primary) < max(1, self.request.options.top_k)
-                or metadata_exact.triggered
-            ):
+            if not fallback_only or primary_count < top_k or search_body_for_anchor:
                 reason = (
                     "hybrid_parallel"
-                    if not self.policy.lexical_hybrid_fallback_only
-                    else ("hybrid_metadata_exact_fallback" if metadata_exact.triggered else "hybrid_fallback")
+                    if not fallback_only
+                    else ("hybrid_metadata_exact_fallback" if search_body_for_anchor else "hybrid_fallback")
                 )
-                self._lexical_search(reason)
+                self._lexical_search(reason, deadline=deadline)
             else:
                 self.keyword.lexical_run_reason = "skipped_primary_candidates_sufficient"
-        if self.policy.metadata_exact_db_enabled and metadata_exact.triggered:
-            self._metadata_exact_search()
+        if search_metadata:
+            if time.perf_counter() < deadline:
+                self._metadata_exact_search(deadline)
+            else:
+                metadata_exact.run_reason = "budget_exhausted"
+                metadata_exact.failure = TimeoutError("Lexical fallback budget exhausted")
+                self.health.failed("metadata_exact_db", metadata_exact.failure)
         elif not self.policy.metadata_exact_db_enabled:
             metadata_exact.run_reason = "disabled"
 
-    def _metadata_exact_search(self) -> None:
+    def _metadata_exact_search(self, deadline: float) -> None:
         metadata_exact = self.keyword.metadata_exact
+        self.health.started("metadata_exact_db")
         lexical_has_anchor = _results_contain_metadata_exact_anchor(
             self.request.query, self.keyword.lexical.records, limit=max(1, self.request.options.top_k)
         )
         started = time.perf_counter()
         try:
             with SessionLocal() as db:
-                result = lexical_search.search_metadata_exact(db, self._lexical_request(), enabled=True)
+                result = lexical_search.search_metadata_exact(db, self._lexical_request(deadline), enabled=True)
             metadata_exact.failure = result.failure
             metadata_exact.records = result.records
             metadata_exact.run_reason = (
@@ -341,10 +356,14 @@ class _ChannelCollector:
                 )
             )
             if result.failure is not None:
-                logger.debug("Metadata exact DB fallback failed: %s", result.failure)
+                self.health.failed("metadata_exact_db", result.failure)
+                logger.debug("Metadata exact DB fallback failed: %s", type(result.failure).__name__)
+            else:
+                self.health.succeeded("metadata_exact_db")
             self._append_metadata_exact_results(result.records)
         except Exception as exc:
             metadata_exact.failure, metadata_exact.run_reason = exc, "error"
+            self.health.failed("metadata_exact_db", exc)
             logger.debug("Metadata exact DB fallback failed: %s", exc)
         finally:
             self.keyword.lexical_elapsed_ms += (time.perf_counter() - started) * 1000

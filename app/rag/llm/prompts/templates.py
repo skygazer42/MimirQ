@@ -3,7 +3,23 @@
 from dataclasses import dataclass
 from typing import Any
 
+from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
+
+_ANSWER_SEMANTICS_SYSTEM_MESSAGE = (
+    "Stay within the user's requested subject and scope. Do not append records, backups, incidents, or advice merely "
+    "because they share domain terms; include additional facts only when they directly support a requested conclusion. "
+    "Answer each distinct requested amount or status separately. A computed payable or eligible amount is the amount "
+    "available under the stated assumptions, not proof that payment or another action was completed. If the reference "
+    "materials or a deterministic calculation contain a requested amount, report it explicitly. If a question asks for "
+    "both a settlement amount (可结算) and a payable amount (可支付), give each as a separate labeled value. When its "
+    "inputs and prerequisites are stated as satisfied, use the computed payable amount for 可支付; do not replace it "
+    "with an actual-paid status. A missing transaction receipt means only that completed payment is unconfirmed."
+)
+
+
+def with_answer_semantics_system_message(prompt: ChatPromptTemplate) -> ChatPromptTemplate:
+    return ChatPromptTemplate.from_messages([("system", _ANSWER_SEMANTICS_SYSTEM_MESSAGE), *prompt.messages])
 
 
 class BasePromptSchema(BaseModel):

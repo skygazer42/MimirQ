@@ -610,14 +610,6 @@ async def test_multi_agent_stream_builds_fallback_citations_from_preferred_docs(
         def _select_llm(*_args):
             return SimpleNamespace(model_name="fake-model"), "fast", "test-route"
 
-        @staticmethod
-        def _doc_key(doc: LCDocument) -> str:
-            return str(doc.metadata["doc_key"])
-
-        @staticmethod
-        def _prefer_doc(existing: LCDocument, candidate: LCDocument) -> LCDocument:
-            return candidate if candidate.metadata["rank"] > existing.metadata["rank"] else existing
-
     runner = multi_agent.MultiAgentRAGRunner(_Engine())
 
     async def _decompose(**_kwargs):
@@ -630,9 +622,9 @@ async def test_multi_agent_stream_builds_fallback_citations_from_preferred_docs(
             elapsed_sec=0.25,
             result={
                 "docs": [
-                    LCDocument(page_content="older", metadata={"doc_key": "shared", "rank": 1}),
-                    LCDocument(page_content="newer", metadata={"doc_key": "shared", "rank": 2}),
-                    LCDocument(page_content="other", metadata={"doc_key": "other", "rank": 1}),
+                    LCDocument(page_content="older", metadata={"chunk_id": "shared", "score": 1}),
+                    LCDocument(page_content="newer", metadata={"chunk_id": "shared", "score": 2}),
+                    LCDocument(page_content="other", metadata={"chunk_id": "other", "score": 1}),
                 ],
                 "citations": [],
                 "metrics": {"retrieval_mode": "hybrid"},

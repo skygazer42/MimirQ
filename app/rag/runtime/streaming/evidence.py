@@ -6,20 +6,26 @@ import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from langchain_core.documents import Document
+
 from app.infrastructure.config import settings
 from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
 from app.infrastructure.tokens import num_tokens_from_string, truncate
 from app.rag.kg.pipeline import kg_search
+from app.rag.kg.provenance import event_evidence_span
 from app.rag.llm.prompts.metrics import compute_context_cliff_metrics
 from app.rag.llm.response_parsing import build_abstain_answer_message, build_abstain_followup, derive_followup_questions
 from app.rag.llm.structured_output import build_structured_abstain_payload
 from app.rag.policy.out_of_scope_streaming import run_default_out_of_scope_live_guard
 from app.rag.policy.out_of_scope_verifier import maybe_apply_out_of_scope_live_guard
-from app.rag.retrieval.evidence.citations import build_citations_from_docs
+from app.rag.retrieval.evidence.citations import build_citations_from_docs, filter_citations_for_context
 from app.rag.retrieval.evidence.excerpts import extract_evidence_text
+from app.rag.retrieval.evidence.validity import NO_CURRENT_EVIDENCE, requests_current_evidence
+from app.rag.retrieval.ranking.knowledge_graph import filter_current_kg_events
 from app.rag.retrieval.ranking.temporal import apply_recency_boost, detect_temporal_intent
 from app.rag.retrieval.reranking.providers import describe_reranker_provider
 from app.rag.runtime.contracts import _RAG_ENGINE_FALLBACK_LOG_MESSAGE
+from app.rag.runtime.graph.context import build_grounded_context
 from app.rag.runtime.streaming.corrective import stream_corrective_retrieval
 from app.rag.runtime.streaming.state import StandardStreamState, StreamOperation
 from app.rag.safety.answer_quality import compute_confidence_score, compute_faithfulness_score
@@ -91,6 +97,7 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
 
 
 async def apply_rail_and_build_citations(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
+    runtime.data.docs.extend(runtime.data.ontology_docs)
 
     if runtime.data.retrieval_rail_enabled and runtime.data.docs:
         try:
@@ -198,7 +205,11 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
         except Exception:
             runtime.data.top_rel = 0.0
 
-    if runtime.data.abstain_enabled:
+    if not runtime.data.citations and requests_current_evidence(runtime.data.question):
+        runtime.data.abstain_enabled = True
+        runtime.data.abstain_triggered = True
+        runtime.data.abstain_reason = NO_CURRENT_EVIDENCE
+    elif runtime.data.abstain_enabled:
         runtime.data.min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS))
         runtime.data.min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE)
 
@@ -517,6 +528,25 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
         return
 
 
+def _format_recalled_kg_events(events: list[dict[str, Any]], docs: list[Document]) -> str:
+    chunk_texts = {str(doc.metadata.get("chunk_id") or doc.id): doc.page_content for doc in docs}
+    parts = []
+    for index, event in enumerate(events[:5], 1):
+        title = event["title"].strip()
+        summary = event["summary"].strip()
+        if len(summary) > 600:
+            summary = summary[:600] + "..."
+        part = f"[Event {index}] {title}\n{summary}"
+        evidence = event_evidence_span(event)
+        if evidence is not None:
+            quote, start, end = evidence
+            source = chunk_texts.get(str(event.get("chunk_id")))
+            if source is not None and source[start:end] == quote:
+                part += f"\n[Source excerpt] {quote}"
+        parts.append(part)
+    return "\n\n".join(parts)
+
+
 async def recall_kg_context(runtime: StandardStreamState) -> None:
     # Step 2: Additional KG event recall (optional).
     runtime.data.kg_context = ""
@@ -544,17 +574,12 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
                     document_ids=runtime.data.document_ids,
                 )
             runtime.data.events = (runtime.data.kg_result or {}).get("events") or []
+            if runtime.data.events and requests_current_evidence(runtime.data.question):
+                runtime.data.events = await run_blocking_in_thread(
+                    filter_current_kg_events, runtime.data.events, tenant_id=runtime.data.tenant_id
+                )
             if runtime.data.events:
-                runtime.data.parts = []
-                for runtime.data.idx, runtime.data.ev in enumerate(runtime.data.events[:5], 1):
-                    runtime.data.title = (runtime.data.ev["title"]).strip()
-                    runtime.data.summary = (runtime.data.ev["summary"]).strip()
-                    if len(runtime.data.summary) > 600:
-                        runtime.data.summary = runtime.data.summary[:600] + "..."
-                    runtime.data.parts.append(
-                        f"[Event {runtime.data.idx}] {runtime.data.title}\n{runtime.data.summary}"
-                    )
-                runtime.data.kg_context = "\n\n".join(runtime.data.parts)
+                runtime.data.kg_context = _format_recalled_kg_events(runtime.data.events, runtime.data.docs)
                 runtime.data.max_kg_tokens = max(0, int(settings.RAG_CONTEXT_MAX_KG_TOKENS))
                 if runtime.data.max_kg_tokens:
                     runtime.data.kg_context = truncate(
@@ -652,6 +677,8 @@ def _build_context_parts(runtime: StandardStreamState) -> None:
 
 
 async def build_chunk_context(runtime: StandardStreamState) -> None:
+    if runtime.data.ontology_context:
+        return
     if not runtime.data.docs:
         return
     try:
@@ -674,6 +701,23 @@ async def build_chunk_context(runtime: StandardStreamState) -> None:
 async def join_context_sections(runtime: StandardStreamState) -> None:
 
     runtime.data.context_sections = []
+    if runtime.data.ontology_context:
+        context = build_grounded_context(
+            runtime.data.docs,
+            ontology_context=runtime.data.ontology_context,
+            query=runtime.data.query_for_retrieval,
+            kg_context=runtime.data.kg_context,
+        )
+        runtime.data.context = context.text
+        runtime.data.docs = context.documents
+        runtime.data.citations = filter_citations_for_context(
+            runtime.data.citations,
+            context.documents,
+            retrieval_mode=runtime.data.mode_used,
+            query=runtime.data.query_for_retrieval,
+        )
+        runtime.data.ontology_metrics["generation_context"] = context.trace
+        return
     if runtime.data.kg_context:
         runtime.data.context_sections.append(f"[KG Event Retrieval]\n{runtime.data.kg_context}")
     if runtime.data.chunk_context:

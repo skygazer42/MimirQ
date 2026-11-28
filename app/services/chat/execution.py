@@ -5,14 +5,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import httpx
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
 from app.api.schemas.conversations import ChatRAGConfig, ChatRequest
 from app.infrastructure.config import settings
-from app.infrastructure.http.environment import httpx_trust_env
-from app.infrastructure.http.openai import normalize_openai_compatible_base_url
 from app.rag.retrieval.evidence.source_labels import derive_document_title, maybe_build_source_identification_answer
 from app.services.chat.response_formatting import parse_graph_structured_output
 from app.services.retrieval.defaults import retrieval_options
@@ -68,10 +65,8 @@ _MODEL_PROVIDER_UNAVAILABLE_MARKERS = (
     "timed out",
 )
 _MODEL_PROVIDER_UNAVAILABLE_UNTIL = 0.0
-_MODEL_PROVIDER_AVAILABLE_UNTIL = 0.0
 _MODEL_PROVIDER_CIRCUIT_KEY = ""
 _MODEL_PROVIDER_UNAVAILABLE_TTL_SEC = 300.0
-_MODEL_PROVIDER_AVAILABLE_TTL_SEC = 60.0
 
 
 def is_model_provider_unavailable_error(exc: BaseException) -> bool:
@@ -90,12 +85,11 @@ def _model_provider_circuit_key() -> str:
 
 
 def _ensure_model_provider_circuit_key() -> str:
-    global _MODEL_PROVIDER_AVAILABLE_UNTIL, _MODEL_PROVIDER_CIRCUIT_KEY, _MODEL_PROVIDER_UNAVAILABLE_UNTIL
+    global _MODEL_PROVIDER_CIRCUIT_KEY, _MODEL_PROVIDER_UNAVAILABLE_UNTIL
     key = _model_provider_circuit_key()
     if key != _MODEL_PROVIDER_CIRCUIT_KEY:
         _MODEL_PROVIDER_CIRCUIT_KEY = key
         _MODEL_PROVIDER_UNAVAILABLE_UNTIL = 0.0
-        _MODEL_PROVIDER_AVAILABLE_UNTIL = 0.0
     return key
 
 
@@ -111,78 +105,6 @@ def is_model_provider_unavailable_circuit_open() -> bool:
     if bool(settings.LLM_MOCK_ENABLED):
         return False
     return time.monotonic() < _MODEL_PROVIDER_UNAVAILABLE_UNTIL
-
-
-async def preflight_model_provider_fast() -> tuple[bool, str | None]:
-    """Return provider availability using a bounded OpenAI-compatible smoke request.
-
-    This prevents the first chat request after a restart from paying the full
-    graph/generation timeout when the configured provider is already known to be
-    unavailable, such as account arrearage or invalid credentials.
-    """
-    global _MODEL_PROVIDER_AVAILABLE_UNTIL
-
-    _ensure_model_provider_circuit_key()
-    now = time.monotonic()
-    if bool(settings.LLM_MOCK_ENABLED):
-        _MODEL_PROVIDER_AVAILABLE_UNTIL = now + _MODEL_PROVIDER_AVAILABLE_TTL_SEC
-        return True, None
-    if now < _MODEL_PROVIDER_UNAVAILABLE_UNTIL:
-        return False, "model_provider_circuit_open"
-    if now < _MODEL_PROVIDER_AVAILABLE_UNTIL:
-        return True, None
-
-    api_key = settings.LLM_API_KEY.strip()
-    model = settings.LLM_MODEL.strip()
-    api_base = settings.LLM_API_BASE.strip()
-    if not api_key or not model or not api_base:
-        mark_model_provider_unavailable()
-        return False, "LLM_API_KEY/LLM_API_BASE/LLM_MODEL is not configured"
-
-    try:
-        base_url = normalize_openai_compatible_base_url(api_base).rstrip("/")
-        timeout = httpx.Timeout(1.5, connect=1.0, read=1.5, write=1.0, pool=0.5)
-        async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=timeout) as client:
-            response = await client.post(
-                f"{base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": "Say 1"}],
-                    "temperature": 0,
-                    "max_tokens": 1,
-                    "stream": False,
-                },
-            )
-        if 200 <= response.status_code < 300:
-            _MODEL_PROVIDER_AVAILABLE_UNTIL = time.monotonic() + _MODEL_PROVIDER_AVAILABLE_TTL_SEC
-            return True, None
-        detail = response.text[:400]
-        exc = RuntimeError(f"LLM preflight failed HTTP {response.status_code}: {detail}")
-        if response.status_code in {
-            400,
-            401,
-            402,
-            403,
-            408,
-            409,
-            429,
-            500,
-            502,
-            503,
-            504,
-        } or is_model_provider_unavailable_error(exc):
-            mark_model_provider_unavailable()
-            return False, str(exc)[:400]
-        return True, None
-    except httpx.TimeoutException:
-        # Let generation use its configured timeout when the short probe is inconclusive.
-        return True, None
-    except Exception as exc:  # noqa: BLE001
-        if is_model_provider_unavailable_error(exc):
-            mark_model_provider_unavailable()
-            return False, str(exc)[:400]
-        return True, None
 
 
 def _clean_snippet(value: str, *, max_chars: int = 320) -> str:
@@ -859,6 +781,9 @@ def execute_graph_chat_once(
     )
     if rag_config_template_meta:
         state["rag_config_template"] = rag_config_template_meta
+    state["ontology_enabled"] = True
+    state["conversation_id"] = conversation_id
+    state["request_id"] = request_id
 
     injected_docs, multimodal_meta, tag_meta, image_meta = _graph_multimodal_enrichment(
         db=db,
@@ -883,6 +808,8 @@ def execute_graph_chat_once(
     citations_data = graph_result.get("citations") or []
     full_response = graph_result["answer"]
     metrics_data = dict(graph_result.get("metrics") or {})
+    if graph_result.get("ontology_action") is not None:
+        metrics_data["ontology_action"] = graph_result["ontology_action"]
     full_response = _apply_source_identification_override(
         db=db,
         tenant_id=tenant_id,
@@ -939,6 +866,7 @@ async def execute_langchain_chat_once(
 
     async for event in engine.stream_chat(
         question=request.message,
+        ontology_enabled=True,
         history=history_for_llm,
         conversation_id=conversation_id,
         document_ids=doc_ids_to_use,
@@ -980,6 +908,8 @@ async def execute_langchain_chat_once(
 
     full_response = "".join(full_response_parts) if full_response_parts else ""
     metrics_data = dict(done_data.get("metrics") or {}) if isinstance(done_data, dict) else {}
+    if done_data.get("ontology_action") is not None:
+        metrics_data["ontology_action"] = done_data["ontology_action"]
     source_answer = _source_identification_answer_from_citations(
         db=db,
         tenant_id=tenant_id,

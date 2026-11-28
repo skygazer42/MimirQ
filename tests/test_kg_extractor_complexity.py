@@ -368,6 +368,89 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_extract_indexes_event_evidence_only_from_its_target_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_extract_defaults(monkeypatch, KG_EXTRACT_CONTEXT_WINDOW_CHUNKS=1)
+    prefix = "旧规则中，承包商账号最长启用 60 天。\n"
+    chunk = _make_chunk(
+        "chunk-target", document_id="doc-1", chunk_index=1, content=prefix + "承包商账号最长启用  30 天。"
+    )
+    neighbor = _make_chunk("chunk-neighbor", document_id="doc-1", chunk_index=2, content="设备维护窗口为 60 分钟。")
+
+    class _EventClient(_FakeLLMClient):
+        async def chat_with_schema(self, messages, **_kwargs):
+            if not messages[-1].content.startswith("[Target p2]"):
+                return {"events": []}
+            return {
+                "events": [
+                    {
+                        "title": "账号启用期限",
+                        "summary": "承包商账号最长启用 30 天。",
+                        "evidence_quote": "承包商账号最长启用 30 天。",
+                        "entities": [{"name": "承包商账号", "type": "Concept", "evidence_quote": "承包商账号"}],
+                    },
+                    {
+                        "title": "维护时间",
+                        "summary": neighbor.content,
+                        "evidence_quote": neighbor.content,
+                        "entities": [
+                            {
+                                "name": "设备维护窗口",
+                                "type": "Concept",
+                                "evidence_quote": neighbor.content,
+                                "source_span": {"source": "context", "start_char": 0, "end_char": 6},
+                            }
+                        ],
+                    },
+                    {"title": "旧格式", "summary": "未提供事件引用。"},
+                ],
+            }
+
+    monkeypatch.setattr(extractor_module, "SessionLocal", _FakeSession)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
+    monkeypatch.setattr(extractor_module, "Indexer", _IndexerFactory)
+    monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(_EventClient()))
+
+    await extractor_module.EventExtractor().extract(
+        _make_config(chunk_ids=[chunk.id, neighbor.id]), chunks=[chunk, neighbor]
+    )
+
+    records = {record.title: record for record in _IndexerFactory.last_instance.records}
+    grounded = records["账号启用期限"].references
+    assert grounded["evidence_start_char"] == len(prefix)
+    assert grounded["evidence_end_char"] == len(chunk.content)
+    assert grounded["evidence_quote"] == chunk.content[len(prefix) :]
+    assert grounded["start_char"] == chunk.start_char
+    [entity] = records["账号启用期限"].entities
+    assert entity.evidence_start_char == len(prefix)
+    assert entity.evidence_quote == chunk.content[entity.evidence_start_char : entity.evidence_end_char]
+    assert "evidence_quote" not in records["维护时间"].references
+    [ungrounded_entity] = records["维护时间"].entities
+    assert ungrounded_entity.evidence_quote is None
+    assert ungrounded_entity.evidence_start_char is None
+    assert "evidence_quote" not in records["旧格式"].references
+
+
+@pytest.mark.asyncio
+async def test_heuristic_extraction_indexes_event_evidence_without_a_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_extract_defaults(monkeypatch)
+    fact = "运维系统在账号锁定后等待  30 分钟再解锁。"
+    prefix = "# 运维规则\n- "
+    chunk = _make_chunk("chunk-1", document_id="doc-1", chunk_index=0, content=prefix + fact)
+    monkeypatch.setattr(extractor_module, "SessionLocal", _FakeSession)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
+    monkeypatch.setattr(extractor_module, "Indexer", _IndexerFactory)
+
+    await extractor_module.EventExtractor().extract(
+        _make_config(chunk_ids=[chunk.id], extraction_backend="heuristic"), chunks=[chunk]
+    )
+
+    [record] = _IndexerFactory.last_instance.records
+    assert record.references["evidence_quote"] == fact
+    assert record.references["evidence_start_char"] == len(prefix)
+    assert record.references["evidence_end_char"] == len(chunk.content)
+
+
+@pytest.mark.asyncio
 async def test_extract_raises_when_every_attempted_chunk_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_extract_defaults(
         monkeypatch,

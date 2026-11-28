@@ -29,6 +29,7 @@ def get_router() -> APIRouter:
     from app.api.v1.identity import auth, groups, rbac, scim
     from app.api.v1.integrations import conversations as integrations_conversations
     from app.api.v1.integrations import dify as integrations_dify
+    from app.api.v1.knowledge_graph import enterprise_ontology
     from app.api.v1.knowledge_graph import network as network_analysis
     from app.api.v1.pipelines import chunk_presets, governance, industry_rules, parsing
     from app.api.v1.pipelines import routes as pipeline
@@ -55,6 +56,7 @@ def get_router() -> APIRouter:
     router.include_router(db_catalog.router, prefix=_DATASETS_PREFIX, tags=["DB Catalog"])
     router.include_router(dataset_categories.router, prefix="/dataset-categories", tags=["Dataset Categories"])
     router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
+    router.include_router(enterprise_ontology.router, prefix="/kg/ontologies", tags=["Enterprise Ontology"])
     router.include_router(network_analysis.router, prefix="/kg/network", tags=["Knowledge Graph (KG)"])
     router.include_router(evidence.router, prefix="/evidence", tags=["Evidence Workbench"])
     router.include_router(evidence_capsules.router, prefix="/evidence", tags=["Evidence Capsules"])

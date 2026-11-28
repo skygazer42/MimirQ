@@ -181,11 +181,13 @@ class RelationProcessor:
         llm_client: BaseLLMClient,
         *,
         allowed_predicates: Sequence[str] | None = None,
+        ontology_signatures: Sequence[str] = (),
     ):
         self.llm_client = llm_client
         # Store normalized allowlist for fast membership checks.
         allow = [normalize_predicate(p) for p in (allowed_predicates or []) if p.strip()]
         self.allowed_predicates = set(allow)
+        self.ontology_signatures = ontology_signatures
 
     async def extract_relations(
         self,
@@ -244,6 +246,14 @@ class RelationProcessor:
             f"{clean_text}\n"
         )
 
+        if self.ontology_signatures:
+            prompt += (
+                "\nUse the ontology signatures below to map explicit associations in the text. "
+                "For example, when a work order belongs to a device, use a configured relation "
+                "from the work-order type to the equipment type. Output the candidate identifiers such as E1 and E2, "
+                "instead of the displayed names.\n"
+                + "\n".join(self.ontology_signatures)
+            )
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
         result = await self.llm_client.chat_with_schema(
             messages,

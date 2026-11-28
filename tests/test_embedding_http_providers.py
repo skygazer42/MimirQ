@@ -82,6 +82,35 @@ async def test_openai_embedding_retries_sync_and_async_429(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
+async def test_siliconflow_qwen_vl_embeds_in_batches_with_unique_response_indices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.rag.embedding.providers import openai as provider
+
+    url = "https://api.siliconflow.cn/v1/embeddings"
+    first = {"data": [{"index": index, "embedding": [float(index), 0.0]} for index in range(8)]}
+    second = {"data": [{"index": 0, "embedding": [8.0, 0.0]}]}
+    sync_client = _SyncClient([_response(url, 200, first), _response(url, 200, second)])
+    async_client = _AsyncClient([_response(url, 200, first), _response(url, 200, second)])
+    monkeypatch.setattr(provider.settings, "EMBEDDING_API_BATCH_SIZE", 32)
+
+    embedding = provider.OpenAICompatibleEmbedding(
+        model="Qwen/Qwen3-VL-Embedding-8B",
+        dimension=2,
+        base_url=url,
+        http_client=sync_client,
+        http_async_client=async_client,
+    )
+    texts = [str(index) for index in range(9)]
+    expected = [[float(index), 0.0] for index in range(9)]
+
+    assert embedding.encode(texts) == expected
+    assert await embedding.aencode(texts) == expected
+    for client in (sync_client, async_client):
+        assert [row["json"]["input"] for row in client.calls] == [texts[:8], texts[8:]]
+
+
+@pytest.mark.asyncio
 async def test_ollama_embedding_retries_sync_and_async_429(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.embedding.providers.ollama as provider_module
 

@@ -82,6 +82,7 @@ from app.api.v1.knowledge_graph.routes_support.projection import (
     _apply_event_pipeline_scope,
     _audit_hash_text,
     _build_kg_graph_response_from_events,
+    _build_ontology_graph_response,
     _empty_kg_graph_response,
     _ensure_enabled,
     _expanded_kg_events_for_node,
@@ -108,6 +109,8 @@ from app.api.v1.knowledge_graph.routes_support.undo import (
 )
 from app.infrastructure.config import settings
 from app.infrastructure.database.connection import get_db
+from app.rag.kg.enterprise_ontology.activation import active_version_id
+from app.rag.kg.enterprise_ontology.extraction import prepare_bound_document
 from app.rag.kg.pipeline import kg_search
 from app.services.documents.read_scope import filter_allowed_document_ids
 
@@ -151,6 +154,7 @@ def kg_graph_projection_params(
             description=PIPELINE_VERSION_FILTER_DESC,
         ),
     ] = None,
+    prefer_ontology: Annotated[bool, Query(description="Show active ontology evidence for the selected dataset")] = False,
     max_events: Annotated[int | None, Query(ge=1, le=2000)] = None,
     max_entities: Annotated[int | None, Query(ge=1, le=5000)] = None,
     max_links: Annotated[int | None, Query(ge=1, le=20000)] = None,
@@ -163,6 +167,7 @@ def kg_graph_projection_params(
         document_ids=document_ids,
         dataset_id=dataset_id,
         pipeline_hash=pipeline_hash,
+        prefer_ontology=prefer_ontology,
         max_events=max_events,
         max_entities=max_entities,
         max_links=max_links,
@@ -248,6 +253,30 @@ def get_kg_graph(
         account_id=account_id,
         db=db,
     )
+    limits = _kg_graph_limits(params)
+    if params.prefer_ontology and params.dataset_id is not None and params.pipeline_hash is None:
+        dataset = dataset_service.get_dataset(db, tenant_id, params.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
+        version_id = active_version_id(db, tenant_id, params.dataset_id)
+        if version_id is not None:
+            graph = _build_ontology_graph_response(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=params.dataset_id,
+                version_id=version_id,
+                allowed_doc_ids=allowed_doc_ids,
+                limits=limits,
+            )
+            _log_kg_graph_metric(
+                KG_API_GRAPH_METRIC,
+                t0=t0,
+                tenant_id=tenant_id,
+                docs=len(allowed_doc_ids),
+                events=0,
+                entities=len(graph.nodes),
+                links=len(graph.links),
+            )
+            return graph
     if not allowed_doc_ids:
         return _empty_kg_graph_response(
             metric=KG_API_GRAPH_METRIC,
@@ -259,7 +288,6 @@ def get_kg_graph(
 
     from app.models.knowledge_graph.entities import KgSourceEvent
 
-    limits = _kg_graph_limits(params)
     events = _load_kg_projection_events(
         db,
         KgSourceEvent,
@@ -2410,6 +2438,16 @@ async def run_kg_extraction_for_document(
             chunks=chunks,
             response=response,
             effective=effective,
+        )
+
+    ontology = await prepare_bound_document(
+        db, document=document, chunks=chunks, pipeline_hash=effective.pipeline_hash, account_id=account_id,
+    )
+    if ontology is not None:
+        version, previews = ontology
+        return KGExtractResponse(
+            document_id=document_id, chunk_count=len(previews), event_count=sum(bool(item.entities) for item in previews),
+            ontology_version_id=version, relation_count=sum(len(item.relations) for item in previews),
         )
 
     events = await _run_sync_kg_extraction(

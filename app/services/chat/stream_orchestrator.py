@@ -17,7 +17,6 @@ from app.services.chat.execution import (
     is_model_provider_unavailable_circuit_open,
     is_model_provider_unavailable_error,
     mark_model_provider_unavailable,
-    preflight_model_provider_fast,
 )
 from app.services.chat.response_formatting import format_stream_error_message
 from app.services.chat.stream_delivery import (
@@ -305,9 +304,12 @@ async def _stream_graph_events(
     fallback_factory: Callable[..., AsyncIterator[dict[str, Any]]],
     stream_options: GraphChatStreamSessionInput,
 ) -> AsyncIterator[dict[str, Any]]:
+    answer_started = False
     try:
         async with aclosing(stream_graph_chat_session_events(options=stream_options)) as events:
             async for graph_event in events:
+                if graph_event["type"] == "token" and graph_event["data"]["content"]:
+                    answer_started = True
                 yield graph_event
     except RetrievalAdmissionTimeoutError as exc:
         yield _build_retrieval_admission_timeout_error(
@@ -318,15 +320,16 @@ async def _stream_graph_events(
     except Exception as exc:  # noqa: BLE001
         if is_model_provider_unavailable_error(exc):
             mark_model_provider_unavailable()
-            async with aclosing(
-                fallback_factory(
-                    reason="model_provider_stream_error",
-                    original_error=exc,
-                )
-            ) as events:
-                async for fallback_chunk in events:
-                    yield fallback_chunk
-            return
+            if not answer_started:
+                async with aclosing(
+                    fallback_factory(
+                        reason="model_provider_stream_error",
+                        original_error=exc,
+                    )
+                ) as events:
+                    async for fallback_chunk in events:
+                        yield fallback_chunk
+                return
         logger.exception("LangGraph stream error: %s", str(exc)[:200])
         error_event = {
             "type": "error",
@@ -441,18 +444,6 @@ async def _stream_live_events(
 
     if is_model_provider_unavailable_circuit_open():
         async with aclosing(fallback_factory(reason="model_provider_circuit_open")) as events:
-            async for fallback_chunk in events:
-                yield fallback_chunk
-        return
-
-    provider_available, provider_error = await preflight_model_provider_fast()
-    if not provider_available:
-        async with aclosing(
-            fallback_factory(
-                reason="model_provider_preflight_failed",
-                provider_error=provider_error,
-            )
-        ) as events:
             async for fallback_chunk in events:
                 yield fallback_chunk
         return

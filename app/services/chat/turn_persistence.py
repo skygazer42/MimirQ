@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.infrastructure.config import settings
@@ -167,17 +168,20 @@ def persist_chat_turn_sync(
     db: Session,
     options: ChatTurnPersistInput,
 ) -> None:
+    from app.services.chat.enterprise_ontology import protect_fused_answer
+
+    content, citations, metrics = protect_fused_answer(options.content, options.citations, options.metrics)
     message_metadata = build_chat_message_metadata(
         request_id=options.request_id,
         original_question=options.question,
-        metrics=options.metrics,
-        citations=options.citations if isinstance(options.citations, list) else [],
+        metrics=metrics,
+        citations=citations,
     )
     _add_structured_memory_metadata(
         message_metadata=message_metadata,
         question=options.question,
-        content=options.content,
-        enabled=options.enable_structured_memory,
+        content=content,
+        enabled=options.enable_structured_memory and "ontology_fusion" not in metrics,
         log_context="chat turn",
     )
 
@@ -186,10 +190,10 @@ def persist_chat_turn_sync(
         tenant_id=options.tenant_id,
         conversation_id=options.conversation_id,
         role="assistant",
-        content=options.content,
-        citations=options.citations,
+        content=content,
+        citations=jsonable_encoder(citations),
         token_count=num_tokens_from_string(options.content),
-        message_metadata=message_metadata,
+        message_metadata=jsonable_encoder(message_metadata),
     )
     db.add(assistant_message)
 

@@ -30,3 +30,33 @@ def test_invalid_structured_text_reports_its_fallback():
     )
     assert payload == {"answer": "Existing answer", "citations": citations, "qa_pairs": []}
     assert meta["fallback_used"] is True
+
+
+@pytest.mark.asyncio
+async def test_schema_prompt_preserves_optional_defaults_without_requesting_invalid_nulls():
+    from pydantic import BaseModel, Field
+
+    from app.rag.llm.base import BaseLLMClient
+    from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
+
+    class Plan(BaseModel):
+        queries: list[str] = Field(default_factory=list)
+
+    class Client(BaseLLMClient):
+        async def aclose(self):
+            pass
+
+        async def chat(self, messages, **_kwargs):
+            instruction = messages[0].content
+            assert "Omit optional fields" in instruction
+            assert "use null" not in instruction
+            return LLMResponse(content="{}")
+
+        def chat_stream(self, *_args, **_kwargs):
+            raise AssertionError("This request requires one JSON response")
+
+    data = await Client().chat_with_schema(
+        [LLMMessage(role=LLMRole.USER, content="Plan a query")],
+        response_schema=Plan.model_json_schema(),
+    )
+    assert Plan.model_validate(data).queries == []

@@ -3,7 +3,7 @@ import math
 import re
 import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, field, fields, replace
 from itertools import chain
@@ -18,12 +18,17 @@ from app.infrastructure.config import settings
 from app.infrastructure.tokens import num_tokens_from_string
 from app.query.expand import heuristic_decompose_query
 from app.rag.agents.tools.mcp_client import DocumentToolScope
-from app.rag.llm.prompts.templates import format_history_text
+from app.rag.llm.prompts.templates import format_history_text, with_answer_semantics_system_message
 from app.rag.llm.response_parsing import parse_json_from_text
 from app.rag.retrieval.evidence.citations import build_citations_from_docs
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.rag.retrieval.planning.decomposition import build_chained_query, summarize_chain_step
-from app.rag.runtime.graph.context import _build_context
+from app.rag.retrieval.results import document_key
+from app.rag.runtime.graph.context import (
+    GroundedContext,
+    _build_context,
+    build_grounded_context,
+)
 from app.rag.runtime.graph.state import RagStateBuildOptions, build_rag_state
 from app.rag.workflows.crag_streaming import run_crag_streaming
 from app.rag.workflows.critic import CriticReview, run_critic_review
@@ -33,6 +38,7 @@ from app.services.runtime.retrieval_limiter import run_blocking_retrieval_call_w
 if TYPE_CHECKING:
     from app.rag.agents.tools.mcp_client import MCPToolRegistry
     from app.rag.runtime.engine import RAGEngine
+    from app.services.chat.enterprise_ontology import OntologyEvidence
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +82,9 @@ class AgenticStreamRequest:
     request_id: str | None = None
     db: Any | None = None
     state_overrides: dict[str, Any] | None = None
+    ontology_enabled: bool = False
+    ontology_prepared: bool = False
+    ontology_evidence: "OntologyEvidence | None" = None
 
 
 @dataclass
@@ -98,6 +107,7 @@ class _AgenticRetrievalState:
     crag_used: bool = False
     crag_provider: str | None = None
     crag_web_results: int = 0
+    grounded_context: str | None = None
 
 
 @dataclass
@@ -147,6 +157,7 @@ def resolve_agentic_stream_request(
             request_id=legacy_overrides.get("request_id"),
             db=legacy_overrides.get("db"),
             state_overrides=state_overrides,
+            ontology_enabled=bool(legacy_overrides.get("ontology_enabled", False)),
         )
     if not legacy_overrides:
         return request
@@ -203,7 +214,52 @@ def build_agentic_rag_state(
             "request_id": stream_request.request_id,
         }
     )
-    return build_rag_state(**base_state_kwargs)
+    state = build_rag_state(**base_state_kwargs)
+    if stream_request.ontology_enabled:
+        state["ontology_enabled"] = True
+    if stream_request.ontology_prepared:
+        from app.services.chat.enterprise_ontology import attach_ontology_evidence
+
+        state = attach_ontology_evidence(state, stream_request.ontology_evidence)
+    return state
+
+
+async def prepare_agentic_ontology(request: AgenticStreamRequest) -> AgenticStreamRequest:
+    if not request.ontology_enabled or request.ontology_prepared:
+        return request
+    from app.services.chat.enterprise_ontology import prepare_ontology_evidence
+
+    evidence = await run_blocking_retrieval_call_with_managed_session(
+        prepare_ontology_evidence,
+        request_db=request.db,
+        tenant_id=request.tenant_id,
+        account_id=request.account_id,
+        dataset_id=request.dataset_id,
+        document_ids=request.document_ids,
+        question=request.question,
+        history=request.history,
+        conversation_id=request.conversation_id,
+    )
+    return replace(request, ontology_prepared=True, ontology_evidence=evidence)
+
+
+def build_agentic_grounded_context(
+    docs: list[Document],
+    *,
+    ontology_context: dict[str, Any],
+    question: str,
+    tool_context_blocks: Sequence[str] = (),
+) -> GroundedContext | None:
+    if not ontology_context:
+        return None
+    tool_docs = [
+        Document(
+            page_content=block,
+            metadata={"source": "Agent tool", "ontology_evidence": True, "ontology_observation": True},
+        )
+        for block in tool_context_blocks
+    ]
+    return build_grounded_context([*docs, *tool_docs], ontology_context=ontology_context, query=question)
 
 
 def _normalized_plan_queries(items: list[Any], *, limit: int) -> list[str]:
@@ -262,7 +318,7 @@ class AgenticRAGRunner:
         merged: list[Document] = []
         seen: set[str] = set()
         for doc in chain(docs, new_docs):
-            key = self._engine._doc_key(doc)
+            key = document_key(doc)
             if key in seen:
                 continue
             seen.add(key)
@@ -626,12 +682,16 @@ class AgenticRAGRunner:
             if prompt_template_content
             else self._engine.prompt_template
         )
+        if base_state.get("ontology_context"):
+            prompt_template = with_answer_semantics_system_message(prompt_template)
         history_text = format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
-        context = self._build_generation_context(
-            docs=retrieval_state.collected_docs,
-            question=question,
-            tool_context_blocks=retrieval_state.tool_context_blocks,
-        )
+        context = retrieval_state.grounded_context
+        if context is None:
+            context = self._build_generation_context(
+                docs=retrieval_state.collected_docs,
+                question=question,
+                tool_context_blocks=retrieval_state.tool_context_blocks,
+            )
         generation_inputs = {
             "context": context,
             "history": history_text,
@@ -739,6 +799,7 @@ class AgenticRAGRunner:
         critic_review = generation_state.critic_review
         self_rag_reflection = generation_state.self_rag_reflection
         return {
+            **retrieval_state.final_result.get("metrics", {}),
             "elapsed_sec": round(time.time() - t_start, 3),
             "retrieval_elapsed_sec": round(retrieval_state.retrieval_elapsed_total, 3),
             "generation_elapsed_sec": round(generation_state.generation_elapsed, 3),
@@ -791,6 +852,7 @@ class AgenticRAGRunner:
             legacy_overrides=_kwargs,
         )
         t_start = time.time()
+        stream_request = await prepare_agentic_ontology(stream_request)
         question = stream_request.question
         history = list(stream_request.history or [])
         conversation_id = stream_request.conversation_id
@@ -806,10 +868,15 @@ class AgenticRAGRunner:
         plan_steps = await self._plan(question=question, llm=llm, max_steps=max_rounds)
 
         if settings.RAG_MULTI_AGENT_ENABLED and len(plan_steps) > 1:
-            from app.rag.agents.multi_agent import get_multi_agent_runner
+            from app.rag.agents.multi_agent import MultiAgentPlanStep, get_multi_agent_runner
 
             runner = get_multi_agent_runner(engine=self._engine)
-            async with aclosing(runner.stream(request=stream_request)) as stream_events:
+            async with aclosing(
+                runner.stream(
+                    request=stream_request,
+                    plan_steps=[MultiAgentPlanStep(query=step.query, rationale=step.rationale) for step in plan_steps],
+                )
+            ) as stream_events:
                 async for event in stream_events:
                     yield event
             return
@@ -861,6 +928,16 @@ class AgenticRAGRunner:
             async for event in stream_events:
                 yield event
 
+        grounded = build_agentic_grounded_context(
+            retrieval_state.collected_docs,
+            ontology_context=base_state.get("ontology_context", {}),
+            question=question,
+            tool_context_blocks=retrieval_state.tool_context_blocks,
+        )
+        if grounded is not None:
+            retrieval_state.collected_docs = grounded.documents
+            retrieval_state.grounded_context = grounded.text
+            retrieval_state.final_result["metrics"]["generation_context"] = grounded.trace
         citations = self._build_citations(
             question=question,
             retrieval_mode=retrieval_mode,
@@ -910,6 +987,7 @@ class AgenticRAGRunner:
                 "metrics": metrics,
                 "structured": bool(generation_state.structured_data),
                 "structured_data": generation_state.structured_data,
+                **({"ontology_action": base_state["ontology_action"]} if "ontology_action" in base_state else {}),
             },
         }
 

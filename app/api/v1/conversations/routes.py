@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.dependencies import bind_edo_authorization, get_current_account_id, get_tenant_id
 from app.api.schemas.conversations import (
     ChatRequest,
     ChatResponse,
@@ -44,13 +44,14 @@ from app.services.chat.execution import (
     is_model_provider_unavailable_circuit_open,
     is_model_provider_unavailable_error,
     mark_model_provider_unavailable,
-    preflight_model_provider_fast,
 )
 from app.services.chat.response_cache import InflightResponseLeaderCancelledError, reject_inflight_chat_response
 from app.services.chat.response_finalization import ChatResponseFinalizationInput, finalize_chat_response
 from app.services.chat.response_formatting import apply_chat_runtime_metrics_context, format_stream_error_message
 from app.services.chat.stream_orchestrator import stream_chat_events
-from app.services.chat.turn_persistence import auto_update_summary_background
+from app.services.chat.turn_persistence import (
+    auto_update_summary_background,
+)
 from app.services.identity.chat_token_quota import ChatAssistantTokenQuota, check_chat_assistant_token_quota
 from app.services.identity.tenant_quotas import TenantQpsQuotaResult, enforce_tenant_qps_quota_async
 from app.services.observability.metrics_log import set_metrics_context
@@ -108,19 +109,6 @@ async def _run_non_streaming_chat_generation(
             reason="model_provider_circuit_open",
             runtime_metrics=runtime_metrics,
         )
-
-    provider_available, provider_error = await preflight_model_provider_fast()
-    if not provider_available:
-        chat_result = await _run_extractive_chat_fallback(
-            context=context,
-            reason="model_provider_preflight_failed",
-            runtime_metrics=runtime_metrics,
-        )
-        if provider_error:
-            chat_result = replace(
-                chat_result, metrics={**chat_result.metrics, "generation_fallback_error": provider_error}
-            )
-        return chat_result
 
     try:
         if context.effective_rag_config.use_graph:
@@ -274,7 +262,12 @@ DOC_IDS_MUST_MATCH_DATASET_DETAIL = "document_ids must all belong to the specifi
 NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL = "No accessible documents for chat retrieval"
 
 
-@router.post("", response_model=ChatResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "",
+    response_model=ChatResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    dependencies=[Depends(bind_edo_authorization)],
+)
 async def chat(
     http_request: Request,
     request: ChatRequest,
@@ -497,6 +490,7 @@ async def chat(
         "metrics": metrics_data,
         "structured": structured_ok if request.structured_output else False,
         "structured_data": structured_data,
+        "ontology_action": metrics_data.get("ontology_action"),
     }
 
 
@@ -557,6 +551,7 @@ def build_ag_ui_chat_request(agent_input: RunAgentInput) -> ChatRequest:
 @router.post(
     "/stream",
     response_class=StreamingResponse,
+    dependencies=[Depends(bind_edo_authorization)],
     responses={
         **_DEFAULT_HTTP_EXCEPTION_RESPONSES,
         200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}},

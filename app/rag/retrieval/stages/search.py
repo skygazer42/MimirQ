@@ -3,6 +3,7 @@
 import concurrent.futures
 import time
 from collections.abc import Callable
+from contextvars import copy_context
 from dataclasses import dataclass
 from typing import Any
 
@@ -236,7 +237,7 @@ def _run_retrieval_plan(ctx: RetrievalRuntimeState) -> None:
         return
     with concurrent.futures.ThreadPoolExecutor(max_workers=ctx.retrieval_parallelism) as pool:
         futures = [
-            (query, pool.submit(_invoke_retrieval_query, ctx, kind, query, retriever_obj))
+            (query, pool.submit(copy_context().run, _invoke_retrieval_query, ctx, kind, query, retriever_obj))
             for kind, query, retriever_obj in ctx.retrieval_plan
         ]
         for query, future in futures:

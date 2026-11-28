@@ -5,7 +5,9 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.api.schemas.conversations.chat import OntologyActionProposal
 from app.infrastructure.tokens import num_tokens_from_string
+from app.services.chat.enterprise_ontology import ONTOLOGY_HISTORY_PLACEHOLDER
 from app.services.chat.response_formatting import apply_chat_runtime_metrics_context
 from app.services.chat.stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 from app.services.observability.metrics_log import log_metrics
@@ -17,6 +19,7 @@ class MaterializedChatStreamInput:
     content: str
     citations: list[dict[str, Any]] | list | None
     metrics: dict[str, Any]
+    ontology_action: OntologyActionProposal | None = None
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,7 @@ class ChatStreamPersistenceContext:
     persist_in_background: bool
     spawn_background_task: Callable[[Any], None]
     persist_options: ChatStreamPersistInput
+    protected_ontology_receipt: dict[str, Any] | None = None
 
 
 def build_chat_stream_done_event(
@@ -145,7 +149,7 @@ async def stream_materialized_chat_events(
         quota_meta=runtime.quota_meta,
     )
 
-    yield build_chat_stream_done_event(
+    done = build_chat_stream_done_event(
         request_id=runtime.request_id,
         assistant_message_id=persistence.persist_options.assistant_message_id,
         conversation_id=persistence.persist_options.conversation_id,
@@ -156,6 +160,9 @@ async def stream_materialized_chat_events(
         structured_data=runtime.structured_data,
         structured_preset=runtime.structured_preset,
     )
+    if stream_input.ontology_action is not None:
+        done["data"]["ontology_action"] = stream_input.ontology_action.model_dump(mode="json")
+    yield done
 
     log_chat_stream_completion_metrics(
         request_id=runtime.request_id,
@@ -164,15 +171,22 @@ async def stream_materialized_chat_events(
         metrics=final_metrics,
     )
 
+    stored_answer = answer_text
+    stored_citations = citations_list
+    stored_metrics = final_metrics
+    if persistence.protected_ontology_receipt is not None:
+        stored_answer = ONTOLOGY_HISTORY_PLACEHOLDER
+        stored_citations = []
+        stored_metrics = {**final_metrics, **persistence.protected_ontology_receipt}
     dispatch_chat_stream_persistence(
         db=persistence.db,
         persist_in_background=persistence.persist_in_background,
         spawn_background_task=persistence.spawn_background_task,
         options=replace(
             persistence.persist_options,
-            content=answer_text,
-            citations=citations_list,
-            metrics=final_metrics,
+            content=stored_answer,
+            citations=stored_citations,
+            metrics=stored_metrics,
             structured_data=runtime.structured_data,
         ),
     )

@@ -256,6 +256,8 @@ class Settings(BaseSettings):
     VECTOR_WRITE_RETRY_BACKOFF_SEC: float = Field(default=0.5, ge=0)
 
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
+    ONTOLOGY_ACTION_TARGETS: dict[str, dict[str, str]] = Field(default_factory=dict)
+    ONTOLOGY_EDO_ENDPOINTS: dict[str, dict[str, str]] = Field(default_factory=dict)
     LLM_API_BASE: str = Field(
         default=DEFAULT_OPENAI_API_BASE, validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL")
     )
@@ -1035,7 +1037,7 @@ class Settings(BaseSettings):
     RETRIEVAL_MODE: str = "hybrid"
     SIMILARITY_THRESHOLD: float = 0.7
     # Concurrent retrieval across query variants (multi-query / decompose / HyDE).
-    RETRIEVAL_QUERY_PARALLELISM: int = 1
+    RETRIEVAL_QUERY_PARALLELISM: int = 3
     # Deterministic, no-LLM fan-out for obvious multi-intent questions. This is
     # bounded so external retrieval can improve coverage without adding model latency.
     RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED: bool = False
@@ -1182,7 +1184,8 @@ class Settings(BaseSettings):
     LEXICAL_DB_HYBRID_FALLBACK_ONLY: bool = True
     # Enables the expensive CJK metadata-anchor lexical fallback in hybrid/MMR modes.
     # External low-latency callers can disable this per request without changing global recall defaults.
-    LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED: bool = True
+    LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED: bool = False
+    LEXICAL_DB_FALLBACK_BUDGET_MS: int = Field(default=600, gt=0)
     # In keyword-only mode, lexical DB is the primary keyword channel by default.
     # BM25 stays available as an opt-in secondary channel for recall comparison/back-compat.
     RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED: bool = False
@@ -1212,7 +1215,7 @@ class Settings(BaseSettings):
     # Async API endpoints offload blocking retrieval work to threads; cap concurrent
     # heavy retrieval jobs so Milvus/embedding backends queue instead of saturating.
     # Set 0 to disable the process-local gate.
-    RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 1
+    RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 4
     # Maximum time to wait for a retrieval slot. Set 0 to wait indefinitely.
     RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC: float = 15.0
     # Optional best-effort cross-instance retrieval admission gate via Redis leases.

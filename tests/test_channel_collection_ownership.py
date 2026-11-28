@@ -205,6 +205,69 @@ def test_partial_lexical_hits_keep_the_failure_and_suppress_unneeded_fallbacks(m
     assert batch.keyword.lexical_run_reason == "keyword_primary"
 
 
+def test_exact_metadata_lookup_does_not_run_full_text_search_when_primary_has_enough_candidates(monkeypatch):
+    from app.rag.retrieval.corpus import CorpusSearchResult
+    from app.rag.retrieval.recall import channel_collection, lexical_search
+
+    hits = [{"chunk_id": key, "metadata": {}} for key in ("first", "second")]
+    exact_hit = {"chunk_id": "exact", "metadata": {}}
+    calls = []
+
+    def broad_search(*args, **kwargs):
+        calls.append("body")
+        return lexical_search.LexicalOutcome([], None)
+
+    def exact_search(db, request, **kwargs):
+        calls.append("metadata")
+        return lexical_search.LexicalOutcome([exact_hit], None)
+
+    monkeypatch.setattr(channel_collection._ChannelCollector, "_vector_search", lambda self: None)
+    monkeypatch.setattr(lexical_search, "search_lexical", broad_search)
+    monkeypatch.setattr(lexical_search, "search_metadata_exact", exact_search)
+    request = _request("hybrid", "优抚对象医疗保障")
+    request = replace(request, options=replace(request.options, top_k=8, requested_k=2))
+    batch = channel_collection.collect_channels(
+        request,
+        policy=_policy(lexical_metadata_exact_fallback_enabled=True, metadata_exact_db_enabled=True),
+        corpus_index=_corpus(monkeypatch, lambda *args, **kwargs: CorpusSearchResult(hits, {})),
+    )
+
+    assert calls == ["metadata"]
+    assert batch.keyword.metadata_exact.protected_records == [exact_hit]
+
+
+def test_hybrid_supplement_shares_one_deadline_across_body_and_metadata(monkeypatch):
+    from app.rag.retrieval.corpus import CorpusSearchResult
+    from app.rag.retrieval.recall import channel_collection, lexical_search
+
+    now = 20.0
+    deadlines = []
+
+    def broad_search(db, request, **kwargs):
+        nonlocal now
+        deadlines.append(request.deadline)
+        now = 20.125
+        return lexical_search.LexicalOutcome([], None)
+
+    def exact_search(db, request, **kwargs):
+        deadlines.append(request.deadline)
+        return lexical_search.LexicalOutcome([], None)
+
+    monkeypatch.setattr(channel_collection, "time", SimpleNamespace(perf_counter=lambda: now))
+    monkeypatch.setattr(channel_collection._ChannelCollector, "_vector_search", lambda self: None)
+    monkeypatch.setattr(lexical_search, "search_lexical", broad_search)
+    monkeypatch.setattr(lexical_search, "search_metadata_exact", exact_search)
+    duplicate_hits = [{"chunk_id": "same", "metadata": {}}] * 2
+    channel_collection.collect_channels(
+        _request("hybrid", "优抚对象医疗保障"),
+        policy=_policy(lexical_metadata_exact_fallback_enabled=True, metadata_exact_db_enabled=True),
+        corpus_index=_corpus(monkeypatch, lambda *args, **kwargs: CorpusSearchResult(duplicate_hits, {})),
+    )
+
+    assert len(deadlines) == 2
+    assert deadlines[0] == deadlines[1] > now
+
+
 def test_collection_executes_with_corpus_owner_without_importing_reader() -> None:
     script = """
 import importlib.abc

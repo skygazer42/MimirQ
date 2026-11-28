@@ -23,11 +23,17 @@ It is intended to catch the kinds of exact-ish queries that vector retrieval oft
 
 Hybrid/MMR retrieval modes still treat lexical DB as an additional keyword candidate source.
 
+With `LEXICAL_DB_HYBRID_FALLBACK_ONLY=true`, hybrid retrieval counts distinct chunks from vector search and BM25 against the requested result count. If the primary channels have enough candidates, body-text fallback is skipped. A caller can enable `lexical_db_hybrid_metadata_exact_fallback_enabled` to look up a missing exact title or FAQ anchor. The metadata lookup runs on its own when primary recall already has enough candidates.
+
+The optional PostgreSQL queries in a single retrieval share `LEXICAL_DB_FALLBACK_BUDGET_MS`, which defaults to 600 ms. Results already found can still be ranked if the budget expires. Keyword mode uses PostgreSQL as its primary search channel.
+
 ## Settings
 
 Relevant backend settings in `app/infrastructure/config.py`:
 
 - `LEXICAL_DB_ENABLED`
+- `LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED` (default `false`)
+- `LEXICAL_DB_FALLBACK_BUDGET_MS` (default `600`)
 - `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED`
 - `LEXICAL_DB_FTS_CONFIG`
 - `LEXICAL_DB_FETCH_MULTIPLIER`
@@ -47,9 +53,10 @@ the request ran:
 
 ## Database prerequisites
 
-The lexical channel depends on:
+Alembic revision `0033_chunk_lexical_indexes` adds the scope and body indexes with concurrent builds. The lexical channel uses:
 
 - the Postgres `pg_trgm` extension
+- a B-tree index for `(tenant_id, document_id)`
 - GIN indexes for `document_chunks.content`
 
 Typical runtime migration SQL looks like:

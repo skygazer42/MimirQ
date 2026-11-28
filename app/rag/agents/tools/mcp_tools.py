@@ -50,6 +50,7 @@ _DOCUMENT_NOT_FOUND_ERROR = "Document not found"
 _DOCUMENT_STRUCTURE_SCHEMA = "mimirq.document_structure.v1"
 _DATASET_ID_UUID_DESCRIPTION = "Dataset ID (UUID)"
 _DOCUMENT_ID_UUID_DESCRIPTION = "Document ID (UUID)"
+ONTOLOGY_QUERY_TOOL = "query_ontology"
 
 # Configuration
 MCP_ENABLED = settings.MCP_ENABLED
@@ -92,6 +93,38 @@ def _search_document_scope(scope: DocumentToolScope, dataset_uuid: UUID) -> list
         if scope.document_ids is None:
             return None
         return filter_allowed_document_ids(db, scope.tenant_id, scope.account_id, list(scope.document_ids))
+
+
+async def query_ontology(question: str, dataset_id: str, *, _scope: DocumentToolScope) -> dict[str, Any]:
+    """Read the active ontology or return an action proposal for human review."""
+    from app.services.chat.enterprise_ontology import answer_scoped_ontology
+
+    scope = _require_document_scope(_scope)
+    dataset = UUID(dataset_id)
+    if scope.dataset_ids is None or dataset not in scope.dataset_ids:
+        raise MCPToolError("Dataset is outside the tool scope")
+    if not question.strip() or len(question) > 4000:
+        raise MCPToolError("An ontology question must contain 1 to 4000 characters")
+    documents = await asyncio.to_thread(_search_document_scope, scope, dataset)
+    if scope.document_ids is not None and not documents:
+        raise MCPToolError("No readable documents in the tool scope")
+    with _db_session() as db:
+        turn = await answer_scoped_ontology(
+            db,
+            tenant_id=scope.tenant_id,
+            account_id=scope.account_id,
+            dataset_id=dataset,
+            message=question,
+            document_ids=documents,
+        )
+    if turn is None:
+        raise MCPToolError("No matching capability in the active ontology")
+    result = turn.answer.model_dump(mode="json")
+    if turn.action_proposal is not None:
+        result["action_proposal"] = turn.action_proposal.model_dump(mode="json")
+    if turn.planner_failure is not None:
+        result["planner_failure"] = turn.planner_failure
+    return result
 
 
 # ============================================================================
@@ -1390,7 +1423,17 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         ],
     )
 
-    logger.info("Registered %d default tools", 10)
+    registry.register(
+        name=ONTOLOGY_QUERY_TOOL,
+        func=query_ontology,
+        scope_arg="_scope",
+        description="Query published ontology metrics, rules and evidence, or propose a configured business action",
+        parameters=[
+            ToolParameter(name="question", type="string", description="Business question", required=True),
+            ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
+        ],
+    )
+    logger.info("Registered %d default tools", 11)
     return registry
 
 

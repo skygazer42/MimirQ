@@ -63,6 +63,8 @@ KG 抽取支持 3 种选项（按优先级从高到低）：
   - `?gzip=true`：返回 gzip 压缩后的 GraphML（`Content-Encoding: gzip`，下载文件后缀为 `.graphml.gz`），适合大图导出。
 - `POST /kg/search`：KG 搜索（召回 -> 扩展 -> 重排），返回事件列表 + entities/clues/stats。
 - `GET /kg/events/{event_id}`：事件详情（含实体列表，受文档权限约束；支持 `pipeline_hash` 可选参数）。
+  事件引用匹配目标分块原文后，`event.references.evidence_quote` 返回对应的原文片段。`evidence_start_char` 和 `evidence_end_char` 是分块内左闭右开的字符区间。
+  同一实体在分块中多次出现时，抽取优先使用所属事件中的原文。按文档范围启用图谱问答后，流式问答在已取回的分块中复核事件引文，再将匹配的原文加入回答上下文。
 - `GET /kg/entities/{entity_id}`：实体详情（含最近事件与邻居实体，受文档权限约束；支持 `pipeline_hash` 可选参数）。
 - `DELETE /kg/documents/{document_id}`：删除文档对应 KG 事件（可选清理孤立实体）。
 

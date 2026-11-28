@@ -3,13 +3,14 @@
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Text as SQLText
 from sqlalchemy import case, func, or_, text
 from sqlalchemy import cast as sql_cast
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.infrastructure.config import settings
 from app.infrastructure.metadata_filters import match_metadata_filter
@@ -26,6 +27,7 @@ class LexicalRequest:
     query: str
     top_k: int
     scope: RetrievalScope
+    deadline: float | None = None
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,23 @@ class LexicalOutcome:
 @dataclass
 class _LexicalRun:
     pg_trgm_available: bool | None
+    deadline: float | None = None
     records: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def limit_statement(self, db: Session) -> None:
+        if self.deadline is None:
+            return
+        remaining_ms = int((self.deadline - perf_counter()) * 1000)
+        if remaining_ms <= 0:
+            raise TimeoutError("Lexical fallback budget exhausted")
+        db.execute(
+            text("SELECT set_config('statement_timeout', :timeout, true)"),
+            {"timeout": f"{remaining_ms}ms"},
+        )
+
+    def fetch(self, db: Session, query: Query[Any]) -> list[Any]:
+        self.limit_statement(db)
+        return query.all()
 
 
 def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
@@ -177,21 +195,24 @@ def _collect_lexical_fts_results(
     tsquery_builder: Any,
     dataset_str: str | None,
     metadata_filter: dict[str, Any] | None,
-    results_by_id: dict[str, dict[str, Any]],
+    run: _LexicalRun,
 ) -> None:
     vector = func.to_tsvector(fts_config, DocumentChunk.content)
     tsq = tsquery_builder(fts_config, raw_query)
     rank = func.ts_rank_cd(vector, tsq).label("fts_rank")
-    rows = (
+    query = (
         _lexical_base_query(db, tenant_uuid=tenant_uuid, dataset_ids=dataset_ids, document_ids=document_ids)
         .add_columns(rank)
         .filter(vector.op("@@")(tsq))
         .order_by(rank.desc())
         .limit(fetch_k)
-        .all()
     )
     _add_lexical_rows(
-        rows=rows, results_by_id=results_by_id, method=method, dataset_str=dataset_str, metadata_filter=metadata_filter
+        rows=run.fetch(db, query),
+        results_by_id=run.records,
+        method=method,
+        dataset_str=dataset_str,
+        metadata_filter=metadata_filter,
     )
 
 
@@ -199,6 +220,7 @@ def _lexical_pg_trgm_available_now(db: Session, *, run: _LexicalRun) -> bool:
     pg_trgm_available = run.pg_trgm_available
     if pg_trgm_available is not None:
         return bool(pg_trgm_available)
+    run.limit_statement(db)
     row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
     pg_trgm_available = bool(row)
     run.pg_trgm_available = pg_trgm_available
@@ -215,20 +237,19 @@ def _collect_lexical_trigram_results(
     fetch_k: int,
     dataset_str: str | None,
     metadata_filter: dict[str, Any] | None,
-    results_by_id: dict[str, dict[str, Any]],
+    run: _LexicalRun,
 ) -> None:
     sim = func.similarity(DocumentChunk.content, raw_query).label("trgm_sim")
-    rows = (
+    query = (
         _lexical_base_query(db, tenant_uuid=tenant_uuid, dataset_ids=dataset_ids, document_ids=document_ids)
         .add_columns(sim)
         .filter(DocumentChunk.content.op("%")(raw_query))
         .order_by(sim.desc())
         .limit(fetch_k)
-        .all()
     )
     _add_lexical_rows(
-        rows=rows,
-        results_by_id=results_by_id,
+        rows=run.fetch(db, query),
+        results_by_id=run.records,
         method="trgm",
         dataset_str=dataset_str,
         metadata_filter=metadata_filter,
@@ -246,7 +267,7 @@ def _collect_lexical_cjk_token_results(
     fetch_k: int,
     dataset_str: str | None,
     metadata_filter: dict[str, Any] | None,
-    results_by_id: dict[str, dict[str, Any]],
+    run: _LexicalRun,
 ) -> None:
     if not settings.LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED:
         return
@@ -270,18 +291,17 @@ def _collect_lexical_cjk_token_results(
     min_hits = configured_min_hits
     if min_hits <= 0:
         min_hits = min(3, max(1, len(terms) // 2))
-    rows = (
+    query = (
         _lexical_base_query(db, tenant_uuid=tenant_uuid, dataset_ids=dataset_ids, document_ids=document_ids)
         .add_columns(score_expr.label("cjk_token_score"))
         .filter(or_(*conditions))
         .filter(hit_expr >= min_hits)
         .order_by(score_expr.desc(), DocumentChunk.chunk_index.asc())
         .limit(fetch_k)
-        .all()
     )
     _add_lexical_rows(
-        rows=rows,
-        results_by_id=results_by_id,
+        rows=run.fetch(db, query),
+        results_by_id=run.records,
         method="cjk_token",
         dataset_str=dataset_str,
         metadata_filter=metadata_filter,
@@ -320,7 +340,7 @@ def _search_lexical_db_with_session(
         tsquery_builder=func.websearch_to_tsquery,
         dataset_str=dataset_str,
         metadata_filter=metadata_filter,
-        results_by_id=results_by_id,
+        run=run,
     )
     if not results_by_id:
         _collect_lexical_fts_results(
@@ -335,7 +355,7 @@ def _search_lexical_db_with_session(
             tsquery_builder=func.plainto_tsquery,
             dataset_str=dataset_str,
             metadata_filter=metadata_filter,
-            results_by_id=results_by_id,
+            run=run,
         )
     if want_trgm and len(raw_query) >= trgm_min_chars and _lexical_pg_trgm_available_now(db, run=run):
         _collect_lexical_trigram_results(
@@ -347,7 +367,7 @@ def _search_lexical_db_with_session(
             fetch_k=fetch_k,
             dataset_str=dataset_str,
             metadata_filter=metadata_filter,
-            results_by_id=results_by_id,
+            run=run,
         )
     _collect_lexical_cjk_token_results(
         db=db,
@@ -358,7 +378,7 @@ def _search_lexical_db_with_session(
         fetch_k=fetch_k,
         dataset_str=dataset_str,
         metadata_filter=metadata_filter,
-        results_by_id=results_by_id,
+        run=run,
     )
     if not results_by_id:
         return []
@@ -451,14 +471,13 @@ def _search_metadata_exact_anchor_db_with_session(
         if len(patterns) == 1
         else or_(*(metadata_text.ilike(pattern, escape="\\") for pattern in patterns))
     )
-    rows = (
+    statement = (
         _lexical_base_query(db, tenant_uuid=tenant_uuid, dataset_ids=dataset_ids, document_ids=document_ids)
         .filter(metadata_predicate)
         .limit(fetch_k)
-        .all()
     )
     results_by_id: dict[str, dict[str, Any]] = run.records
-    for row in rows:
+    for row in run.fetch(db, statement):
         parsed = _metadata_exact_result_from_row(
             row, query=raw_query, dataset_str=dataset_str, metadata_filter=metadata_filter
         )
@@ -479,7 +498,7 @@ def _search_metadata_exact_anchor_db_with_session(
 
 
 def search_lexical(db: Session, request: LexicalRequest, *, pg_trgm_available: bool | None = None) -> LexicalOutcome:
-    run = _LexicalRun(pg_trgm_available)
+    run = _LexicalRun(pg_trgm_available, request.deadline)
     raw_query = request.query.strip()
     if not raw_query or not settings.LEXICAL_DB_ENABLED:
         return LexicalOutcome([], run.pg_trgm_available)
@@ -503,7 +522,7 @@ def search_lexical(db: Session, request: LexicalRequest, *, pg_trgm_available: b
 
 
 def search_metadata_exact(db: Session, request: LexicalRequest, *, enabled: bool) -> LexicalOutcome:
-    run = _LexicalRun(None)
+    run = _LexicalRun(None, request.deadline)
     if not request.query.strip() or not enabled:
         return LexicalOutcome([], None)
     try:

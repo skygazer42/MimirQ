@@ -1154,6 +1154,7 @@ async def test_extract_kg_job_invalidates_dataset_cache_after_success(monkeypatc
     )
     from app.tasks import jobs
 
+    monkeypatch.setattr("app.rag.kg.enterprise_ontology.extraction.active_version_id", lambda *_args: None)
     tenant_id = uuid4()
     document_id = uuid4()
     dataset_id = uuid4()
@@ -1360,6 +1361,7 @@ async def test_extract_kg_job_marks_ready_and_skipped_channels_when_no_events(
 
     from app.tasks import jobs
 
+    monkeypatch.setattr("app.rag.kg.enterprise_ontology.extraction.active_version_id", lambda *_args: None)
     tenant_id = uuid4()
     document_id = uuid4()
     dataset_id = uuid4()

@@ -19,6 +19,7 @@ Security / Safety
 import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid5
 
@@ -28,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.infrastructure.config import settings
 from app.models.documents.records import Document as DBDocument
 from app.rag.policy.must_recall import normalize_source_keys
+from app.rag.retrieval.evidence.validity import outside_document_window, requests_current_evidence
 from app.services.tables.generation import (
     generate_sql_for_table,
     generate_sql_for_table_with_metadata,
@@ -287,7 +289,8 @@ def build_chat_tag_context_docs(
 
     intent = bool(_TABLE_INTENT_RE.search(question))
     terms = _extract_terms(question, max_terms=12)
-    candidates = _load_table_candidates(db, tenant_id=tenant_id, doc_ids=doc_ids, terms=terms)
+    valid_at = datetime.now(UTC) if requests_current_evidence(question) else None
+    candidates = _load_table_candidates(db, tenant_id=tenant_id, doc_ids=doc_ids, terms=terms, valid_at=valid_at)
     if not candidates:
         meta["reason"] = "no_table_assets"
         return [], meta
@@ -336,6 +339,7 @@ def _load_table_candidates(
     tenant_id: UUID,
     doc_ids: list[UUID],
     terms: list[str],
+    valid_at: datetime | None,
 ) -> list[_TableCandidate]:
     raw_docs = (
         db.query(DBDocument)
@@ -349,6 +353,8 @@ def _load_table_candidates(
     )
     candidates: list[_TableCandidate] = []
     for document in raw_docs:
+        if valid_at is not None and outside_document_window(document.doc_metadata, observed_at=valid_at):
+            continue
         candidates.extend(_table_candidates_from_document(document, terms=terms))
     return candidates
 

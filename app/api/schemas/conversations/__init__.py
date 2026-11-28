@@ -6,6 +6,7 @@ from app.api.schemas.conversations.chat import (
     ChatResponse,
     CheckpointDetailResponse,
     CheckpointListResponse,
+    Citation,
     ConversationCreate,
     ConversationDetail,
     ConversationList,
@@ -14,6 +15,7 @@ from app.api.schemas.conversations.chat import (
     ConversationSummaryUpdateResponse,
     ConversationUpdate,
     HistoryMessage,
+    MessageSchema,
 )
 from app.api.schemas.conversations.feedback import (
     FeedbackLoopCandidatesQuery,
@@ -67,6 +69,7 @@ __all__ = [
     "ChatResponse",
     "CheckpointDetailResponse",
     "CheckpointListResponse",
+    "Citation",
     "ConversationCreate",
     "ConversationDetail",
     "ConversationList",
@@ -90,6 +93,7 @@ __all__ = [
     "MessageFeedbackListQuery",
     "MessageFeedbackOut",
     "MessageFeedbackPatchRequest",
+    "MessageSchema",
     "PromptPreviewRequest",
     "PromptPreviewResponse",
     "PromptTemplateCreate",

@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.rag.retrieval.evidence.excerpts import iter_sentence_spans
 from app.rag.safety.claim_nli import verify_claim_with_nli
 
 _CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
@@ -246,9 +247,6 @@ def verify_claim(
     return ClaimVerificationResult(supported=bool(supported), mode=m, diagnostics=diagnostics)
 
 
-_SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
-
-
 def _parse_claim_list_item(raw: str) -> str | None:
     text = (raw).lstrip()
     if not text:
@@ -314,13 +312,13 @@ def split_claim_spans(text: str, *, max_claims: int = 24) -> list[ClaimSpan]:
             previous_end = start + len(line)
         paragraph_lines.clear()
         paragraph = "".join(parts)
-        for match in _SENTENCE_RE.finditer(paragraph):
-            raw = match.group(0)
+        for span_start, span_end in iter_sentence_spans(paragraph):
+            raw = paragraph[span_start:span_end]
             sentence = raw.strip()
             if not sentence:
                 continue
-            start = match.start() + len(raw) - len(raw.lstrip())
-            end = match.end() - (len(raw) - len(raw.rstrip()))
+            start = span_start + len(raw) - len(raw.lstrip())
+            end = span_end - (len(raw) - len(raw.rstrip()))
             claims.append(ClaimSpan(sentence, source_indices[start], source_indices[end - 1] + 1))
             if len(claims) >= max_claims:
                 return True

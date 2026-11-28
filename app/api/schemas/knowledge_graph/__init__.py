@@ -1,5 +1,19 @@
 """Public HTTP contracts for knowledge graph operations."""
 
+from app.api.schemas.knowledge_graph.enterprise_ontology import (
+    OntologyDocumentGraph,
+    OntologyDraftUpdate,
+    OntologyDraftView,
+    OntologyGraphChanges,
+    OntologyGraphChunk,
+    OntologyGraphEditRequest,
+    OntologyImportRequest,
+    OntologyKnowledgeAnswer,
+    OntologyKnowledgeQuestion,
+    OntologyPreviewRequest,
+    OntologyPublishRequest,
+    OntologyVersionView,
+)
 from app.api.schemas.knowledge_graph.graph import (
     KGDeleteResponse,
     KGEntityAliasCreateRequest,
@@ -46,6 +60,8 @@ from app.api.schemas.knowledge_graph.graph import (
 )
 
 __all__ = [
+    "OntologyKnowledgeAnswer",
+    "OntologyKnowledgeQuestion",
     "KGDeleteResponse",
     "KGEntityAliasCreateRequest",
     "KGEntityAliasesResponse",
@@ -88,4 +104,14 @@ __all__ = [
     "KGSearchResponse",
     "KGSnapshotDiffRequest",
     "KGStatsResponse",
+    "OntologyDocumentGraph",
+    "OntologyDraftUpdate",
+    "OntologyDraftView",
+    "OntologyGraphChanges",
+    "OntologyGraphChunk",
+    "OntologyGraphEditRequest",
+    "OntologyImportRequest",
+    "OntologyPreviewRequest",
+    "OntologyPublishRequest",
+    "OntologyVersionView",
 ]

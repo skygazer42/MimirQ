@@ -208,6 +208,10 @@ def _build_graph_stream_state(
     )
     if context.rag_config_template_meta:
         state["rag_config_template"] = context.rag_config_template_meta
+    state["ontology_enabled"] = True
+    state["stream_answer"] = True
+    state["conversation_id"] = context.conversation_id
+    state["request_id"] = context.request_id
     return state
 
 
@@ -268,7 +272,10 @@ def _consume_graph_value_chunk(
         citations_sent = True
         events.append({"type": "citations", "data": citations_data})
     if not answer_sent and chunk.get("answer") is not None:
-        events.extend(_answer_token_events(chunk["answer"], response_parts))
+        prefix = "".join(response_parts)
+        if not chunk["answer"].startswith(prefix):
+            raise RuntimeError("Streamed answer differs from the finalized answer")
+        events.extend(_answer_token_events(chunk["answer"][len(prefix) :], response_parts))
         answer_sent = True
     return events, citations_sent, answer_sent, citations_data
 
@@ -284,6 +291,8 @@ def _graph_metrics_payload(
         "elapsed_sec": None,
     }
     metrics_data = dict(metrics_data or {})
+    if graph_result.get("ontology_action") is not None:
+        metrics_data["ontology_action"] = graph_result["ontology_action"]
     metrics_data.setdefault("model_used", graph_result.get("model_used"))
     metrics_data.setdefault("route", graph_result.get("route"))
     return metrics_data
@@ -303,6 +312,11 @@ async def _stream_graph_workflow_events(
     ) as events:
         async for mode, chunk in events:
             if mode == "custom":
+                if chunk.get("event") == "answer_delta":
+                    content = chunk["content"]
+                    stream_state.response_parts.append(content)
+                    yield {"type": "token", "data": {"content": content}}
+                    continue
                 yield {"type": "graph", "data": chunk}
                 continue
             if mode != "values" or not isinstance(chunk, dict):
@@ -447,7 +461,7 @@ async def stream_graph_chat_session_events(
         quota_meta=options.quota_meta,
     )
 
-    yield build_chat_stream_done_event(
+    done = build_chat_stream_done_event(
         request_id=str(request_id),
         assistant_message_id=options.persist_options.assistant_message_id,
         conversation_id=conversation_id,
@@ -457,6 +471,9 @@ async def stream_graph_chat_session_events(
         structured=bool(metrics_data.get("structured_parse_ok")) and structured_data is not None,
         structured_data=structured_data,
     )
+    if metrics_data.get("ontology_action") is not None:
+        done["data"]["ontology_action"] = metrics_data["ontology_action"]
+    yield done
 
     store_chat_response_cache_if_needed(
         cache_eligible=options.cache_eligible,

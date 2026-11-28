@@ -13,6 +13,8 @@ class KGExtractResponse(BaseModel):
     document_id: UUID
     chunk_count: int
     event_count: int
+    ontology_version_id: UUID | None = None
+    relation_count: int | None = None
     message: str = "KG extraction completed"
 
 

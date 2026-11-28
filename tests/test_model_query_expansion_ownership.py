@@ -20,17 +20,80 @@ def test_model_expansion_owns_generation_order_and_each_strategy_result() -> Non
 
     models = _Models()
     result = expand_model_queries(_request(), models=models)
-    assert [call[1] for call in models.calls if call[0] == "invoke"] == [
-        "multi_query",
-        "hyde",
-        "step_back",
-        "decomposition",
-    ]
+    assert sorted(call[1] for call in models.calls if call[0] == "invoke") == sorted(
+        [
+            "multi_query",
+            "hyde",
+            "step_back",
+            "decomposition",
+        ]
+    )
     assert result.multi_query.queries == ["first", "second"]
     assert result.hyde.text == "hypothetical" and result.hyde.model_used == "hyde"
     assert result.step_back.text == "broader view" and result.step_back.parse_metadata["ok"] is True
     assert result.decomposition.queries == ["part one", "part two"]
     assert result.elapsed_sec >= 0.0
+
+
+def test_independent_model_expansions_overlap_and_copy_request_context():
+    from contextvars import ContextVar
+
+    from app.rag.retrieval.planning.model_expansion import expand_model_queries
+
+    trace = ContextVar("query_expansion_trace", default="missing")
+    trace.set("request-1")
+    barrier = threading.Barrier(4)
+
+    class ConcurrentModels(_Models):
+        def _select(self, kind):
+            response = self.replies[kind]
+
+            class Model:
+                model_name = kind
+
+                def invoke(self, *, query):
+                    assert trace.get() == "request-1"
+                    barrier.wait(timeout=2)
+                    return response
+
+            return Model()
+
+    result = expand_model_queries(_request(), models=ConcurrentModels())
+    assert result.multi_query.queries == ["first", "second"]
+    assert result.decomposition.queries == ["part one", "part two"]
+    assert result.hyde.text == "hypothetical" and result.step_back.text == "broader view"
+
+
+@pytest.mark.asyncio
+async def test_native_async_model_expansions_overlap_without_background_tasks():
+    from app.rag.retrieval.planning.model_expansion import expand_model_queries_async
+    from tests.query_model_fixtures import AsyncReplies
+
+    started = set()
+    all_started = asyncio.Event()
+
+    class ConcurrentModels(AsyncReplies):
+        def _select(self, kind):
+            response = self.replies[kind]
+
+            class Model:
+                model_name = kind
+
+                async def ainvoke(self, *, query):
+                    started.add(kind)
+                    if len(started) == 4:
+                        all_started.set()
+                    await asyncio.wait_for(all_started.wait(), 1)
+                    return response
+
+            return Model()
+
+    result = await expand_model_queries_async(_request(), models=ConcurrentModels())
+    assert len(started) == 4
+    assert result.multi_query.queries == ["first", "second"] and result.decomposition.queries == [
+        "part one",
+        "part two",
+    ]
 
 
 def test_disabled_and_zero_budget_strategies_do_not_resolve_models() -> None:
@@ -264,8 +327,22 @@ def test_orchestrator_uses_real_model_ports_and_preserves_query_invocation_order
         monkeypatch.setattr(settings, field, value)
     monkeypatch.setattr(expand, "load_base_dictionary_rules", lambda: {})
 
+    class PromptReplies(FakeListChatModel):
+        def _call(self, messages, **_options):
+            prompt = messages[0].content
+            return next(
+                reply
+                for prefix, reply in (
+                    ("Variants", '["alternate"]'),
+                    ("Hypothesis", "hypothetical"),
+                    ("Broader", "broader"),
+                    ("Questions", '["part query"]'),
+                )
+                if prompt.startswith(prefix)
+            )
+
     class Engine:
-        models = {"fast": FakeListChatModel(responses=['["alternate"]', "hypothetical", "broader", '["part query"]'])}
+        models = {"fast": PromptReplies(responses=["unused"])}
         multi_query_prompt = ChatPromptTemplate.from_template("Variants for {query}, count {n}")
         hyde_prompt = ChatPromptTemplate.from_template("Hypothesis for {query}")
         step_back_prompt = ChatPromptTemplate.from_template("Broader query for {query}")

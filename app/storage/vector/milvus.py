@@ -1283,6 +1283,8 @@ class MilvusAdapter:
         """
         store = self._require_store()
 
+        if store.col is None:
+            raise RuntimeError(f"Milvus collection is not initialized for collection={self.collection_name}")
         supported_filter = _sanitize_milvus_metadata_filter(metadata_filter)
         metadata_expr = _build_milvus_metadata_expr(supported_filter)
         metadata_expr_fallback = False
@@ -1546,6 +1548,8 @@ class MilvusVectorStore:
         """Vector similarity search (text query)."""
         store = self._require_store()
 
+        if store.col is None:
+            raise RuntimeError(f"Milvus collection is not initialized for collection={settings.MILVUS_COLLECTION_NAME}")
         supported_filter = _sanitize_milvus_metadata_filter(
             metadata_filter,
             allowed_fields=set(_DOC_VECTOR_METADATA_FIELDS),

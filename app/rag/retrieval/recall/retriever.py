@@ -5,6 +5,7 @@ Reference: RAG_Agent example repository. Retrieval modes and reranking strategie
 
 import logging
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from app.rag.retrieval.configuration.options import (
     resolve_rerank_search_k,
 )
 from app.rag.retrieval.corpus import get_corpus_index, is_milvus_bm25_enabled
+from app.rag.retrieval.evidence.validity import requests_current_evidence
 from app.rag.retrieval.planning.entities import extract_partition_keys
 from app.rag.retrieval.ranking import candidates as candidate_ranking
 from app.rag.retrieval.ranking.diversity import DedupDiversityMixin
@@ -122,6 +124,7 @@ class HybridRetriever(
     context_neighbor_mid_threshold: float | None = None
     context_neighbor_high_span: int | None = None
     context_neighbor_mid_span: int | None = None
+    current_evidence_only: bool | None = None
     enable_hierarchy_recall: bool = False
     hierarchy_family_collapse: bool = settings.HIERARCHY_RECALL_FAMILY_COLLAPSE
     hierarchy_overfetch_factor: int = max(1, int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR))
@@ -443,6 +446,10 @@ class HybridRetriever(
         *,
         run_manager: CallbackManagerForRetrieverRun,
     ) -> list[Document]:
+        current_evidence_only = self.current_evidence_only
+        if current_evidence_only is None:
+            current_evidence_only = requests_current_evidence(query)
+        valid_at = datetime.now(UTC) if current_evidence_only else None
         original_query, query, query_norm = self._normalize_retrieval_query(query)
         metadata_filter_dataset_scoped, dataset_scope_ids = self._validate_retrieval_scope_requirements()
         requested_k, search_k, fetch_k, overfetch_reasons = self._retrieval_search_budget(
@@ -476,6 +483,7 @@ class HybridRetriever(
             effective_metadata_filter=effective_metadata_filter,
             embedding_runtime=candidate_batch.resolved_scope.runtime,
             requested_k=requested_k,
+            valid_at=valid_at,
         )
         docs = self._results_to_documents(results, debug=debug, requested_k=requested_k)
         self._last_debug_metrics = debug
@@ -706,11 +714,13 @@ class HybridRetriever(
         effective_metadata_filter: dict[str, Any] | None,
         embedding_runtime: DatasetEmbeddingRuntimeConfig,
         requested_k: int,
+        valid_at: datetime | None,
     ) -> list[dict[str, Any]]:
         results, enrich1, enrich_count = self._enrich_retrieval_results(
             results,
             effective_metadata_filter=effective_metadata_filter,
             embedding_runtime=embedding_runtime,
+            valid_at=valid_at,
         )
         debug["enrich_pass1"] = enrich1
         self._record_late_filter_collapse(debug, enrich1=enrich1, enrich_count=enrich_count)
@@ -725,6 +735,7 @@ class HybridRetriever(
             enriched_result_keys=enriched_result_keys,
             effective_metadata_filter=effective_metadata_filter,
             embedding_runtime=embedding_runtime,
+            valid_at=valid_at,
         )
         debug["enrich_pass2"] = enrich2
         results = self._apply_retrieval_post_ordering(query=query, results=results, debug=debug)
@@ -737,6 +748,7 @@ class HybridRetriever(
         *,
         effective_metadata_filter: dict[str, Any] | None,
         embedding_runtime: DatasetEmbeddingRuntimeConfig,
+        valid_at: datetime | None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
         enrich_stats: dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(
@@ -744,6 +756,7 @@ class HybridRetriever(
             stats=enrich_stats,
             metadata_filter_override=effective_metadata_filter,
             embedding_runtime=embedding_runtime,
+            valid_at=valid_at,
         )
         return results, enrich_stats, len(results)
 
@@ -762,6 +775,7 @@ class HybridRetriever(
             "filtered_not_ready": enrich1.get("filtered_not_ready", 0),
             "filtered_pipeline_version": enrich1.get("filtered_pipeline_version", 0),
             "filtered_metadata_filter": enrich1.get("filtered_metadata_filter", 0),
+            "filtered_document_validity": enrich1.get("filtered_document_validity", 0),
             "filtered_embedding_space": enrich1.get("filtered_embedding_space", 0),
             "filtered_orphaned": enrich1.get("filtered_orphaned", 0),
         }
@@ -773,6 +787,7 @@ class HybridRetriever(
         enriched_result_keys: set[str],
         effective_metadata_filter: dict[str, Any] | None,
         embedding_runtime: DatasetEmbeddingRuntimeConfig,
+        valid_at: datetime | None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         enrich2: dict[str, Any] = {}
         expanded_result_keys = {self._result_key(item) for item in results if isinstance(item, dict)}
@@ -782,6 +797,7 @@ class HybridRetriever(
             results,
             effective_metadata_filter=effective_metadata_filter,
             embedding_runtime=embedding_runtime,
+            valid_at=valid_at,
         )
         return results, enrich2
 

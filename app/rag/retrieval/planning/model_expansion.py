@@ -1,7 +1,11 @@
 """Bounded model query strategies sharing rules across native sync/async calls."""
 
+import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, replace
+from functools import partial
 from typing import Any
 
 from app.infrastructure.hashing import stable_hash
@@ -273,12 +277,21 @@ async def decompose_query_async(
 def expand_model_queries(request: ModelQueryRequest, *, models: QueryVariantModels) -> ModelQueryExpansions:
     started = time.perf_counter()
     settings = request.settings
-    multi = generate_multi_queries(request.query, settings=settings.multi_query, models=models)
-    hyde = generate_hyde_query(
-        request.query, retrieval_mode=request.retrieval_mode, settings=settings.hyde, models=models
+    operations = (
+        partial(generate_multi_queries, request.query, settings=settings.multi_query, models=models),
+        partial(
+            generate_hyde_query,
+            request.query,
+            retrieval_mode=request.retrieval_mode,
+            settings=settings.hyde,
+            models=models,
+        ),
+        partial(generate_step_back_query, request.query, settings=settings.step_back, models=models),
+        partial(decompose_query, request.query, settings=settings.decomposition, models=models),
     )
-    step_back = generate_step_back_query(request.query, settings=settings.step_back, models=models)
-    decomposition = decompose_query(request.query, settings=settings.decomposition, models=models)
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="rag-query-expansion") as pool:
+        pending = [pool.submit(copy_context().run, operation) for operation in operations]
+        multi, hyde, step_back, decomposition = [future.result() for future in pending]
     return ModelQueryExpansions(multi, hyde, step_back, decomposition, time.perf_counter() - started)
 
 
@@ -287,10 +300,22 @@ async def expand_model_queries_async(
 ) -> ModelQueryExpansions:
     started = time.perf_counter()
     settings = request.settings
-    multi = await generate_multi_queries_async(request.query, settings=settings.multi_query, models=models)
-    hyde = await generate_hyde_query_async(
-        request.query, retrieval_mode=request.retrieval_mode, settings=settings.hyde, models=models
-    )
-    step_back = await generate_step_back_query_async(request.query, settings=settings.step_back, models=models)
-    decomposition = await decompose_query_async(request.query, settings=settings.decomposition, models=models)
+    tasks = [
+        asyncio.create_task(operation)
+        for operation in (
+            generate_multi_queries_async(request.query, settings=settings.multi_query, models=models),
+            generate_hyde_query_async(
+                request.query, retrieval_mode=request.retrieval_mode, settings=settings.hyde, models=models
+            ),
+            generate_step_back_query_async(request.query, settings=settings.step_back, models=models),
+            decompose_query_async(request.query, settings=settings.decomposition, models=models),
+        )
+    ]
+    try:
+        multi, hyde, step_back, decomposition = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
     return ModelQueryExpansions(multi, hyde, step_back, decomposition, time.perf_counter() - started)

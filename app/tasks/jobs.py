@@ -1566,14 +1566,23 @@ async def _run_kg_extraction(
     tid: UUID,
     requested_by: str,
     chunks: list[Any],
+    selected_pipeline_hash: str | None,
     frozen_options: dict[str, Any] | None,
     replace_existing: bool | None,
     prune_orphan_entities: bool | None,
     extract_relations: bool | None,
     extract_skills: bool | None,
 ) -> list[Any]:
+    from app.rag.kg.enterprise_ontology.extraction import prepare_bound_document
     from app.rag.kg.pipeline import extract_events
     from app.services.pipelines.config import build_indexing_options, resolve_pipeline_effective
+
+    enterprise = await prepare_bound_document(
+        db, document=doc, chunks=chunks, pipeline_hash=selected_pipeline_hash,
+    )
+    if enterprise is not None:
+        _version, previews = enterprise
+        return [item for item in previews if item.entities]
 
     effective = resolve_pipeline_effective(
         dataset_metadata=_dataset_metadata_for_kg_job(db, doc=doc, tid=tid),
@@ -1759,6 +1768,7 @@ async def extract_kg_job(
                 tid=tid,
                 requested_by=requested_by,
                 chunks=chunks_or_result,
+                selected_pipeline_hash=kg_state["selected_pipeline_hash"],
                 frozen_options=frozen_options,
                 replace_existing=replace_existing,
                 prune_orphan_entities=prune_orphan_entities,

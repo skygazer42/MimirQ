@@ -7,6 +7,8 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.infrastructure.config import settings
+from app.rag.kg.enterprise_ontology.activation import active_version_id
+from app.rag.retrieval.evidence.validity import requests_current_evidence
 from app.services.chat.response_cache import (
     InflightResponseLeaderCancelledError,
     acquire_inflight_chat_response,
@@ -127,6 +129,8 @@ def prepare_chat_cache_lookup(
     singleflight_enabled = settings.CHAT_RESPONSE_SINGLEFLIGHT_ENABLED
     if not (cache_enabled or singleflight_enabled):
         return False, None, None
+    if requests_current_evidence(options.question):
+        return cache_enabled, None, "current_evidence_required"
     if not options.document_ids and options.dataset_id is None:
         return cache_enabled, None, "missing_scope"
     if settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY and (
@@ -137,6 +141,8 @@ def prepare_chat_cache_lookup(
     ):
         return cache_enabled, None, "history_not_empty"
     try:
+        if options.dataset_id is not None and active_version_id(options.db, options.tenant_id, options.dataset_id):
+            return cache_enabled, None, "live_ontology_evidence_required"
         cache_key, skip_reason = resolve_chat_response_cache_key(
             db=options.db,
             tenant_id=options.tenant_id,

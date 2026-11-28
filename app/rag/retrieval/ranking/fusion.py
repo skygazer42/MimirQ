@@ -41,7 +41,7 @@ def _is_reranked(doc: Document) -> bool:
     return meta.get("rerank_score") is not None
 
 
-def _prefer_document(current: Document, candidate: Document) -> Document:
+def prefer_document(current: Document, candidate: Document) -> Document:
     if _is_reranked(candidate) and not _is_reranked(current):
         return candidate
     if _is_reranked(current) and not _is_reranked(candidate):
@@ -85,7 +85,7 @@ def fuse_docs_rrf(
                 merged_meta[key] = meta
             else:
                 merged_meta[key] = _merge_metadata(merged_meta[key], meta)
-                best_docs[key] = _prefer_document(best_docs[key], doc)
+                best_docs[key] = prefer_document(best_docs[key], doc)
 
     if not score_map:
         return []

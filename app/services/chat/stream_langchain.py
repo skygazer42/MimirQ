@@ -270,6 +270,7 @@ async def produce_langchain_stream_events(
     try:
         async for ev in engine.stream_chat(
             question=request.message,
+            ontology_enabled=True,
             history=history_for_llm,
             conversation_id=conversation_id,
             document_ids=doc_ids_to_use,

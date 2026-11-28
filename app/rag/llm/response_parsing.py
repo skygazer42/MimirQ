@@ -5,6 +5,7 @@ import re
 from collections.abc import Iterable, Iterator
 from typing import Any, Literal
 
+from app.rag.retrieval.evidence.validity import NO_CURRENT_EVIDENCE
 from app.types.document_metadata import metadata_text
 
 
@@ -178,6 +179,8 @@ def _iter_citation_dicts(citations: list[dict[str, Any]] | None) -> Iterator[dic
 
 
 def build_abstain_answer_message(reason: str | None) -> str:
+    if reason == NO_CURRENT_EVIDENCE:
+        return "未找到当前有效的证据，暂时无法确认。"
     if str(reason or "").strip() == "out_of_scope":
         return "This question appears to be outside the current knowledge base."
     return "Unable to answer this question based on the available materials."

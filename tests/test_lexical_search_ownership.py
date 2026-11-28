@@ -193,6 +193,43 @@ def test_metadata_exact_database_failure_is_returned_with_its_original_cause(mon
     assert not db.closed and not db.committed and not db.rolled_back
 
 
+def test_expired_supplement_budget_keeps_hits_and_skips_following_queries(monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.recall import lexical_search
+
+    _configure(monkeypatch)
+    monkeypatch.setattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)
+    request = replace(_request(), deadline=10.5)
+    row = (
+        uuid4(),
+        "first query hit",
+        {},
+        request.scope.tenant_id,
+        request.scope.document_ids[0],
+        0,
+        None,
+        request.scope.dataset_ids[0],
+        0.8,
+    )
+    db = DB([[row], []])
+    timeouts = []
+    ticks = iter([10.0, 10.5])
+    monkeypatch.setattr(lexical_search, "perf_counter", lambda: next(ticks))
+
+    def set_timeout(statement, params):
+        assert "statement_timeout" in str(statement)
+        timeouts.append(params["timeout"])
+
+    db.execute = set_timeout
+    result = lexical_search.search_lexical(db, request, pg_trgm_available=True)
+
+    assert db.reads == 1 and timeouts == ["500ms"]
+    assert isinstance(result.failure, TimeoutError)
+    assert result.records[0]["content"] == "first query hit"
+
+
 def test_lexical_operation_executes_without_importing_the_reader_adapter() -> None:
     script = """
 import importlib.abc

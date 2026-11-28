@@ -325,6 +325,7 @@ class HeuristicExtractor:
                     "title": title,
                     "summary": summary,
                     "content": summary,
+                    "evidence_quote": fact,
                     "entities": entities,
                     "chunk_id": str(target.id),
                 }

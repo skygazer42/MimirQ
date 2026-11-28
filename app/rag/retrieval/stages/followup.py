@@ -351,6 +351,8 @@ def _run_retrieval_citations_hard_fallback_phase(ctx: RetrievalRuntimeState) -> 
         ctx.query_for_retrieval,
         [d for d in (ctx.docs) if isinstance(d, Document)],
     )
+    # Attach ontology evidence after document ranking to preserve original recall candidates.
+    ctx.docs.extend(ctx.state.get("ontology_docs", []))
 
     ctx.evidence_span_strict_enabled = bool(ctx.retrieval_contract_policy["require_evidence_spans"])
     ctx.evidence_span_missing_citations = 0

@@ -19,6 +19,7 @@ from app.infrastructure.config import settings
 from app.models.documents.records import Document as DBDocument
 from app.models.documents.records import DocumentChunk
 from app.rag.retrieval.evidence.source_labels import derive_document_title, should_replace_source_label
+from app.rag.retrieval.evidence.validity import outside_document_window
 from app.rag.retrieval.expansion.context import expand_ranked_chunk_results
 from app.rag.retrieval.expansion.siblings import select_document_expansion_mode
 from app.rag.retrieval.recall.common import (
@@ -57,6 +58,7 @@ class CandidateEnrichmentMixin:
         stats: dict[str, Any] | None = None,
         metadata_filter_override: dict[str, Any] | None = None,
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
+        valid_at: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """
         Vector store may return "trimmed" metadata (e.g., without img_id).
@@ -104,6 +106,7 @@ class CandidateEnrichmentMixin:
                 dataset_filters=dataset_filters,
                 embedding_space=embedding_space,
                 stats=stats,
+                valid_at=valid_at,
             )
             resolved = self._apply_enrichment_metadata_filter(
                 resolved,
@@ -140,6 +143,7 @@ class CandidateEnrichmentMixin:
                 "filtered_embedding_space": 0,
                 "filtered_pipeline_version": 0,
                 "filtered_metadata_filter": 0,
+                "filtered_document_validity": 0,
                 "output_results": 0,
                 "exception": None,
             }
@@ -492,6 +496,7 @@ class CandidateEnrichmentMixin:
         dataset_filters: set[str],
         embedding_space: str,
         stats: dict[str, Any] | None,
+        valid_at: datetime | None,
     ) -> list[dict[str, Any]]:
         resolved: list[dict[str, Any]] = []
         for result in results:
@@ -510,6 +515,11 @@ class CandidateEnrichmentMixin:
                     embedding_space=embedding_space,
                     stats=stats,
                 ):
+                    continue
+                if valid_at is not None and outside_document_window(
+                    doc_ctx.doc_metadata_by_id[str(chunk.document_id)], observed_at=valid_at
+                ):
+                    self._increment_enrichment_stat(stats, "filtered_document_validity")
                     continue
                 self._merge_chunk_into_result(result, meta, chunk, doc_ctx=doc_ctx)
             result["metadata"] = meta

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -20,6 +21,74 @@ def _document(*, score=0.8):
             "score": score,
         },
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(
+    "question,only_current",
+    [
+        ("按现行有效的台账，设备 E-104 安装在哪条产线？", True),
+        ("Which line does the currently valid equipment ledger list for E-104?", True),
+        ("截至 2000 年 6 月 1 日，按当时有效的台账，设备 E-104 安装在哪条线？", False),
+        ("As of June 1, 2000, which currently valid ledger listed E-104?", False),
+        ("设备 E-104 安装在哪条产线？", False),
+    ],
+)
+async def test_retriever_checks_live_validity_after_candidate_lookup(monkeypatch, streaming, question, only_current):
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.recall.channel_diagnostics import empty_channel_metrics
+    from app.rag.retrieval.recall.enrichment import _DocumentEnrichmentContext
+    from app.rag.retrieval.recall.retriever import HybridRetriever
+    from app.rag.retrieval.recall.runtime_scope import default_embedding_runtime
+
+    tenant, dataset = uuid4(), uuid4()
+    chunks = {}
+    results = []
+    doc_ctx = _DocumentEnrichmentContext()
+    for name, metadata, publication in (
+        ("expired", {"effective_at": "2000-01-01", "expires_at": "2001-01-01"}, "published"),
+        ("future", {"effective_at": "2999-01-01T08:00:00+08:00"}, "published"),
+        ("current", {"effective_at": "2000-01-01", "expires_at": "2999-01-01"}, "published"),
+        ("undated", {}, "published"),
+        ("unverified", {"expires_at": "unknown"}, "published"),
+        ("draft", {"effective_at": "2000-01-01"}, "draft"),
+    ):
+        document_id, chunk_id = uuid4(), uuid4()
+        doc_ctx.doc_metadata_by_id[str(document_id)] = metadata
+        doc_ctx.doc_ready_by_id[str(document_id)] = publication == "published"
+        doc_ctx.doc_dataset_by_id[str(document_id)] = str(dataset)
+        chunks[str(chunk_id)] = SimpleNamespace(
+            id=chunk_id, document_id=document_id, tenant_id=tenant, chunk_index=0, content=name, doc_metadata={},
+            disabled_at=None, page_number=None, start_char=None, end_char=None,
+        )
+        results.append({"chunk_id": str(chunk_id), "content": name, "score": 0.8, "metadata": {}})
+
+    monkeypatch.setattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)
+    db = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(HybridRetriever, "_open_session", lambda self: db)
+    monkeypatch.setattr(HybridRetriever, "_load_enrichment_chunks_by_id", lambda *args, **kwargs: chunks)
+    monkeypatch.setattr(HybridRetriever, "_load_enrichment_chunks_by_pair", lambda *args, **kwargs: {})
+    monkeypatch.setattr(HybridRetriever, "_load_document_enrichment_context", lambda *args, **kwargs: doc_ctx)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, records: records)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, records: records)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_invoke_hybrid_retrieval",
+        lambda *args, **kwargs: SimpleNamespace(
+            candidates=results,
+            channel_metrics=empty_channel_metrics(),
+            ranking=None,
+            resolved_scope=SimpleNamespace(runtime=default_embedding_runtime()),
+        ),
+    )
+
+    reader = HybridRetriever(tenant_id=tenant, dataset_id=dataset, k=10, metadata_filter_enabled=False)
+    docs = await reader.ainvoke(question) if streaming else reader.invoke(question)
+    expected = {"current", "undated", "unverified"}
+    if not only_current:
+        expected.update({"expired", "future"})
+    assert {doc.page_content for doc in docs} == expected
 
 
 @pytest.mark.parametrize("field", ["tenant_id", "dataset_id"])

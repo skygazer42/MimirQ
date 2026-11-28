@@ -5,6 +5,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -12,11 +13,13 @@ import anyio
 from langchain_core.documents import Document
 
 from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
 from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
 from app.infrastructure.security.pii import pii_redaction_enabled, redact_text
 from app.infrastructure.tokens import num_tokens_from_string
 from app.rag.kg.pipeline import kg_search
 from app.rag.llm.vision_reader import build_vision_reader_context_docs
+from app.rag.retrieval.evidence.validity import requests_current_evidence
 from app.rag.retrieval.ranking.fusion import annotate_documents_with_role, fuse_doc_lists
 from app.rag.retrieval.ranking.knowledge_graph import (
     _apply_kg_chunk_boost,
@@ -34,6 +37,38 @@ _ASYNC_CLEANUP_TIMEOUT_SEC = 5.0
 _RetrievalResult = tuple[str, list[Document], str | None, float, dict[str, Any] | None]
 
 
+def start_ontology_evidence(runtime: StandardStreamState) -> None:
+    if not runtime.data.ontology_enabled or runtime.data.dataset_id is None:
+        return
+    from app.services.chat.enterprise_ontology import prepare_ontology_evidence
+
+    def read_ontology():
+        with SessionLocal() as ontology_db:
+            return prepare_ontology_evidence(
+                ontology_db,
+                tenant_id=runtime.data.tenant_id,
+                account_id=runtime.data.account_id,
+                dataset_id=runtime.data.dataset_id,
+                document_ids=runtime.data.document_ids,
+                question=runtime.data.question,
+                history=runtime.data.history,
+                conversation_id=runtime.data.conversation_id,
+            )
+
+    runtime.ontology_task = asyncio.create_task(run_blocking_in_thread(read_ontology))
+
+
+async def collect_ontology_evidence(runtime: StandardStreamState) -> None:
+    if runtime.ontology_task is None:
+        return
+    evidence = await runtime.ontology_task
+    if evidence is not None:
+        runtime.data.ontology_context = evidence.context
+        runtime.data.ontology_metrics = evidence.metrics
+        runtime.data.ontology_docs = evidence.documents
+        runtime.data.ontology_action = evidence.action_proposal
+
+
 async def build_retriever_and_base_queries(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
     # Step 1: Hybrid retrieval (LangChain Retriever).
     runtime.data.retrieval_message = "正在从知识库中检索相关资料..."
@@ -48,7 +83,9 @@ async def build_retriever_and_base_queries(runtime: StandardStreamState) -> Asyn
     if runtime.data.status_event is not None:
         yield runtime.data.status_event
     plan = runtime.data.query_plan
-    runtime.data.retriever_update = dict(plan.retriever_options)
+    runtime.data.retriever_update = dict(
+        plan.retriever_options, current_evidence_only=requests_current_evidence(runtime.data.question)
+    )
     runtime.data.retriever = hybrid_retriever.model_copy(update=runtime.data.retriever_update)
     runtime.data.retrieval_queries_base = [query for query in plan.queries if query[0] != "mq"]
     runtime.data.retrieval_queries = list(plan.queries)
@@ -314,6 +351,8 @@ def _kg_injection_fetch_kwargs(runtime: StandardStreamState) -> dict[str, Any]:
     }
     if runtime.data.kg_dataset_ids:
         fetch_kwargs["dataset_ids"] = runtime.data.kg_dataset_ids
+    if requests_current_evidence(runtime.data.question):
+        fetch_kwargs["valid_at"] = datetime.now(UTC)
     return fetch_kwargs
 
 
@@ -546,6 +585,8 @@ async def retrieve_tag_context(runtime: StandardStreamState) -> AsyncGenerator[d
 
     if runtime.data.tag_docs:
         runtime.data.docs = (runtime.data.tag_docs) + (runtime.data.docs)
+
+    await collect_ontology_evidence(runtime)
 
 
 RETRIEVAL_OPERATIONS = (

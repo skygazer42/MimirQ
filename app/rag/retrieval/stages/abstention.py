@@ -12,6 +12,7 @@ from app.rag.policy.out_of_scope_retrieval import (
     run_default_out_of_scope_live_guard,
 )
 from app.rag.policy.out_of_scope_verifier import maybe_apply_out_of_scope_live_guard
+from app.rag.retrieval.evidence.validity import NO_CURRENT_EVIDENCE, requests_current_evidence
 from app.rag.retrieval.stages.state import RetrievalRuntimeState
 from app.services.evaluation.hardcase_discovery import (
     build_parse_risk_hardcase_candidate,
@@ -40,6 +41,11 @@ def _top_relevance_score(citations: list[dict[str, Any]]) -> float:
 
 
 def _apply_abstain_thresholds(ctx: RetrievalRuntimeState) -> None:
+    if not ctx.citations and requests_current_evidence(ctx.question):
+        ctx.abstain_enabled = True
+        ctx.abstain_triggered = True
+        ctx.abstain_reason = NO_CURRENT_EVIDENCE
+        return
     if ctx.abstain_enabled:
         min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS))
         min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE)

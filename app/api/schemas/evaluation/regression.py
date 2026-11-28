@@ -326,6 +326,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
         return value
 
     dataset_id: UUID = Field(description="Run cases under this dataset (required)")
+    answer_mode: Literal["rag", "ontology"] = Field(default="rag", description="Answer engine for the evaluation")
     metrics: list[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
         description="RAGAS metrics list",

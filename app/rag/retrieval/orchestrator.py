@@ -1,8 +1,11 @@
 """Run retrieval through its ordered business stages."""
 
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from typing import Any
 
 from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
 from app.rag.llm.prompts.templates import format_history_text
 from app.rag.policy.intent_router import route_intent
 from app.rag.retrieval.stages.abstention import _run_retrieval_abstain_hardcase_phase
@@ -76,7 +79,33 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             question=question,
             no_retrieval_intent=no_retrieval_intent,
         )
+    state = dict(state)
     runtime = RetrievalRuntimeState(state=state, question=question, history_text=history_text)
+    if state.get("ontology_enabled") and not state.get("ontology_prepared") and state.get("dataset_id") is not None:
+        from app.services.chat.enterprise_ontology import attach_ontology_evidence, prepare_ontology_evidence
+
+        def read_ontology():
+            with SessionLocal() as ontology_db:
+                return prepare_ontology_evidence(
+                    ontology_db,
+                    tenant_id=state["tenant_id"],
+                    account_id=state["account_id"],
+                    dataset_id=state["dataset_id"],
+                    document_ids=state.get("document_ids"),
+                    question=question,
+                    history=state.get("history"),
+                    conversation_id=state.get("conversation_id"),
+                )
+
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-ontology") as pool:
+            pending = pool.submit(copy_context().run, read_ontology)
+
+            def join_ontology(ctx):
+                ctx.state = attach_ontology_evidence(ctx.state, pending.result())
+
+            phases = list(_RETRIEVAL_RUNTIME_PHASES)
+            phases.insert(phases.index(_run_retrieval_citations_hard_fallback_phase), join_ontology)
+            return run_retrieval_runtime(runtime, phases=phases)
     return run_retrieval_runtime(runtime, phases=_RETRIEVAL_RUNTIME_PHASES)
 
 

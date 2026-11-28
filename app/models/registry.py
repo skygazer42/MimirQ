@@ -21,6 +21,7 @@ import app.models.evaluation.evidence as _evaluation_evidence
 import app.models.evaluation.results as _evaluation_results
 import app.models.identity.accounts as _identity_accounts
 import app.models.identity.workspaces as _identity_workspaces
+import app.models.knowledge_graph.enterprise_ontology as _enterprise_ontology
 import app.models.knowledge_graph.entities as _knowledge_graph_entities
 import app.models.pipelines.profiles as _pipelines_profiles
 import app.models.templates.versions as _templates_versions
@@ -45,4 +46,5 @@ REGISTERED_MODEL_MODULES = (
     _evaluation_results,
     _evaluation_evidence,
     _knowledge_graph_entities,
+    _enterprise_ontology,
 )
